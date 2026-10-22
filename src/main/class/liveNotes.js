@@ -7,11 +7,12 @@ import '../../renderer/shared/texfix.js'
 
 const { repair } = globalThis.texfix
 
-// 实时笔记（三种模式都有，内容按模式不同）：定稿的字幕攒起来，每累计约 N 分钟新内容（或 400 个英文词、600 个汉字）把上一版笔记和新片段一起交给 smart 模型，
-// 拿回完整的新版 JSON。同一时间只有一个请求；失败或额度不够时保留上一版，隔一会儿带着这批内容再试。
+// 实时笔记（三种模式都有，内容按模式不同）：定稿的字幕攒起来，每累计约 N 分钟新内容（或 400 个英文词、600 个汉字）把上一版笔记的摘要和新片段一起交给 smart 模型，
+// 模型只写这一批带来的变化（补到哪个小节、新开的小节、改哪一条、新的强调点 / 作业 / 术语），applyNotes 合进上一版，得到完整的新版笔记。
+// 同一时间只有一个请求；失败或额度不够时保留上一版，隔一会儿带着这批内容再试。
 // 事件 'update'：{ notes, updatedAt, error }（失败时 notes 是上一版，error 是一句中文原因）。
 
-const LIMITS = { sections: 40, points: 15, formulas: 10, examples: 8, emphasis: 40, homework: 20, terms: 80 }
+const LIMITS = { sections: 80, points: 30, formulas: 15, examples: 12, emphasis: 80, homework: 20, terms: 80, edits: 30 }
 const DASH = /[\u2013\u2014]+/g
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -65,11 +66,6 @@ export function fixEscapes(s) {
 }
 
 /**
- * 模型回复 → 规整的笔记 { sections, emphasis, homework, terms }，容错：代码块包裹、字段换说法、字符串代替对象、时间格式不对、
- * JSON 里 LaTeX 的反斜杠只写了一个（非法转义补上再解析，被当成 \t \r \f \b \n 吃掉的在各字段里还原）。
- * 四类一个都没有返回 null（当作这次失败）。startedAt 用来换算作业的相对日期。
- */
-/**
  * 一段字幕拆成按句子的几行，每句的时间按字数比例在这段的起点和时长之间估出来（门限一段常有四五十秒，只用起点的话小节和强调点都对不上）。
  * 没有句子或时长就还是一行。
  */
@@ -89,30 +85,49 @@ export function splitByTime(seg, now = Date.now()) {
   })
 }
 
+const index = (v) => {
+  const n = typeof v === 'string' && v.trim() ? Number(v) : v
+  return Number.isInteger(n) && n >= 1 ? n : null
+}
+const EDIT_FIELDS = ['title', 'points', 'formulas', 'examples']
+
+/**
+ * 模型回复 → 这一批的变化 { sections, edits, emphasis, homework, terms }（给 applyNotes 合并）：
+ * sections 里带 n 的是补充已有的第 n 小节，不带的是新小节；edits 改已有小节里的某一条；homework 带 n 的是改已有的第 n 条作业；
+ * emphasis、terms 只含新出现的。容错：代码块包裹、字段换说法、字符串代替对象、时间格式不对、
+ * JSON 里 LaTeX 的反斜杠只写了一个（非法转义补上再解析，被当成 \t \r \f \b \n 吃掉的在各字段里还原）。
+ * 五类一个都没有返回 null（当作这次失败）；全是空数组是合法的，表示这批没有新东西。startedAt 用来换算作业的相对日期。
+ */
 export function parseNotes(raw, { startedAt = Date.now() } = {}) {
   const fields = (v) => {
     if (!v) return null
-    const f = [v.sections ?? v.outline ?? v.topics, v.emphasis ?? v.highlights ?? v.keyPoints, v.homework ?? v.assignments ?? v.todos, v.terms ?? v.glossary]
+    const f = [v.sections ?? v.outline ?? v.topics, v.emphasis ?? v.highlights ?? v.keyPoints, v.homework ?? v.assignments ?? v.todos, v.terms ?? v.glossary, v.edits ?? v.fixes]
     return f.some((x) => Array.isArray(x) || isObject(x)) ? f : null
   }
   // 整个对象因为非法转义解析不了时，extractJson 可能退而取到里面的某个小对象，所以取不到笔记字段就补转义再试一次
   const got = fields(extractJson(raw)) ?? fields(extractJson(fixEscapes(raw)))
   if (!got) return null
-  const [secs, emph, hw, terms] = got
+  const [secs, emph, hw, terms, edits] = got
   return {
     sections: list(secs, LIMITS.sections, (x) => {
-      if (typeof x === 'string') return text(x, 80) ? { title: text(x, 80), start: null, points: [], formulas: [], examples: [] } : null
+      if (typeof x === 'string') return text(x, 80) ? { n: null, title: text(x, 80), start: null, points: [], formulas: [], examples: [] } : null
       if (!isObject(x)) return null
-      const points = strings(x.points ?? x.bullets ?? x.notes, LIMITS.points)
-      const title = text(x.title ?? x.name ?? x.heading, 80) || (points.length ? '要点' : '')
-      if (!title) return null
-      return {
-        title,
+      const d = {
+        n: index(x.n ?? x.section),
+        title: text(x.title ?? x.name ?? x.heading, 80),
         start: mmss(x.start ?? x.at ?? x.time),
-        points,
+        points: strings(x.points ?? x.bullets ?? x.notes, LIMITS.points),
         formulas: list(x.formulas ?? x.equations, LIMITS.formulas, (f) => latex(f) || null),
         examples: strings(x.examples, LIMITS.examples),
       }
+      return d.n || d.title || d.points.length || d.formulas.length || d.examples.length ? d : null
+    }),
+    edits: list(edits, LIMITS.edits, (x) => {
+      const field = String(x?.field ?? '').toLowerCase()
+      if (!isObject(x) || !EDIT_FIELDS.includes(field)) return null
+      const t = field === 'formulas' ? latex(x.text) : text(x.text, field === 'title' ? 80 : 300)
+      const section = index(x.section ?? x.n)
+      return t && section ? { section, field, i: index(x.i ?? x.index), text: t } : null
     }),
     emphasis: list(emph, LIMITS.emphasis, (x) => {
       const o = isObject(x) ? x : { text: x }
@@ -125,7 +140,7 @@ export function parseNotes(raw, { startedAt = Date.now() } = {}) {
       if (!t) return null
       const dueText = text(o.dueText ?? o.due_text, 80) || null
       const due = ruleDate(dueText, startedAt) ?? normalizeDate(o.due ?? o.deadline) ?? (dueText ? resolveRelativeDate(dueText, startedAt) : null)
-      return { text: t, due, dueText }
+      return { n: index(o.n), text: t, due, dueText }
     }),
     terms: list(isObject(terms) ? Object.entries(terms).map(([term, explain]) => ({ term, explain })) : terms, LIMITS.terms, (x) => {
       if (!isObject(x)) return null
@@ -148,28 +163,73 @@ function same(a, b) {
 
 const byTime = (key) => (a, b) => seconds(a[key]) - seconds(b[key])
 
-/**
- * 新版笔记以模型给的为准，但不让上一版的内容凭空丢掉：
- * 新版里没有的小节（标题和开始时间都对不上）、强调点、作业、术语补回去；同一件作业新版没给截止时间的沿用上一版的。
- */
-export function mergeNotes(prev, next) {
-  if (!prev) return next
-  if (!next) return prev
-  const sections = [...next.sections]
-  for (const p of prev.sections) {
-    if (!sections.some((s) => norm(s.title) === norm(p.title) || (p.start && s.start === p.start))) sections.push(p)
+const EMPTY = { sections: [], emphasis: [], homework: [], terms: [] }
+// 作业改写后措辞会变：用 n 指到的那一条只要和旧的有一半词重合就当作同一条
+const similar = (a, b) => overlap(a, [b]).uni >= 0.5 || overlap(b, [a]).uni >= 0.5
+
+function addUnique(target, items, max, eq) {
+  for (const x of items) {
+    if (target.length >= max) break
+    if (!target.some((y) => eq(y, x))) target.push(x)
   }
-  const emphasis = [...next.emphasis]
-  for (const p of prev.emphasis) if (!emphasis.some((e) => same(e.text, p.text))) emphasis.push(p)
-  const homework = next.homework.map((h) => {
-    const p = prev.homework.find((x) => same(x.text, h.text))
-    return p && !h.due && p.due ? { ...h, due: p.due, dueText: h.dueText ?? p.dueText } : h
-  })
-  for (const p of prev.homework) if (!homework.some((h) => same(h.text, p.text))) homework.push(p)
-  const terms = [...next.terms]
-  for (const p of prev.terms) if (!terms.some((t) => t.term.toLowerCase() === p.term.toLowerCase())) terms.push(p)
+}
+
+/**
+ * 把这一批的变化（parseNotes 的结果）合进上一版，得到完整的新版笔记。上一版的内容只会被 edits 明确改掉，模型漏写、写错序号都不会丢：
+ * - sections 带 n 的追加到上一版的第 n 小节（和已有的重复就跳过）；没带 n 的是新小节，标题和某个已有小节相同就并进去；
+ *   既没有标题也没有有效序号的追加到最后一个小节。新小节没写 start 就用这批第一句的时间（fallbackStart）。
+ * - edits 改某个小节的标题或其中第 i 条，i 对不上的当作追加。
+ * - emphasis、terms 只补新的；homework 同一条（带 n 的算同一条，只要措辞还像）更新截止时间，其余补新的。
+ * prev 是 null（第一批）从空笔记开始。
+ */
+export function applyNotes(prev, delta, { fallbackStart = null } = {}) {
+  if (!delta) return prev
+  const base = prev ?? EMPTY
+  const sections = base.sections.map((s) => ({ ...s, points: [...s.points], formulas: [...s.formulas], examples: [...s.examples] }))
+  const known = sections.length // 序号是对着上一版的顺序给的，新加的不参与
+  const at = (n) => (n >= 1 && n <= known ? sections[n - 1] : null)
+
+  const incoming = [...delta.sections]
+  for (const e of delta.edits ?? []) {
+    const s = at(e.section)
+    if (!s) continue
+    if (e.field === 'title') s.title = e.text
+    else if (e.i >= 1 && e.i <= s[e.field].length) s[e.field][e.i - 1] = e.text
+    else incoming.push({ n: e.section, title: '', points: [], formulas: [], examples: [], [e.field]: [e.text] }) // 第几条对不上：当作补充
+  }
+
+  const fresh = []
+  for (const d of incoming) {
+    let target = at(d.n)
+    if (!target && d.title) target = [...sections, ...fresh].find((s) => norm(s.title) === norm(d.title)) ?? null
+    if (!target && !d.title && sections.length) target = fresh.at(-1) ?? sections.at(-1)
+    if (!target) {
+      target = { title: d.title || '要点', start: d.start ?? fallbackStart, points: [], formulas: [], examples: [] }
+      fresh.push(target)
+    }
+    addUnique(target.points, d.points, LIMITS.points, same)
+    addUnique(target.formulas, d.formulas, LIMITS.formulas, (a, b) => norm(a) === norm(b))
+    addUnique(target.examples, d.examples, LIMITS.examples, same)
+  }
+
+  const emphasis = [...base.emphasis]
+  addUnique(emphasis, delta.emphasis, Infinity, (a, b) => same(a.text, b.text))
+  const homework = [...base.homework]
+  for (const h of delta.homework) {
+    let i = homework.findIndex((x) => same(x.text, h.text))
+    if (i < 0 && h.n >= 1 && h.n <= base.homework.length && similar(homework[h.n - 1].text, h.text)) i = h.n - 1
+    if (i < 0) {
+      homework.push({ text: h.text, due: h.due, dueText: h.dueText })
+      continue
+    }
+    const p = homework[i]
+    homework[i] = { text: h.text, due: h.due ?? p.due, dueText: h.dueText ?? p.dueText }
+  }
+  const terms = [...base.terms]
+  addUnique(terms, delta.terms, Infinity, (a, b) => a.term.toLowerCase() === b.term.toLowerCase())
+
   return {
-    sections: sections.sort(byTime('start')).slice(0, LIMITS.sections),
+    sections: [...sections, ...fresh].sort(byTime('start')).slice(0, LIMITS.sections),
     emphasis: emphasis.sort(byTime('at')).slice(0, LIMITS.emphasis),
     homework: homework.slice(0, LIMITS.homework),
     terms: terms.slice(0, LIMITS.terms),
@@ -287,7 +347,7 @@ export class LiveNotes extends EventEmitter {
       const raw = await this.llm({ model: 'smart', effort: 'low', json: true, timeoutMs: this.opts.timeoutMs, system: system.content, messages: [user] })
       const parsed = parseNotes(raw, { startedAt: this.startedAt })
       if (!parsed) throw new Error('AI 返回的笔记格式不对')
-      this.notes = mergeNotes(this.notes, parsed)
+      this.notes = applyNotes(this.notes, parsed, { fallbackStart: lines.length ? clock(lines[0].at) : null })
       this.updatedAt = this.now()
       this.retryAt = 0
       this.warned = false

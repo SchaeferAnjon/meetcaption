@@ -3,9 +3,14 @@ import { relativeDayHints } from '../todos.js'
 
 // 课堂模式的三个 prompt：实时笔记（边听边整理，JSON）、课后课堂笔记（Markdown）、作业提取（沿用待办的 JSON 格式）。
 
+// 实时笔记模型回复的形状：只写这一批的变化。sections 第一项补充上一版的第 n 小节，第二项是新小节；edits 改上一版里写错的某一条。
 // 示例里的反斜杠经 JSON.stringify 后是两个，模型照着写，JSON.parse 以后才是正确的一个
 export const NOTES_SHAPE = {
-  sections: [{ title: '小节标题', start: 'mm:ss', points: ['要点，符号和式子写成行内公式，比如 $\\lambda$'], formulas: ['LaTeX 源码，比如 \\lambda \\lVert w \\rVert_2^2'], examples: ['例子'] }],
+  sections: [
+    { n: 2, points: ['补充到第 2 小节的新要点，符号和式子写成行内公式，比如 $\\lambda$'], formulas: ['LaTeX 源码，比如 \\lambda \\lVert w \\rVert_2^2'], examples: ['例子'] },
+    { title: '新小节标题', start: 'mm:ss', points: ['要点'], formulas: [], examples: [] },
+  ],
+  edits: [{ section: 1, field: 'points', i: 2, text: '改正后的整条' }],
   emphasis: [{ text: '老师强调或可能考的点', at: 'mm:ss', quote: '原话' }],
   homework: [{ text: '作业或要做的事', due: 'YYYY-MM-DD 或 null', dueText: '原话里的时间' }],
   terms: [{ term: '英文', zh: '中文', explain: '解释' }],
@@ -24,7 +29,7 @@ const NOTES_ROLE = {
     background: '课程背景',
     date: '上课日期',
     first: '还没有，这是这节课的第一段。',
-    rules: `- sections：按老师讲的顺序分小节，start 是这一小节开始的时间（mm:ss）。上一版已有的小节和要点都保留，有补充就补进去，讲到新话题就新开一个小节；points 每条一句话，具体到能复习。
+    rules: `- sections：按老师讲的顺序分小节，start 是这一小节开始的时间（mm:ss）；points 每条一句话，具体到能复习。
 - formulas：老师念出来或写出来的公式，还原成 LaTeX 源码（不要加 $ 符号），比如 "theta new equals theta old minus eta times the gradient" 在 JSON 里写成 "\\\\theta_{new} = \\\\theta_{old} - \\\\eta \\\\nabla_\\\\theta L"。
 - examples：老师举的例子，一句话说清楚例子和它说明了什么。
 - emphasis：老师明确强调的（this is important、remember、this will be on the exam、考试会考、注意）或反复讲的点，at 是原话的时间，quote 是原话（保留英文）。
@@ -37,7 +42,7 @@ const NOTES_ROLE = {
     background: '会议背景',
     date: '会议日期',
     first: '还没有，这是这场会的第一段。',
-    rules: `- sections：会上讨论的议题，按讨论顺序，title 是议题，start 是开始讨论的时间（mm:ss）。上一版已有的议题和要点都保留，有补充就补进去，换了话题就新开一个；points 每条一句话，写清谁说了什么、有什么意见和理由。
+    rules: `- sections：会上讨论的议题，按讨论顺序，title 是议题，start 是开始讨论的时间（mm:ss）；points 每条一句话，写清谁说了什么、有什么意见和理由。
 - formulas、examples：会上真的出现公式、举了具体例子才写，一般给空数组。
 - emphasis：已经定下来的结论和决定，或对方明确提出的要求和修改意见，at 是原话的时间，quote 是原话（保留原文）。
 - homework：待办，text 写清谁做什么（「我：…」或「对方：…」），due 按日历换算成 YYYY-MM-DD，没说时间写 null；dueText 是原话里的时间说法（保留原文）。
@@ -49,7 +54,7 @@ const NOTES_ROLE = {
     background: '面试背景',
     date: '面试日期',
     first: '还没有，这是这场面试的第一段。',
-    rules: `- sections：面试官问过的问题，按提问顺序，title 是问题（一句话概括），start 是提问的时间（mm:ss）。points 先写我回答的要点，再写面试官的追问（以「追问：」开头）。上一版已有的问题都保留，有补充就补进去。
+    rules: `- sections：面试官问过的问题，按提问顺序，title 是问题（一句话概括），start 是提问的时间（mm:ss）。points 先写我回答的要点，再写面试官的追问（以「追问：」开头）。
 - formulas、examples：面试里真的推公式、举了具体例子才写，一般给空数组。
 - emphasis：面试官在意或反复追问的地方、给出的评价和暗示、我没答好需要补的点，at 是原话的时间，quote 是原话（保留原文）。
 - homework：面试后要做的事和时间点：下一轮面试、要补发的材料、面试官让我准备的东西。due 按日历换算成 YYYY-MM-DD，没说时间写 null；dueText 是原话里的时间说法（保留原文）。
@@ -57,29 +62,68 @@ const NOTES_ROLE = {
   },
 }
 
+// 上一版笔记给模型看多少：最近的 FULL_SECTIONS 个小节给全文（要点、公式、例子都带序号，好接着写或改某一条），
+// 再早的只给序号、标题、开始时间和各类条数（模型只需要知道有这个小节、能补充它）。强调点和术语只给文字 / 名字让它别重复，作业全给。
+// 取舍：一小时课大约 20 个小节，每次都全给，输入每批多一万多 token；老小节的要点模型用不上（新内容多半接在最近的话题后面），
+// 万一回到旧话题，也能用序号补充，重复的要点由 applyNotes 去掉。代价是旧小节的要点写错了模型改不了，课后课堂笔记会按识别稿重写。
+export const FULL_SECTIONS = 2
+
+/** 上一版笔记 → 给模型看的摘要文字。 */
+export function notesDigest(prev, { full = FULL_SECTIONS } = {}) {
+  const out = []
+  const n = prev.sections.length
+  prev.sections.forEach((s, i) => {
+    const head = `小节 ${i + 1}「${s.title}」${s.start ? `[${s.start}]` : ''}`
+    if (i < n - full) {
+      out.push(`${head}：${s.points.length} 条要点，${s.formulas.length} 个公式，${s.examples.length} 个例子`)
+      return
+    }
+    out.push(head)
+    s.points.forEach((x, j) => out.push(`  要点 ${j + 1}. ${x}`))
+    s.formulas.forEach((x, j) => out.push(`  公式 ${j + 1}. ${x}`))
+    s.examples.forEach((x, j) => out.push(`  例子 ${j + 1}. ${x}`))
+  })
+  if (!n) out.push('小节：还没有')
+  out.push(prev.emphasis.length ? `已有的强调点（不要重复写）：\n${prev.emphasis.map((e) => `  - ${e.text}`).join('\n')}` : '已有的强调点：还没有')
+  out.push(
+    prev.homework.length
+      ? `已有的作业（有新信息才带 n 重写）：\n${prev.homework.map((h, i) => `  ${i + 1}. ${h.text}${h.due ? `（截止 ${h.due}）` : h.dueText ? `（${h.dueText}）` : ''}`).join('\n')}`
+      : '已有的作业：还没有',
+  )
+  out.push(prev.terms.length ? `已有的术语（不要重复写）：${prev.terms.map((t) => t.term).join('、')}` : '已有的术语：还没有')
+  return out.join('\n')
+}
+
 /**
- * 实时笔记：上一版笔记 + 新的字幕片段 → 完整的新版 JSON。
+ * 实时笔记：上一版笔记的摘要 + 新的字幕片段 → 这一批的变化（增量 JSON，liveNotes.js 的 applyNotes 合并）。
  * prev：上一版（没有就 null）；lines：新增的字幕片段；startedAt：开始时间（换算日期）；mode：class | meeting | interview。
  */
 export function notesMessages({ prev = null, lines, context = '', startedAt = Date.now(), mode = 'class' }) {
   const r = NOTES_ROLE[mode] ?? NOTES_ROLE.class
   const system = `${r.who}
-下面给你上一版笔记（JSON）和刚才${r.lines}。
-把新内容整合进笔记，输出完整的新版笔记（不是增量），格式：
+下面给你上一版笔记的摘要和刚才${r.lines}。
+只输出这一批新内容带来的变化，不要重写上一版已有的内容，程序会把你写的合并进笔记。格式：
 ${JSON.stringify(NOTES_SHAPE)}
+
+增量规则：
+- sections 每一项二选一：补充已有小节，写 n（摘要里的小节序号）加上新增的 points、formulas、examples，不写 title 和 start，已有的不要重复；或者新小节，不写 n，写 title、start 和内容。还在讲同一个话题就补充已有小节（通常是最后一个），换了话题才新开；小节别切得太碎，一个小节一般是几分钟的一个完整话题。一个小节的要点一般不超过 12 条，公式不超过 8 个，再多就新开一个小节接着写。
+- edits：只有摘要里给了全文的小节里某一条写错了才用，每项改一条：section 是小节序号，field 是 title、points、formulas、examples 之一，i 是第几条（title 不用写），text 是改正后的整条。没有要改的就给空数组。
+- emphasis、terms 只写这一批新出现的，摘要里已有的不要再写；同一个意思不要换个说法再写一遍。
+- homework 只写新的作业；摘要里已有的作业有了新信息（比如补了截止时间）才带 n（作业序号）把那一条重写一遍。
+- 这一批没有新内容的类别给空数组，什么都没有就全给空数组。
 
 要求：
 - 用简体中文写，术语、人名、模型名、书名保留英文原文。
 ${r.rules}
 - points、examples、emphasis 里提到符号或式子时写成行内公式 $...$，比如 "用 k-fold cross-validation 选 $\\\\lambda$"，不要把 \\\\lambda 这种命令不带 $ 直接写在文字里。homework 和 terms 用纯文字，不加 $。
 - 反斜杠：输出的是 JSON，字符串里 LaTeX 的每个反斜杠都写成两个（\\\\lambda、\\\\text{ridge}、\\\\frac{a}{b}、\\\\rVert），JSON 解析后才是一个。只写一个会被当成转义，\\text、\\rVert、\\frac、\\beta、\\nabla 会变成制表符、回车、换页、退格、换行；写四个又会变成换行。
-- 识别稿可能有错字（尤其是公式和术语），按上下文纠正；拿不准的不写。没有内容的类别给空数组。
+- 识别稿可能有错字（尤其是公式和术语），按上下文纠正；拿不准的不写。
 - 不要用破折号。
 只输出一个 JSON 对象，不要代码块，不要别的文字。`
   const parts = []
   if (context) parts.push(`${r.background}：${context}`)
   parts.push(`${r.date}：${dateLabel(startedAt)}。日历：\n${calendarText(startedAt)}\n${relativeDayHints(startedAt)}`)
-  parts.push(prev ? `上一版笔记：\n${JSON.stringify(prev)}` : `上一版笔记：${r.first}`)
+  parts.push(prev ? `上一版笔记（摘要）：\n${notesDigest(prev)}` : `上一版笔记：${r.first}`)
   parts.push(`${r.lines.replace(/（.*$/, '')}：\n${linesText(lines)}`)
   return [
     { role: 'system', content: system },
