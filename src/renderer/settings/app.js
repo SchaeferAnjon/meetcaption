@@ -102,7 +102,6 @@ function buildAi() {
   const testRow = P.row('', test)
   P.showWhen(testRow, (s) => s.llmProvider !== 'chatgpt')
   return [
-    P.account()?.off ? null : P.section('账号', '登录会议字幕的账号。没登录不能开始记录。', P.row('当前账号', P.accountPanel())),
     P.section('AI 服务', '翻译、术语解释、会后纪要和 AI 答题都用它。每家的 Key 分开存，换来换去不会丢。', P.providerPicker({ recommend: null }), ...P.providerSetup(), testRow),
     P.section(
       '模型',
@@ -630,7 +629,7 @@ function buildAbout() {
 
 const SECTIONS = [
   { id: 'general', label: '通用', icon: 'settings', tint: 'gray', build: buildGeneral },
-  { id: 'ai', label: '账号与 AI', icon: 'sparkles', tint: 'indigo', build: buildAi, warn: () => onboarding.ai === false || (P.account()?.loggedIn === false && !P.account()?.off) },
+  { id: 'ai', label: '账号与 AI', icon: 'sparkles', tint: 'indigo', build: buildAi, warn: () => onboarding.ai === false },
   { id: 'asr', label: '语音识别', icon: 'audio-lines', tint: 'blue', build: buildAsr, warn: () => onboarding.asr === false },
   { id: 'voiceprint', label: '声纹', icon: 'fingerprint-pattern', tint: 'purple', build: buildVoiceprint, warn: () => onboarding.voiceprint === false && P.get('captureMic') },
   { id: 'assist', label: 'AI 答题', icon: 'message-square-text', tint: 'green', build: buildAssist },
@@ -762,7 +761,6 @@ async function boot() {
     }
   })
   P.onChatgpt(() => refreshLlm())
-  P.onAccount(renderNavWarn)
   P.onVoiceprint(renderNavWarn)
   P.watch(renderNavWarn)
   P.on('onboarding:changed', (st) => {

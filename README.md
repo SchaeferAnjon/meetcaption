@@ -20,7 +20,6 @@ Windows 第一次运行如果弹出「Windows 已保护你的电脑」，点「�
 
 第一次打开会出一个引导：
 
-0. 登录：发布的安装包要先用 Google 账号登录（没登录不能开始记录）；自己从源码编的版本没有这一步。
 1. 录声纹：照着念一段中英混合的文字，12 秒。有了声纹才分得清哪句是我说的，外放时漏进麦克风的对方声音也能滤掉。
 2. 连接 AI：推荐用 ChatGPT 账号登录，翻译、纪要、答题都用订阅额度；也可以填 OpenAI API Key。
 3. 语音识别：默认「本地识别」，什么都不用填，点「测试」确认一下就行；也可以换成豆包（填 App ID 和 Access Token）或 OpenAI（用上一步的 Key）。
@@ -111,14 +110,6 @@ npm run dist:win          # 打 Windows 安装包，在 Windows 上跑
 ```
 
 GitHub Actions（`.github/workflows/build.yml`）在 Windows 和 Mac 上各打一次包，同时用 VB-CABLE 虚拟声卡实测 loopback 能抓到声音。
-
-账号登录（Google 登录、使用统计）连的是作者的 Supabase 项目，连接信息不在源码里。自己编的版本没有账号功能，不用登录就能用全部功能。发布的安装包打包时把它写进 package.json：
-
-```bash
-npx electron-builder --mac -c.extraMetadata.supabase.url=<URL> -c.extraMetadata.supabase.anonKey=<anon key>
-```
-
-开发时也可以用环境变量 `MEETCAPTION_SUPABASE_URL`、`MEETCAPTION_SUPABASE_ANON_KEY` 打开账号功能。
 
 自测模式（不开界面，结果写到 `MEETCAPTION_SELFTEST_OUT`，没设就打到终端）：
 

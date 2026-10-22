@@ -3,7 +3,7 @@
 
 const SETTINGS_SECTIONS = [
   ['general', '通用', '主题、保存位置、开机启动、屏幕共享时隐藏', 'settings'],
-  ['ai', '账号与 AI', '登录账号、ChatGPT 登录、API Key、模型', 'sparkles'],
+  ['ai', '账号与 AI', 'ChatGPT 登录、API Key、模型', 'sparkles'],
   ['asr', '语音识别', '豆包、OpenAI、密钥、测试连接', 'audio-lines'],
   ['voiceprint', '声纹', '录制、重新录制、阈值', 'fingerprint-pattern'],
   ['assist', 'AI 答题', '自动回答、屏幕截图、回答语言', 'message-square-text'],

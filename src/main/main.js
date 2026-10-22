@@ -32,7 +32,6 @@ import { exportNotesTo, notesBaseName, saveSlide } from './class/files.js'
 import { notesPdf } from './class/notesPdf.js'
 import { MATERIAL_TYPES, importMaterial, materialKind, removeMaterial } from './class/materials.js'
 import { renderPdf } from './class/pdfRender.js'
-import { createAccount, listenDeepLinks, loginRequired, registerProtocol, wireAccountIpc } from './account/electron.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.join(here, '..')
@@ -47,8 +46,6 @@ const selfTest = process.argv.find((a) => a.startsWith('--selftest'))
 // --selftest=ui:N 正常打开界面，字幕窗和答题框进入调整模式（显示示例），N 秒后退出；给 CI 截图看 Windows 上的显示。
 const uiSelfTest = selfTest?.startsWith('--selftest=ui') ? Number(selfTest.split(':')[1]) || 8 : 0
 if (!selfTest && !app.requestSingleInstanceLock()) app.quit()
-// 统一账号登录的回调 meetcaption://auth-callback：Mac 的 open-url 可能比 ready 先到，接好之前先排队
-const deepLinks = listenDeepLinks()
 
 let settings, projects, store, summarizer, engine, capture, chatgptAuth, assistant, vpStore
 let controlWin = null
@@ -73,7 +70,6 @@ let overlayHit = null // 字幕框在字幕窗里的位置（页面报），鼠�
 let overlayGrab = false
 let overlayFront = null // Mac：拖完把前台还给会议软件
 let lastOnboarding = ''
-let account = null // 统一账号（Supabase，Google 登录），见 account/
 
 function send(win, channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
@@ -268,7 +264,6 @@ function onboardingStatus() {
     ai: aiStatus(s).ready,
     asr: s.engine === 'local' ? localAsrAvailable() : s.engine === 'volc' ? Boolean(s.volcAppId && s.volcAccessToken) : Boolean(s.openaiKey),
     project: projects.list().some((p) => p.id !== INBOX_ID && !p.archived),
-    account: Boolean(account?.status().loggedIn),
   }
 }
 
@@ -866,22 +861,11 @@ function themeInfo() {
 
 /* ---------------- 开会 ---------------- */
 
-// 没登录不能开始记录：托盘点开始时主窗口可能没开，拿到前面并给一条提示
-function accountGate() {
-  const blocked = loginRequired(account)
-  if (!blocked) return null
-  toUi('engine:notice', { level: 'warn', text: blocked.error, code: 'login-required' })
-  showControl()
-  return blocked
-}
-
 /**
  * start({ projectId, mode, classSource })：mode 不给用项目的默认模式；课堂的 classSource 不给用项目上记的，再不行用设置里的默认。
  * 开始时选了课堂的声音来源就记在项目上，下次同一门课直接用。
  */
 async function startEngine({ projectId, mode, classSource } = {}) {
-  const blocked = accountGate()
-  if (blocked) return blocked
   // 录声纹、声音测试和开会共用麦克风采集：同时开会互相把对方的采集窗口关掉
   if (enrolling) return { ok: false, error: '正在录制声纹，录完再开始记录', code: 'busy' }
   if (audioTest) return { ok: false, error: '正在测试声音，测完再开始记录', code: 'busy' }
@@ -1295,7 +1279,6 @@ function wireIpc() {
     onboarding: onboardingStatus(),
     theme: themeInfo(),
     chrome: chromeInfo(),
-    account: account.status(),
   }))
   ipcMain.handle('settings:update', (_e, patch) => settings.update(patch))
   ipcMain.handle('engine:start', (_e, opts) => startEngine(opts ?? {}))
@@ -1472,9 +1455,6 @@ function wireIpc() {
     return chatgptAuth.status()
   })
   ipcMain.handle('chatgpt:cancelLogin', () => chatgptAuth.cancelLogin())
-
-  // 统一账号：account:status / login / logout / cancelLogin，状态变了发 'account:status'
-  wireAccountIpc(account, { toUi, onStatus: () => emitOnboarding() })
 
   // 声纹
   ipcMain.handle('voiceprint:status', () => vpStatus())
@@ -1659,11 +1639,8 @@ async function saveUiShots(dir) {
   fs.writeFileSync(path.join(dir, 'windows.json'), JSON.stringify(report, null, 2))
 }
 
-// Windows 上点 meetcaption:// 深链会再开一个实例，链接在它的 argv 里
-app.on('second-instance', (_e, argv) => {
-  deepLinks.fromArgv(argv)
-  focusApp()
-})
+// 再打开一次应用：把已经开着的这个拿到前面
+app.on('second-instance', () => focusApp())
 
 app.whenReady().then(async () => {
   settings = new SettingsStore()
@@ -1673,7 +1650,6 @@ app.whenReady().then(async () => {
   const library = initLibrary()
   capture = new RendererCapture({ preload: path.join(root, 'preload/capture.cjs'), page: path.join(root, 'renderer/capture/index.html') })
   chatgptAuth = new ChatGPTAuth({ file: path.join(app.getPath('userData'), 'chatgpt-auth.json'), safeStorage })
-  account = createAccount()
   assistant = new Assistant({ complete: llm, captureScreen, screenReady: () => screenPermission() === 'granted' })
   vpStore = new VoiceprintStore(path.join(app.getPath('userData'), 'voiceprint.json'))
   engine = new MeetingEngine({
@@ -1696,8 +1672,6 @@ app.whenReady().then(async () => {
   }
 
   if (isMac) app.dock?.setIcon(path.join(root, 'assets/icon.png'))
-  // 自测不登记 meetcaption://：改过 appId 的测试包跑一次就会把默认处理程序抢走，删掉以后正式版的登录回调就回不来了
-  if (!selfTest) registerProtocol()
   buildAppMenu()
   wireIpc()
   wireEngine()
@@ -1712,11 +1686,6 @@ app.whenReady().then(async () => {
     openOnboarding()
   } else createControl()
   lastOnboarding = JSON.stringify(onboardingStatus())
-  // 窗口都建好了再处理深链（冷启动时排队的、Windows 冷启动 argv 里的）
-  deepLinks.attach((url) => {
-    if (account.handleUrl(url)) focusApp()
-  })
-  deepLinks.fromArgv(process.argv)
   setInterval(pollPointer, 50)
   // 用本地识别时，启动后在后台进程里先把模型加载好，开会时不用再等
   if (settings.get().engine === 'local') setTimeout(() => prewarmLocalAsr(), 3000)
@@ -1747,7 +1716,6 @@ app.on('activate', () => focusApp())
 app.on('before-quit', async (e) => {
   if (quitting) return
   chatgptAuth?.cancelLogin()
-  account?.stop()
   const busy = engine && engine.state !== 'idle'
   if (busy || engine?.notesFlush) {
     e.preventDefault()

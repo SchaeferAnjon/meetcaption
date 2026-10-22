@@ -26,7 +26,6 @@ const state = {
   summaries: new Map(), // 会议 id → { phase, text }：正在生成的纪要
   starting: false,
   // v4
-  account: null, // 统一账号 { loggedIn, email, name, avatarUrl, provider }；null 还不知道
   modeChoice: null, // 开始按钮下拉里临时换的模式 { projectId, mode, classSource }，换项目就作废
   projectModes: new Map(), // 项目 id → { mode, classSource }：列表里没带时用 getProject 补
   pendingStart: null, // 刚请求开始时选的模式，engine:state 没带 mode 时用它
@@ -252,79 +251,6 @@ function startLabel(choice) {
 
 const liveMode = () => modeOf(state.live?.mode)
 const whoLabel = (who, mode) => (who === 'me' ? '我' : mode === 'class' ? '老师' : '对方')
-
-/* ---------------- 账号 ---------------- */
-
-const accountSupported = () => typeof api?.accountStatus === 'function' && !state.account?.off
-/** 没登录不能开始记录。账号接口还没接上时不拦，主进程会自己拒绝。 */
-const needLogin = () => accountSupported() && state.account != null && state.account.loggedIn === false
-
-function setAccount(a) {
-  if (!a || typeof a !== 'object' || a.ok === false) return
-  state.account = a
-  emit('account', a)
-  emit('status')
-}
-
-let loginRun = null
-/** 打开浏览器用 Google 登录，完成后返回新状态。同时只跑一个。 */
-function accountLogin() {
-  if (loginRun) return loginRun
-  loginRun = (async () => {
-    emit('account-busy', true)
-    const r = await call('accountLogin')
-    emit('account-busy', false)
-    // 失败时主进程也返回状态，另带 error 和 code；自己取消的不提示
-    if ((failed(r) || r?.error) && !r?.loggedIn) {
-      if (r?.error && r.code !== 'login-cancelled') ui.toast({ title: '没能登录', message: r.error, type: 'error' })
-      if (r && 'loggedIn' in r) setAccount({ ...r, error: null })
-      return null
-    }
-    if (r && typeof r === 'object' && 'loggedIn' in r) setAccount(r)
-    else setAccount(await call('accountStatus'))
-    if (state.account?.loggedIn) ui.toast({ title: '已登录', message: state.account.email || undefined, type: 'success' })
-    return state.account
-  })().finally(() => (loginRun = null))
-  return loginRun
-}
-
-async function accountLogout() {
-  const r = await call('accountLogout')
-  if (failed(r) && r?.error) return ui.toast({ title: '没能退出', message: r.error, type: 'error' })
-  setAccount(r && typeof r === 'object' && 'loggedIn' in r ? r : await call('accountStatus'))
-}
-
-/** 头像：有图片就用图片（加载失败退回首字母），没有就是首字母。 */
-function avatarNode(a, size = '') {
-  const letter = (a?.name || a?.email || '?').trim().slice(0, 1)
-  const box = el('span.avatar', { class: size, text: letter })
-  if (a?.avatarUrl && /^https:/.test(a.avatarUrl)) {
-    const img = el('img.avatar-img', { src: a.avatarUrl, alt: '', referrerPolicy: 'no-referrer' })
-    img.addEventListener('error', () => img.remove())
-    box.append(img)
-  }
-  return box
-}
-
-/** 没登录时点开始：先登录。 */
-function loginPrompt() {
-  ui.modal({
-    title: '先登录再开始',
-    description: '会议字幕要登录后才能开始记录。用 Google 账号登录只是确认是你在用，会议记录还是只存在这台电脑上。',
-    width: 420,
-    actions: [
-      { label: '取消' },
-      {
-        label: '用 Google 登录',
-        kind: 'primary',
-        onClick: async () => {
-          const a = await accountLogin()
-          if (!a?.loggedIn) return false
-        },
-      },
-    ],
-  })
-}
 
 /* ---------------- 主窗口快捷键（设置里能改，空字符串表示不用） ---------------- */
 
@@ -620,10 +546,6 @@ function onEngineNotice(n) {
       return addNotice('warn', n.text, { code: n.code, actions: [{ label: '声纹设置', run: () => openSettings('voiceprint') }] })
     case 'save-dir':
       return addNotice(n.level, n.text, { code: n.code, actions: [{ label: '去设置', run: () => openSettings('general') }] })
-    case 'login-required':
-      // 托盘或全局快捷键点了开始：弹一次登录框，不再挂一条和首页「先登录再开始」卡片一样的提示
-      if (!document.querySelector('.modal-backdrop')) loginPrompt()
-      return
     default:
       return addNotice(n.level === 'error' ? 'error' : n.level === 'info' ? 'info' : 'warn', n.text, { code: n.code })
   }
@@ -644,7 +566,6 @@ function openSettings(section) {
 async function startMeeting(projectId, choice) {
   if (running()) return go('live')
   if (state.engine.state !== 'idle' || state.starting) return
-  if (needLogin()) return loginPrompt()
   const pid = projectId && projectOf(projectId) ? projectId : state.currentProjectId
   const c = choice ?? startChoice(pid)
   const mode = modeOf(c.mode)
@@ -656,12 +577,11 @@ async function startMeeting(projectId, choice) {
   const r = await call('start', { projectId: pid, mode, classSource })
   state.starting = false
   emit('engine', state.engine)
-  // 「正在连接」时自己点了停止的不算失败；没登录的由 login-required 那条弹登录框
-  if (failed(r) && !r?.cancelled && r?.code !== 'login-required') addNotice('error', `没能开始：${r?.error ?? '未知错误'}`, { code: 'start-error', actions: startErrorActions(r?.error) })
+  // 「正在连接」时自己点了停止的不算失败
+  if (failed(r) && !r?.cancelled) addNotice('error', `没能开始：${r?.error ?? '未知错误'}`, { code: 'start-error', actions: startErrorActions(r?.error) })
 }
 
 function startErrorActions(error = '') {
-  if (/登录|login|sign ?in/i.test(error)) return [{ label: '用 Google 登录', run: () => accountLogin() }]
   if (/key|token|app ?id|密钥|识别/i.test(error)) return [{ label: '语音识别设置', run: () => openSettings('asr') }]
   return []
 }

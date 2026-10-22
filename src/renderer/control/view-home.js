@@ -51,48 +51,20 @@ VIEWS.home = {
       const loading = st === 'starting' || state.starting
       const choice = startChoice(state.currentProjectId)
       const m = modeInfo(choice.mode)
-      // 没登录时视觉重点在登录按钮上，开始按钮降成普通按钮
-      const primary = needLogin() ? '' : '.btn-primary'
       startBtn = el(
-        `button.btn${primary}.btn-lg.home-start`,
+        'button.btn.btn-primary.btn-lg.home-start',
         { type: 'button', class: loading ? 'is-loading' : '', onClick: () => startMeeting(state.currentProjectId, choice) },
         icon(choice.mode === 'meeting' ? 'mic' : m.icon, 18),
         el('span.truncate', { text: `在「${cur?.name ?? '未归类'}」里${startLabel(choice)}` }),
         keyHint('start'),
       )
-      const pick = el(`button.btn${primary}.btn-lg.btn-icon`, {
+      const pick = el('button.btn.btn-primary.btn-lg.btn-icon', {
         type: 'button',
         'aria-label': '换项目或模式',
         title: '换项目或模式',
         disabled: loading,
         onClick: () => startMenu(pick),
       }, icon('chevron-down', 16))
-      // 没登录：开始前先登录
-      if (needLogin()) {
-        const a = state.account ?? {}
-        // 登录页可能开在别的窗口后面（Windows 上浏览器只在任务栏闪），所以进行中给「重新打开」和「复制链接」
-        const body = a.loggingIn
-          ? el(
-              'div.callout-body',
-              {},
-              el('div.callout-title', { text: '正在浏览器里登录' }),
-              el('div.callout-desc', { text: '在浏览器里选你的 Google 账号，完成后这里会自动变成已登录。没看到登录页的话，看看任务栏里闪的浏览器图标，或者点右边重新打开。' }),
-            )
-          : el(
-              'div.callout-body',
-              {},
-              el('div.callout-title', { text: '先登录再开始' }),
-              el('div.callout-desc', { text: a.error ? `上次没登录成功：${a.error}` : '会议字幕要登录后才能开始记录。用 Google 账号登录，会议记录还是只存在这台电脑上。' }),
-            )
-        const actions = a.loggingIn
-          ? [
-              a.loginUrl ? el('button.btn.btn-sm.btn-primary', { type: 'button', onClick: () => call('openExternal', a.loginUrl) }, '重新打开登录页') : null,
-              a.loginUrl ? el('button.btn.btn-sm', { type: 'button', onClick: () => copyText(a.loginUrl, '登录链接已复制，粘贴到浏览器打开') }, '复制登录链接') : null,
-              el('button.btn.btn-sm.btn-ghost', { type: 'button', onClick: () => call('accountCancelLogin') }, '取消'),
-            ]
-          : [el('button.btn.btn-sm.btn-primary', { type: 'button', onClick: (e) => loginFromButton(e.currentTarget) }, a.error ? '再试一次' : '用 Google 登录')]
-        hero.append(el('div.callout.callout-accent.home-login', {}, icon('log-in', 16), body, ...actions.filter(Boolean)))
-      }
       const s = state.settings ?? {}
       const hints = []
       if (s.hotkeyToggle) hints.push(el('span', {}, '字幕和答题框会出现在屏幕上，', kbd(s.hotkeyToggle, { size: 'sm' }), ' 显示或隐藏'))
@@ -197,7 +169,6 @@ VIEWS.home = {
     ctx.on('projects', () => (renderHero(), loadRecent()))
     ctx.on('settings', renderHero)
     ctx.on('mode', renderHero)
-    ctx.on('account', renderHero)
     ctx.on('status', renderGuide)
     ctx.on('sessions', debounce(loadRecent, 200))
     ctx.on('todos', debounce(loadTodos, 250))
@@ -208,12 +179,6 @@ VIEWS.home = {
 
     return { focus: () => startBtn?.focus({ preventScroll: true }) }
   },
-}
-
-async function loginFromButton(btn) {
-  btn?.classList.add('is-loading')
-  await accountLogin()
-  btn?.classList.remove('is-loading')
 }
 
 /** 会议列表的一行：标题（没有就用时间）、副标题、右侧时长和有没有纪要。 */

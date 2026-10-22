@@ -35,12 +35,6 @@ extraResources:
       - xasr/tokens.txt
 # 目标平台的 sherpa-onnx 原生包没装时（如 M 芯片上打 x64）先补进 node_modules；本地识别模型没下载时先下载
 beforePack: ./scripts/sherpa-native.mjs
-# 统一账号登录的回调 meetcaption://auth-callback。Mac 写进 Info.plist 的 CFBundleURLTypes；
-# Windows 的 NSIS 安装包不写协议，由应用启动时 app.setAsDefaultProtocolClient 写 HKCU\Software\Classes\meetcaption。
-protocols:
-  - name: 会议字幕登录
-    schemes:
-      - meetcaption
 mac:
   category: public.app-category.productivity
   icon: build/icon.png

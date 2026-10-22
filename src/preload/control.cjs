@@ -36,8 +36,6 @@ const EVENTS = new Set([
   'notes:update', // 实时笔记 { sessionId, notes: { sections, emphasis, homework, terms }, updatedAt, error }，error 非空时 notes 是上一版
   'materials:progress', // 读课件的进度 { sessionId, name, page, total }，读完一批发 { sessionId, done: true }
   'slides:added', // 截取了一张画面 { sessionId, file: 'slides/时.分.秒.jpg', at（截图时刻，毫秒时间戳，同 seg.startedAt）, url（file:// 地址）}
-  // v4 统一账号
-  'account:status', // 同 accountStatus()
 ])
 
 contextBridge.exposeInMainWorld('app', {
@@ -116,11 +114,6 @@ contextBridge.exposeInMainWorld('app', {
   askSegment: invoke('assist:askSegment'), // askSegment(segId)：回答主窗口点的那句提问
   answerRegenerate: invoke('assist:regenerate'),
 
-  // 统一账号（Supabase，Google 登录）。状态：{ loggedIn, email, name, avatarUrl, provider, loggingIn, loginUrl, error }
-  accountStatus: invoke('account:status'),
-  accountLogin: invoke('account:login'), // 打开浏览器走 Google 登录，完成后 resolve 新状态；失败或取消时另带 error 和 code
-  accountLogout: invoke('account:logout'), // → 新状态
-  accountCancelLogin: invoke('account:cancelLogin'),
 
   /** 订阅事件，返回取消订阅的函数。 */
   on: (channel, cb) => {

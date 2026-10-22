@@ -1,4 +1,4 @@
-// 首次引导：第 0 步登录，再五步，每步一屏，底部「上一步 / 稍后再说 / 下一步」。已经做好的步骤在步骤条上打勾。
+// 首次引导：五步，每步一屏，底部「上一步 / 稍后再说 / 下一步」。已经做好的步骤在步骤条上打勾。
 const P = window.parts
 const api = window.app
 const { el, icon } = ui
@@ -10,7 +10,6 @@ let projects = []
 let screenPerm = null
 
 const STEPS = [
-  { key: 'account', label: '登录', build: stepAccount },
   { key: 'voiceprint', label: '录声纹', build: stepVoiceprint },
   { key: 'ai', label: '连接 AI', build: stepAi },
   { key: 'asr', label: '语音识别', build: stepAsr },
@@ -18,13 +17,6 @@ const STEPS = [
   { key: null, label: '试一下', build: stepTry },
 ]
 const pages = []
-
-// 登录这一步看账号状态；登录接口还没接上时不拦
-function accountDone() {
-  const a = P.account()
-  if (a?.unsupported || a?.off) return true
-  return Boolean(a?.loggedIn ?? ob.account)
-}
 
 // 这次引导里用户自己点过的选择。AI 和识别两步：配好了、而且选的是推荐的（ChatGPT 账号、豆包）或者在这里点过，才算做完。
 // 老用户只填过 OpenAI Key 时，这两步不会一打开就打勾被跳过，推荐的选项至少会被看到一次。
@@ -38,7 +30,6 @@ function pick(key) {
 
 const isDone = (i) => {
   const k = STEPS[i].key
-  if (k === 'account') return accountDone()
   const s = P.settings?.() ?? {}
   if (k === 'ai') return Boolean(ob.ai) && (chosen.ai || s.llmProvider === 'chatgpt')
   if (k === 'asr') return Boolean(ob.asr) && (chosen.asr || s.engine !== 'openai')
@@ -95,20 +86,6 @@ function chooseHint(key, text) {
 function field(label, control, hint) {
   const hintNode = hint == null ? null : hint instanceof Node ? hint : el('div.form-hint', { text: hint })
   return el('div.ob-field', {}, el('label.ob-label', { text: label }), el('div.ob-control', {}, control, hintNode))
-}
-
-/* ---------------- 第 0 步：登录 ---------------- */
-
-function stepAccount() {
-  const hint = el('div.form-hint.ob-foot-hint', { text: '点登录会打开浏览器，选好账号就会自动回到这里。' })
-  const sync = () => (hint.hidden = Boolean(P.account()?.loggedIn))
-  P.onAccount(sync)
-  sync()
-  return [
-    hero('user', 'blue', '先登录', '用 Google 账号登录会议字幕，登录后才能开始记录。登录只是确认是你在用，会议记录、声纹和密钥都只存在这台电脑上。'),
-    el('div.ob-account', {}, P.accountPanel({ big: true })),
-    hint,
-  ]
 }
 
 /* ---------------- 第 1 步：录声纹 ---------------- */
@@ -460,8 +437,7 @@ function audioResult(r) {
 /* ---------------- 翻页 ---------------- */
 
 const stepsEl = document.getElementById('steps')
-let stepItems = []
-const buildSteps = () => (stepItems = STEPS.map((s, i) => {
+const stepItems = STEPS.map((s, i) => {
   const li = el('li.step', { tabindex: '0', role: 'button', 'aria-label': `第 ${i + 1} 步：${s.label}` }, el('span.step-dot'), el('span.step-label.truncate', { text: s.label }))
   li.addEventListener('click', () => go(i))
   li.addEventListener('keydown', (e) => {
@@ -472,7 +448,7 @@ const buildSteps = () => (stepItems = STEPS.map((s, i) => {
   })
   stepsEl.append(li)
   return li
-}))
+})
 
 function renderSteps() {
   stepItems.forEach((li, i) => {
@@ -554,18 +530,6 @@ async function boot() {
   screenPerm = init.screenPermission ?? null
   showForm = !projects.some((p) => !p.inbox && p.id !== 'inbox' && !p.archived)
   P.boot(init)
-  // 没配账号平台（从源码编的版本）没有登录这一步
-  if (init.account?.off) STEPS.shift()
-  buildSteps()
-  // 在第 0 步登录好了就自动翻到下一步
-  let wasIn = accountDone()
-  P.onAccount(() => {
-    const now = accountDone()
-    renderSteps()
-    renderFoot()
-    if (now && !wasIn && STEPS[cur].key === 'account') setTimeout(() => STEPS[cur].key === 'account' && go(cur + 1), 700)
-    wasIn = now
-  })
   P.on('onboarding:changed', (st) => {
     ob = { ...ob, ...(st || {}) }
     renderSteps()

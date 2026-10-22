@@ -170,7 +170,6 @@ function wireEvents() {
     state.chatgpt = c
     refreshLlm()
   })
-  subscribe('account:status', setAccount)
   subscribe('notes:update', onNotes)
   subscribe('slides:added', onSlide)
   subscribe('materials:progress', (p) => emit('materials', p))
@@ -258,7 +257,6 @@ async function boot() {
   state.chatgpt = init.chatgpt ?? null
   state.hotkey = init.hotkey ?? state.hotkey
   state.overlay = init.overlay ?? state.overlay
-  if (init.account) state.account = init.account
   ui.applyChrome(init.chrome)
 
   const snap = init.snapshot ?? { state: 'idle', segments: [] }
@@ -282,7 +280,6 @@ async function boot() {
   renderNotices()
   go(state.live && snap.state !== 'idle' ? 'live' : 'home', {}, { push: false })
   if (!state.llm) refreshLlm()
-  if (!init.account && accountSupported()) call('accountStatus').then(setAccount)
   ensureProjectMode(state.currentProjectId)
 }
 

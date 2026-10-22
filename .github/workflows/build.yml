@@ -27,12 +27,8 @@ jobs:
           Start-Service Audiosrv
           Get-Service Audiosrv
 
-      # 账号平台的连接信息从仓库 secrets 来；fork 里没有就是不用登录的版本
       - name: Build installer
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: npx electron-builder --win --x64 --publish never "-c.extraMetadata.supabase.url=$env:SUPABASE_URL" "-c.extraMetadata.supabase.anonKey=$env:SUPABASE_ANON_KEY"
+        run: npx electron-builder --win --x64 --publish never
 
       - name: Loopback capture self-test
         shell: pwsh
@@ -142,9 +138,7 @@ jobs:
       - name: Build dmgs (arm64 + x64, ad-hoc signed)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: npx electron-builder --mac --arm64 --x64 -c.mac.identity=- --publish never "-c.extraMetadata.supabase.url=$SUPABASE_URL" "-c.extraMetadata.supabase.anonKey=$SUPABASE_ANON_KEY"
+        run: npx electron-builder --mac --arm64 --x64 -c.mac.identity=- --publish never
 
       - name: Voiceprint self-test (packaged arm64)
         run: |

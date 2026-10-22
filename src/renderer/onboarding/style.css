@@ -447,16 +447,6 @@ body.mica .ob {
   background: var(--accent-soft);
 }
 
-/* 第 0 步：登录 */
-.ob-account {
-  display: flex;
-  padding: 6px 0 2px;
-}
-
-.ob-account .account {
-  max-width: none;
-}
-
 /* 最后一步：提一句课堂模式 */
 .ob-class-tip {
   align-items: center;

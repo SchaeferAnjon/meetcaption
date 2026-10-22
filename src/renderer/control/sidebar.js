@@ -193,43 +193,7 @@ function sidebarFooter() {
     'div.sidebar-footer',
     {},
     chips,
-    accountItem(),
     el('button.nav-item', { type: 'button', dataset: { nav: 'settings' }, onClick: () => openSettings() }, icon('settings', 16), el('span.nav-label', { text: '设置' }), keyHint('settings')),
-  )
-}
-
-/** 统一账号：登录了显示头像和邮箱（点开有退出），没登录显示「登录」和黄点。账号接口还没接上时不显示。 */
-function accountItem() {
-  if (!accountSupported() || !state.account) return null
-  const a = state.account
-  if (!a.loggedIn) {
-    return el(
-      'button.nav-item.account-item',
-      { type: 'button', dataset: { nav: 'account' }, onClick: () => accountLogin() },
-      icon('log-in', 16),
-      el('span.nav-label', { text: '登录' }),
-      el('span.dot.dot-warn', { title: '没登录不能开始记录' }),
-    )
-  }
-  const item = el(
-    'button.nav-item.account-item',
-    { type: 'button', dataset: { nav: 'account' }, title: a.email || '', onClick: () => accountMenu(item) },
-    avatarNode(a, 'sm'),
-    el('span.nav-label', { text: a.name || a.email || '已登录' }),
-  )
-  return item
-}
-
-function accountMenu(anchor) {
-  const a = state.account ?? {}
-  ui.menu(
-    anchor,
-    [
-      { section: a.email || '已登录' },
-      { label: '账号设置…', icon: 'user', onSelect: () => openSettings('ai') },
-      { label: '退出登录', icon: 'log-out', onSelect: () => accountLogout() },
-    ],
-    { placement: 'top', minWidth: 220 },
   )
 }
 
@@ -248,7 +212,6 @@ document.getElementById('sidebar').addEventListener('keydown', (e) => {
 on('route', (v) => (v?.name === 'project' && projectOf(v.id)?.archived ? renderSidebar() : markSidebarActive()))
 on('projects', renderSidebar)
 on('status', renderSidebar)
-on('account', renderSidebar)
 on('engine', renderSidebar)
 // 快捷键提示跟着设置走
 let sidebarKeys = ''

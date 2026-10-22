@@ -1311,40 +1311,6 @@ button.nav-section:focus-visible {
   max-height: 146px;
 }
 
-.home-login {
-  width: 100%;
-  max-width: 560px;
-}
-
-.home-login > .icon {
-  color: var(--accent-text);
-}
-
-/* 侧栏底部的账号 */
-.account-item .avatar {
-  width: 18px;
-  height: 18px;
-  font-size: 10px;
-}
-
-.account-item .dot {
-  margin-left: auto;
-}
-
-.avatar {
-  position: relative;
-  overflow: hidden;
-}
-
-.avatar-img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
-}
-
 /* 项目资料里的默认模式 */
 .info-sub {
   display: flex;

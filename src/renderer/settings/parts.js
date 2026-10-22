@@ -637,160 +637,6 @@
     if (!loginBusy || st?.loggedIn || st?.loggingIn) setChatgpt(st)
   })
 
-  /* ---------------- 统一账号（Google 登录） ---------------- */
-
-  let account = null // null 还不知道；{ unsupported } 主进程还没接
-  let accountBusy = false
-  let accountError = ''
-  const accountViews = new Set()
-  const accountListeners = []
-
-  function renderAccount() {
-    for (const v of accountViews) v()
-    for (const f of accountListeners) f(account)
-  }
-
-  function setAccount(st) {
-    if (!st || typeof st !== 'object') return
-    if (st.ok === false) account = st.missing ? { unsupported: true } : { ...(account ?? {}), loggedIn: false, error: st.error }
-    else account = st
-    renderAccount()
-  }
-
-  async function accountLogin() {
-    if (accountBusy) return account
-    accountError = ''
-    accountBusy = true
-    renderAccount()
-    const r = await call('accountLogin')
-    accountBusy = false
-    if (r?.missing) {
-      setAccount(r)
-      return account
-    }
-    // 失败时主进程也返回状态，另带 error 和 code；自己取消的不算错
-    const cancelled = r?.code === 'login-cancelled'
-    if ((r?.ok === false || r?.error) && !cancelled && !r?.loggedIn) accountError = r.error || '登录没有完成'
-    if (r && typeof r === 'object' && 'loggedIn' in r) setAccount({ ...r, error: null })
-    else setAccount(await call('accountStatus'))
-    if (account?.loggedIn) ui.toast({ type: 'success', title: '已登录', message: account.email || undefined })
-    return account
-  }
-
-  async function accountLogout() {
-    accountError = ''
-    const r = await call('accountLogout')
-    if (r?.ok === false && !r.missing) accountError = r.error
-    setAccount(r && typeof r === 'object' && 'loggedIn' in r ? r : await call('accountStatus'))
-  }
-
-  // Google 的 G 标志（登录按钮上用，Google 登录按钮的标准样子）
-  const G_PATHS = [
-    ['#EA4335', 'M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z'],
-    ['#4285F4', 'M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z'],
-    ['#FBBC05', 'M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z'],
-    ['#34A853', 'M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z'],
-  ]
-  function googleMark(size = 16) {
-    const NS = 'http://www.w3.org/2000/svg'
-    const svg = document.createElementNS(NS, 'svg')
-    svg.setAttribute('viewBox', '0 0 48 48')
-    svg.setAttribute('width', String(size))
-    svg.setAttribute('height', String(size))
-    svg.setAttribute('aria-hidden', 'true')
-    svg.classList.add('g-mark')
-    for (const [fill, d] of G_PATHS) {
-      const p = document.createElementNS(NS, 'path')
-      p.setAttribute('fill', fill)
-      p.setAttribute('d', d)
-      svg.append(p)
-    }
-    return svg
-  }
-
-  function googleButton(label = '用 Google 登录') {
-    const b = el('button.btn.btn-google', { type: 'button' }, googleMark(16), el('span', { text: label }))
-    b.addEventListener('click', accountLogin)
-    return b
-  }
-
-  /** 头像：有 https 图片就用图片（加载失败退回首字母）。 */
-  function avatarNode(st, size = 'lg') {
-    const box = el('span.avatar', { class: size, text: (st?.name || st?.email || '?').trim().slice(0, 1) })
-    if (st?.avatarUrl && /^https:/.test(st.avatarUrl)) {
-      const img = el('img.avatar-img', { src: st.avatarUrl, alt: '', referrerPolicy: 'no-referrer' })
-      img.addEventListener('error', () => img.remove())
-      box.append(img)
-    }
-    return box
-  }
-
-  /** 统一账号卡片：没登录、登录中、已登录三种样子。opts.big：引导里用的大号样子。 */
-  function accountPanel(opts = {}) {
-    const box = el('div.account.account-unified', { class: opts.big ? 'is-big' : '' })
-    const render = () => {
-      const st = account
-      const err = accountError || st?.error
-      const errNode = err ? el('div.form-hint.is-error.selectable', { text: err }) : null
-      if (!st) {
-        box.replaceChildren(ui.spinner(14), el('span.text-2', { text: '正在读取登录状态…' }))
-        return
-      }
-      if (st.unsupported) {
-        box.replaceChildren(el('span.account-icon', {}, icon('circle-alert', 16)), el('div.account-main', {}, el('div.account-title', { text: '登录功能还没接好' }), el('div.account-sub', { text: `${NOT_READY}。` })))
-        return
-      }
-      if (st.loggedIn) {
-        box.replaceChildren(
-          avatarNode(st, 'lg'),
-          el(
-            'div.account-main',
-            {},
-            el('div.account-title', {}, el('span.truncate.selectable', { text: st.name || st.email || '已登录' }), el('span.tag', { text: st.provider === 'google' || !st.provider ? 'Google' : st.provider })),
-            st.name && st.email ? el('div.account-sub.selectable', { text: st.email }) : null,
-            el('div.account-sub', { text: '会议记录、声纹和密钥都只存在这台电脑上。' }),
-            errNode,
-          ),
-          el('button.btn.btn-sm', { type: 'button', onClick: accountLogout }, icon('log-out', 14), el('span', { text: '退出登录' })),
-        )
-        return
-      }
-      if (accountBusy || st.loggingIn) {
-        box.replaceChildren(
-          el('span.account-icon', {}, ui.spinner(16)),
-          el(
-            'div.account-main',
-            {},
-            el('div.account-title', { text: '正在浏览器里登录…' }),
-            el('div.account-sub', { text: '在打开的网页里选你的 Google 账号，完成后会自动回到这里。浏览器没弹出来就复制链接自己打开。' }),
-            el(
-              'div.form-inline.account-actions',
-              {},
-              st.loginUrl ? el('button.btn.btn-sm', { type: 'button', onClick: () => copyText(st.loginUrl, '登录链接已复制') }, icon('copy', 13), el('span', { text: '复制登录链接' })) : null,
-              el('button.btn.btn-sm', { type: 'button', onClick: () => ((accountBusy = false), accountLogin()) }, icon('external-link', 13), el('span', { text: '重新打开' })),
-              typeof api.accountCancelLogin === 'function' ? el('button.btn.btn-ghost.btn-sm', { type: 'button', onClick: () => call('accountCancelLogin') }, '取消') : null,
-            ),
-            errNode,
-          ),
-        )
-        return
-      }
-      box.replaceChildren(
-        el('span.account-icon', {}, icon('user', 16)),
-        el('div.account-main', {}, el('div.account-title', { text: '还没登录' }), el('div.account-sub', { text: '登录后才能开始记录。在浏览器里登录，本应用看不到你的密码。' }), errNode),
-        googleButton(),
-      )
-    }
-    accountViews.add(render)
-    render()
-    return box
-  }
-
-  on('account:status', (st) => {
-    // 登录中也要收：带着登录链接（浏览器没弹出来时复制用）
-    if (!accountBusy || st?.loggedIn || st?.loggingIn) setAccount(st)
-  })
-
   /* ---------------- 声纹录制 ---------------- */
 
   const VP_SECONDS = 12
@@ -1048,9 +894,6 @@
     hotkeyStatus = init.hotkey ?? hotkeyStatus
     engineState = init.snapshot?.state ?? 'idle'
     initSettings(init.settings)
-    if (init.account) setAccount(init.account)
-    else if (typeof api.accountStatus !== 'function') setAccount({ ok: false, missing: true })
-    else call('accountStatus').then(setAccount)
     setChatgpt(init.chatgpt ?? { ok: false, missing: typeof api.chatgptStatus !== 'function' })
     if (!init.chatgpt && typeof api.chatgptStatus === 'function') call('chatgptStatus').then(setChatgpt)
     setVoiceprint(init.voiceprint ?? { ok: false, missing: typeof api.voiceprintStatus !== 'function' })
@@ -1097,12 +940,6 @@
     providerById,
     chatgpt: () => chatgpt,
     onChatgpt: (f) => chatgptListeners.push(f),
-    accountPanel,
-    accountLogin,
-    account: () => account,
-    onAccount: (f) => accountListeners.push(f),
-    googleButton,
-    avatarNode,
     voiceprintRecorder,
     voiceprint: () => vp,
     onVoiceprint: (f) => vpListeners.push(f),

@@ -367,7 +367,6 @@ VIEWS.project = {
     })
     ctx.on('engine', renderHero)
     ctx.on('mode', renderHero)
-    ctx.on('account', renderHero)
     ctx.on(
       'sessions',
       debounce((e) => {
