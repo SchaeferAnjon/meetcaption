@@ -1,0 +1,588 @@
+/*
+ * 答题框：和字幕窗、主窗口同一套 Raycast 风格。深色半透明面板，1px 细描边，12px 圆角，柔和阴影，
+ * 标题条上用快捷键徽标提示。窗口四周留 6px 给阴影，那一圈是点击穿透的（不在 .hit 上）。
+ */
+
+:root {
+  color-scheme: dark;
+  --font-size: 16px;
+  /* answer.js 写成 rgba(12, 14, 20, 透明度)，这里只取它的透明度，底色换成中性深灰 */
+  --bg: rgba(12, 14, 20, 0.9);
+  --text: #ececec;
+  --text-2: rgba(255, 255, 255, 0.6);
+  --text-3: rgba(255, 255, 255, 0.42);
+  --gist: #a3a6ff;
+  --accent: #5e62f2;
+  --accent-ring: #7176ff;
+  --error: #ff6369;
+  --warn: #f5b83d;
+  --edge: 6px;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  cursor: default;
+}
+
+body {
+  box-sizing: border-box;
+  padding: var(--edge);
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+}
+
+.panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  border-radius: var(--hud-radius, 12px);
+  background: var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+@supports (color: rgb(from red r g b / alpha)) {
+  .panel {
+    background: rgb(from var(--bg) 28 28 30 / alpha);
+  }
+}
+
+.panel.hidden {
+  display: none;
+}
+
+/* 标题条：图标、标题、生成中的绿点，右边快捷键提示和收起 */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 6px 0 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  user-select: none;
+}
+
+.panel.collapsed .bar {
+  border-bottom-color: transparent;
+}
+
+.bar-icon {
+  flex: none;
+  color: var(--gist);
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.dot {
+  display: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3fcf7f;
+}
+
+.dot.live {
+  display: inline-block;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.count {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.count-text {
+  padding-right: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 快捷键徽标（同 ../shared/ui.css 的 .kbd，深色小号） */
+.kbd-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* 小号幽灵按钮：收起、重新回答、复制 */
+.ghost {
+  flex: none;
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  background: transparent;
+  cursor: default;
+  transition: background-color 0.12s, color 0.12s;
+}
+
+.ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.ghost:active {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.ghost:disabled {
+  opacity: 0.4;
+  background: transparent;
+}
+
+.panel.collapsed .list {
+  display: none;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+.card {
+  padding: 9px 11px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.card.latest {
+  background: rgba(113, 118, 255, 0.1);
+  border-color: rgba(125, 129, 255, 0.26);
+}
+
+.card.latest .meta {
+  background: linear-gradient(rgba(113, 118, 255, 0.1), rgba(113, 118, 255, 0.1)), rgb(28, 28, 30);
+}
+
+.card.old:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.card.old .body {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  opacity: 0.75;
+}
+
+.card.old.open .body {
+  display: block;
+  opacity: 1;
+}
+
+.q {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  padding: 0 5px;
+  margin-right: 6px;
+  border-radius: 4px;
+  vertical-align: 1px;
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.card.latest .tag {
+  color: #c9cbff;
+  background: rgba(113, 118, 255, 0.24);
+}
+
+.gist {
+  margin-top: 6px;
+  font-size: calc(var(--font-size) * 0.88);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--gist);
+}
+
+.gist:empty {
+  display: none;
+}
+
+.body {
+  margin-top: 3px;
+  font-size: var(--font-size);
+  line-height: 1.5;
+  color: #f2f2f4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.body:empty {
+  display: none;
+}
+
+.caret {
+  display: inline-block;
+  width: 0.45em;
+  height: 1em;
+  margin-left: 2px;
+  border-radius: 2px;
+  vertical-align: -0.12em;
+  background: var(--accent-ring);
+  animation: blink 0.9s steps(1) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.note {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.note:empty {
+  display: none;
+}
+
+.note.error {
+  color: var(--error);
+}
+
+.note.warn {
+  color: var(--warn);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  /* 回答长到超出面板时，耗时和「重新回答」「复制」那一行贴在可视区底部，不用先滚动 */
+  position: sticky;
+  /* 列表有 8px 内边距，贴在滚动区真正的底边，下面才不会漏出半行正文 */
+  bottom: -8px;
+  z-index: 1;
+  margin-left: -11px;
+  margin-bottom: -6px;
+  margin-right: -11px;
+  padding: 4px 6px 14px 11px;
+  border-radius: 0 0 10px 10px;
+  background: linear-gradient(rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.035)), rgb(28, 28, 30);
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.timing {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 调整位置模式 */
+.edit {
+  display: none;
+}
+
+body.editing .panel {
+  height: 100%;
+  -webkit-app-region: drag;
+  cursor: move;
+  box-shadow: 0 0 0 2px var(--accent-ring), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+body.editing .panel button {
+  -webkit-app-region: no-drag;
+}
+
+body.editing .edit {
+  display: block;
+}
+
+.edit-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(22, 22, 24, 0.92);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.done {
+  position: absolute;
+  bottom: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  -webkit-app-region: no-drag;
+  height: 26px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 1px 3px rgba(0, 0, 0, 0.3);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: default;
+}
+
+.done:hover {
+  background: #6b6ff7;
+}
+
+.handle {
+  position: absolute;
+  -webkit-app-region: no-drag;
+}
+
+.handle.l,
+.handle.r {
+  top: 16px;
+  bottom: 16px;
+  width: 10px;
+  cursor: ew-resize;
+}
+
+.handle.l {
+  left: 0;
+}
+
+.handle.r {
+  right: 0;
+}
+
+.handle.t,
+.handle.b {
+  left: 16px;
+  right: 16px;
+  height: 10px;
+  cursor: ns-resize;
+}
+
+.handle.t {
+  top: 0;
+}
+
+.handle.b {
+  bottom: 0;
+}
+
+/* 左右两边中间的小把手 */
+.handle.l::after,
+.handle.r::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 28px;
+  margin-top: -14px;
+  border-radius: 2px;
+  background: var(--accent-ring);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.handle.l::after {
+  left: 3px;
+}
+
+.handle.r::after {
+  right: 3px;
+}
+
+.handle.lb,
+.handle.rb {
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.handle.lb {
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.handle.rb {
+  right: 0;
+  cursor: nwse-resize;
+}
+
+.handle.lb::after,
+.handle.rb::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  width: 10px;
+  height: 10px;
+  border-bottom: 3px solid var(--accent-ring);
+}
+
+.handle.lb::after {
+  left: 3px;
+  border-left: 3px solid var(--accent-ring);
+  border-bottom-left-radius: 6px;
+}
+
+.handle.rb::after {
+  right: 3px;
+  border-right: 3px solid var(--accent-ring);
+  border-bottom-right-radius: 6px;
+}
+
+/* 面试模式：更显眼。强调色描边和外发光，标题条带「面试」，最新一条的要点和正文放大 */
+body.prominent .panel {
+  border-color: rgba(125, 129, 255, 0.55);
+  box-shadow: 0 0 0 1px rgba(125, 129, 255, 0.35), 0 10px 32px rgba(0, 0, 0, 0.45), 0 0 24px rgba(113, 118, 255, 0.22);
+}
+
+@supports (color: rgb(from red r g b / alpha)) {
+  body.prominent .panel {
+    background: rgb(from var(--bg) 28 28 30 / max(alpha, 0.94));
+  }
+}
+
+body.prominent .title::after {
+  content: '面试';
+  margin-left: 7px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(113, 118, 255, 0.26);
+  color: #c9cbff;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+body.prominent .card.latest {
+  padding: 12px 13px 8px;
+  background: rgba(113, 118, 255, 0.14);
+  border-color: rgba(125, 129, 255, 0.4);
+}
+
+body.prominent .card.latest .gist {
+  font-size: calc(var(--font-size) * 1.02);
+}
+
+body.prominent .card.latest .body {
+  font-size: calc(var(--font-size) * 1.14);
+  line-height: 1.55;
+}
+
+/* 随时拖动：按住面板空白处或标题栏拖（正文能选中复制，不拖） */
+body:not(.editing) .bar {
+  cursor: grab;
+}
+
+body.dragging,
+body.dragging * {
+  cursor: grabbing !important;
+}
+
+/* 答完后的中外对照：每句原文下面一句彩色译文 */
+.card.has-pairs .body {
+  white-space: normal;
+}
+
+.pair + .pair {
+  margin-top: 5px;
+}
+
+.pair .tr {
+  margin-top: 1px;
+  font-size: calc(var(--font-size) * 0.86);
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.q .pair .tr {
+  font-size: 12px;
+}
+
+.q .pair {
+  display: block;
+}

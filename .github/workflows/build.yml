@@ -1,0 +1,184 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+      - name: Virtual sound card (VB-CABLE)
+        uses: LABSN/sound-ci-helpers@v1
+      - name: Start Windows Audio
+        shell: pwsh
+        run: |
+          Set-Service Audiosrv -StartupType Automatic
+          Start-Service Audiosrv
+          Get-Service Audiosrv
+
+      # 账号平台的连接信息从仓库 secrets 来；fork 里没有就是不用登录的版本
+      - name: Build installer
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: npx electron-builder --win --x64 --publish never "-c.extraMetadata.supabase.url=$env:SUPABASE_URL" "-c.extraMetadata.supabase.anonKey=$env:SUPABASE_ANON_KEY"
+
+      - name: Loopback capture self-test
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $tts = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $tts.SetOutputToWaveFile("$pwd\speech.wav")
+          $tts.Speak("Okay, so about the second section of the paper. Please send me the revised draft by next Friday. Then we can discuss the experiments on Tuesday.")
+          $tts.Dispose()
+          $env:MEETCAPTION_SELFTEST_OUT = "$pwd\selftest.json"
+          $env:MEETCAPTION_USERDATA = "$pwd\ud"
+          $app = Start-Process -FilePath "dist\win-unpacked\MeetCaption.exe" -ArgumentList "--selftest=capture:14" -PassThru
+          Start-Sleep 5
+          (New-Object Media.SoundPlayer "$pwd\speech.wav").PlaySync()
+          $app.WaitForExit(40000) | Out-Null
+          Get-Content selftest.json
+          $r = Get-Content selftest.json | ConvertFrom-Json
+          if (-not $r.ok -or $r.loudChunks -lt 10) { throw "loopback capture did not hear the played speech" }
+
+      - name: Voiceprint self-test (packaged native lib + model)
+        if: success() || failure()
+        shell: pwsh
+        run: |
+          $env:MEETCAPTION_SELFTEST_OUT = "$pwd\voiceprint.json"
+          $env:MEETCAPTION_USERDATA = "$pwd\ud-vp"
+          $app = Start-Process -FilePath "dist\win-unpacked\MeetCaption.exe" -ArgumentList "--selftest=voiceprint" -PassThru
+          $app.WaitForExit(90000) | Out-Null
+          Get-Content voiceprint.json
+          $r = Get-Content voiceprint.json | ConvertFrom-Json
+          if (-not $r.ok) { throw "voiceprint model failed to load in the packaged app" }
+
+      - name: Local ASR self-test (packaged X-ASR model, utility process)
+        if: success() || failure()
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Speech
+          $tts = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $tts.SetOutputToWaveFile("$pwd\asr.wav")
+          $tts.Speak("Please send me the revised draft by next Friday. Then we can discuss the experiments on Tuesday.")
+          $tts.Dispose()
+          New-Item -ItemType Directory -Force ud-local | Out-Null
+          '{"engine":"local","captureMic":false,"onboarding":{"done":true,"shownAt":1}}' | Set-Content -Encoding utf8 ud-local\settings.json
+          $env:MEETCAPTION_SELFTEST_OUT = "$pwd\local-asr.json"
+          $env:MEETCAPTION_USERDATA = "$pwd\ud-local"
+          $app = Start-Process -FilePath "dist\win-unpacked\MeetCaption.exe" -ArgumentList "--selftest=asr:20","--fake-system=$pwd\asr.wav" -PassThru
+          $app.WaitForExit(120000) | Out-Null
+          node -e "const r=require('./local-asr.json'); const t=(r.segments||[]).map(s=>s.text).join(' '); console.log(r.ok, r.engine, t); process.exit(r.ok && r.engine==='local' && /friday/i.test(t) ? 0 : 1)"
+
+      - name: Answer panel click self-test
+        shell: pwsh
+        run: |
+          $env:MEETCAPTION_SELFTEST_OUT = "$pwd\answer.json"
+          $env:MEETCAPTION_USERDATA = "$pwd\ud-answer"
+          $app = Start-Process -FilePath "dist\win-unpacked\MeetCaption.exe" -ArgumentList "--selftest=answer" -PassThru
+          $app.WaitForExit(120000) | Out-Null
+          Get-Content answer.json
+          $r = Get-Content answer.json | ConvertFrom-Json
+          if (-not $r.ok) { throw "answer panel buttons could not be clicked" }
+
+      # 前面的自测失败了也照样截图：v3 以后的界面还没在 Windows 上看过
+      - name: UI screenshot
+        if: success() || failure()
+        shell: pwsh
+        run: |
+          $env:MEETCAPTION_USERDATA = "$pwd\ud-ui"
+          $env:MEETCAPTION_UI_SHOTS = "$pwd\ui-shots"
+          $app = Start-Process -FilePath "dist\win-unpacked\MeetCaption.exe" -ArgumentList "--selftest=ui:14" -PassThru
+          Start-Sleep 9
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$pwd\ui-windows.png")
+          $app.WaitForExit(20000) | Out-Null
+          Get-ChildItem ui-shots -ErrorAction SilentlyContinue
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-selftest
+          path: |
+            ui-windows.png
+            ui-shots/
+            *.json
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+      - name: Build dmgs (arm64 + x64, ad-hoc signed)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: npx electron-builder --mac --arm64 --x64 -c.mac.identity=- --publish never "-c.extraMetadata.supabase.url=$SUPABASE_URL" "-c.extraMetadata.supabase.anonKey=$SUPABASE_ANON_KEY"
+
+      - name: Voiceprint self-test (packaged arm64)
+        run: |
+          APP=$(ls -d dist/mac-arm64/*.app | head -1)
+          EXE=$(plutil -extract CFBundleExecutable raw -o - "$APP/Contents/Info.plist")
+          MEETCAPTION_SELFTEST_OUT=$PWD/voiceprint.json MEETCAPTION_USERDATA=$PWD/ud-vp "$APP/Contents/MacOS/$EXE" --selftest=voiceprint
+          cat voiceprint.json
+          node -e "process.exit(require('./voiceprint.json').ok ? 0 : 1)"
+
+      - name: Local ASR self-test (packaged arm64)
+        run: |
+          APP=$(ls -d dist/mac-arm64/*.app | head -1)
+          EXE=$(plutil -extract CFBundleExecutable raw -o - "$APP/Contents/Info.plist")
+          # 测试语音放在仓库里（say 生成的 16k 单声道）：构建机上的 say 偶尔生成空文件
+          cp test/fixtures/local-asr-en.wav asr.wav
+          mkdir -p ud-local && echo '{"engine":"local","captureMic":false,"onboarding":{"done":true,"shownAt":1}}' > ud-local/settings.json
+          MEETCAPTION_SELFTEST_OUT=$PWD/local-asr.json MEETCAPTION_USERDATA=$PWD/ud-local MEETCAPTION_DEBUG=1 "$APP/Contents/MacOS/$EXE" --selftest=asr:20 --fake-system=$PWD/asr.wav > local-asr.log 2>&1 || echo "app exit $?"
+          tail -40 local-asr.log
+          cat local-asr.json || true
+          node -e "const r=require('./local-asr.json'); const t=(r.segments||[]).map(s=>s.text).join(' '); console.log(r.ok, r.engine, t); process.exit(r.ok && r.engine==='local' && /friday/i.test(t) ? 0 : 1)"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-selftest
+          path: |
+            *.json
+            *.log
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-installers
+          path: dist/*.dmg
+          if-no-files-found: error
+          retention-days: 7

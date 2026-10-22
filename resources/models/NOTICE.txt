@@ -1,0 +1,24 @@
+会议字幕的声纹和本地识别功能用到以下第三方组件，随安装包一起分发。
+
+1. 说话人向量模型 3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx
+   来源：3D-Speaker CAM++（ModelScope iic/speech_campplus_sv_zh_en_16k-common_advanced），
+   ONNX 版本取自 https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models
+   SHA-256：aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2
+   许可证：Apache License 2.0（https://www.apache.org/licenses/LICENSE-2.0）
+   Copyright Alibaba, Inc. and its affiliates（3D-Speaker）
+
+2. sherpa-onnx 1.13.8（Node-API 原生库 sherpa-onnx.node、sherpa-onnx-c-api）
+   https://github.com/k2-fsa/sherpa-onnx
+   许可证：Apache License 2.0
+   Copyright Xiaomi Corporation and the Next-gen Kaldi team
+
+3. ONNX Runtime 1.28.2（libonnxruntime.dylib / onnxruntime.dll）
+   https://github.com/microsoft/onnxruntime
+   许可证：MIT License
+   Copyright (c) Microsoft Corporation
+
+4. 本地语音识别模型 X-ASR zh-en（流式、带标点，480ms，int8）：xasr/encoder.int8.onnx、decoder.onnx、joiner.int8.onnx、tokens.txt
+   来源：https://github.com/Gilgamesh-J/X-ASR（https://huggingface.co/GilgameshWind/X-ASR-zh-en），
+   ONNX 版本取自 https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models
+   （sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05）
+   许可证：Apache License 2.0（https://www.apache.org/licenses/LICENSE-2.0）

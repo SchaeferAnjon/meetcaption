@@ -1,0 +1,69 @@
+/*
+ * 双语意群对照（bilingual.js 画出来的节点）。颜色变量 --chunk-1..4 在 tokens.css。
+ * 容器加 .bi-text（文字着色）、.bi-bar（底部细色条）或 .bi-mono（单色，意群颜色关掉时）。
+ */
+
+.bi-c[data-c='0'] {
+  --bi: var(--chunk-1);
+}
+
+.bi-c[data-c='1'] {
+  --bi: var(--chunk-2);
+}
+
+.bi-c[data-c='2'] {
+  --bi: var(--chunk-3);
+}
+
+.bi-c[data-c='3'] {
+  --bi: var(--chunk-4);
+}
+
+/* 文字着色：英文片段和它的中文片段用同一种颜色 */
+.bi-text .bi-c {
+  color: var(--bi);
+}
+
+/* 底部细色条：文字颜色不变，下面一条同色细线；片段之间的空格和标点没有线，意群边界一眼能看出来 */
+.bi-bar .bi-c {
+  background-image: linear-gradient(var(--bi), var(--bi));
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% var(--bi-bar-h, 2px);
+  padding-bottom: var(--bi-bar-gap, 1px);
+}
+
+.bi-bar .term {
+  text-underline-offset: 2px;
+}
+
+/* 同一个术语在另一边的那一处：跟着高亮 */
+.term.is-linked {
+  background: var(--fill-3, rgba(255, 255, 255, 0.16));
+  text-decoration-color: currentColor;
+  border-radius: 3px;
+}
+
+/* AI 纠正过的词：很淡的灰色点线，比术语的虚线再低一点（同一个词两种线都有时不叠在一起），悬停看识别原文 */
+.fix {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--fix-line);
+  text-decoration-thickness: var(--fix-thick, 1.5px);
+  text-underline-offset: var(--fix-offset, 6px);
+  text-decoration-skip-ink: none;
+}
+
+/* 底部色条样式：色条就在下划线的位置，点线再往下挪一条色条的高度 */
+.bi-bar .fix {
+  text-underline-offset: calc(var(--fix-offset, 6px) + var(--bi-bar-h, 2px) + var(--bi-bar-gap, 1px));
+}
+
+.fix:not(.in-term) {
+  cursor: help;
+}
+
+.fix:not(.in-term):hover,
+.fix.hot {
+  text-decoration-color: color-mix(in srgb, var(--fix-line) 40%, currentColor);
+}

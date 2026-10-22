@@ -1,0 +1,100 @@
+appId: com.jiazonghan.meetcaption
+productName: 会议字幕
+artifactName: MeetCaption-${version}-${os}-${arch}.${ext}
+copyright: Copyright © 2026 Jia Zonghan
+directories:
+  output: dist
+  buildResources: build
+files:
+  - src/**
+  - package.json
+  - "!**/*.map"
+  - "!node_modules/marked/{src,bin,man}/**"
+  - "!node_modules/marked/lib/marked.cjs.js"
+  # 公式渲染只用 katex.min.js、katex.min.css 和 woff2 字体；主进程做图文版课堂笔记用 katex.mjs 和 marked.esm.js
+  - "!node_modules/katex/{src,contrib,types,node_modules}/**"
+  - "!node_modules/katex/{cli.js,katex.ts}"
+  - "!node_modules/katex/dist/{contrib/**,katex.js,katex.css,katex-swap.css,katex-swap.min.css}"
+  - "!node_modules/katex/dist/fonts/*.{ttf,woff}"
+  - "!node_modules/commander/**" # 只有 katex 的命令行工具用它
+  # 课件 PDF 渲染只用 build 里的两个压缩版、cmaps（中日韩字体编码）、standard_fonts、wasm（JPX / JBIG2 图片解码）、iccs
+  - "!node_modules/pdfjs-dist/{legacy,web,types,image_decoders}/**"
+  - "!node_modules/pdfjs-dist/build/{pdf.mjs,pdf.worker.mjs,pdf.sandbox*}"
+  # 声纹：sherpa-onnx 的原生库不进 asar，按目标架构放到 Resources/sherpa-onnx（见 mac/win 的 extraResources）
+  - "!node_modules/sherpa-onnx-*/**"
+asarUnpack:
+  - node_modules/audiotee/bin/**
+# 声纹模型和本地识别模型（原生代码按路径读，不能在 asar 里）→ Resources/models
+extraResources:
+  - from: resources/models
+    to: models
+    filter:
+      - "*.onnx"
+      - NOTICE.txt
+      - xasr/*.onnx
+      - xasr/tokens.txt
+# 目标平台的 sherpa-onnx 原生包没装时（如 M 芯片上打 x64）先补进 node_modules；本地识别模型没下载时先下载
+beforePack: ./scripts/sherpa-native.mjs
+# 统一账号登录的回调 meetcaption://auth-callback。Mac 写进 Info.plist 的 CFBundleURLTypes；
+# Windows 的 NSIS 安装包不写协议，由应用启动时 app.setAsDefaultProtocolClient 写 HKCU\Software\Classes\meetcaption。
+protocols:
+  - name: 会议字幕登录
+    schemes:
+      - meetcaption
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.png
+  target:
+    - dmg
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extraResources:
+    - from: node_modules/sherpa-onnx-darwin-${arch}
+      to: sherpa-onnx
+      filter:
+        - "*.node"
+        - "*.dylib"
+  notarize: false
+  extendInfo:
+    CFBundleDisplayName: 会议字幕
+    NSAudioCaptureUsageDescription: 会议字幕需要录制电脑正在播放的声音，把会议里对方说的话实时转成字幕。
+    NSMicrophoneUsageDescription: 会议字幕用麦克风记录你自己说的话、录声纹，上课时听老师讲课。
+    LSApplicationCategoryType: public.app-category.productivity
+dmg:
+  title: 会议字幕 ${version}
+win:
+  executableName: MeetCaption
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+  # 平台级 files 只写排除项时 electron-builder 会补一个 **/*，Windows 包会带上整个项目目录（docs、test、scripts、dist），
+  # 所以这里把顶层的列表完整抄一遍再加排除。
+  files:
+    - src/**
+    - package.json
+    - "!**/*.map"
+    - "!node_modules/marked/{src,bin,man}/**"
+    - "!node_modules/marked/lib/marked.cjs.js"
+    - "!node_modules/katex/{src,contrib,types,node_modules}/**"
+    - "!node_modules/katex/{cli.js,katex.ts}"
+    - "!node_modules/katex/dist/{contrib/**,katex.js,katex.css,katex-swap.css,katex-swap.min.css}"
+    - "!node_modules/katex/dist/fonts/*.{ttf,woff}"
+    - "!node_modules/commander/**"
+    - "!node_modules/sherpa-onnx-*/**"
+    - "!node_modules/audiotee/**"
+  extraResources:
+    - from: node_modules/sherpa-onnx-win-${arch}
+      to: sherpa-onnx
+      filter:
+        - "*.node"
+        - "*.dll"
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  shortcutName: 会议字幕
+  uninstallDisplayName: 会议字幕
+  createDesktopShortcut: always

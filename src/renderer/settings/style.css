@@ -1,0 +1,212 @@
+/* 设置窗口的排版（组件样式在 ../shared/ui.css 和 parts.css） */
+
+.settings {
+  --sidebar-w: 200px;
+}
+
+.settings .sidebar-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-top: 2px;
+}
+
+.settings .nav-item {
+  gap: 9px;
+}
+
+.settings .nav-item > .icon-box {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+}
+
+.settings .nav-item > .icon-box .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.settings .nav-item > .dot {
+  margin-right: 2px;
+}
+
+.settings-head {
+  border-bottom: 1px solid var(--stroke-soft);
+  padding-left: 28px;
+}
+
+.settings-head > .spacer {
+  flex: 1;
+}
+
+/* 保存后在标题栏右边闪一下 */
+.saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  transition: opacity 400ms var(--ease);
+}
+
+.saved.is-leaving {
+  opacity: 0;
+}
+
+.saved .icon {
+  color: var(--green);
+}
+
+.page {
+  padding: 20px 28px 48px;
+}
+
+.page .form {
+  --form-label-w: 132px;
+  max-width: 640px;
+}
+
+.page .form-section-desc,
+.page .form-hint:not(.is-error) {
+  color: var(--text-2);
+}
+
+.page .form-section-desc {
+  margin-bottom: var(--sp-3);
+}
+
+.form-section > .callout,
+.form-section > div > .callout {
+  margin: 4px 0 12px;
+}
+
+/* 分区最上面的提醒（AI 没准备好） */
+.page .form > .top-callout {
+  margin-bottom: 20px;
+}
+
+.page .form > .callout:last-child {
+  margin-top: 20px;
+}
+
+/* 模型名这类短输入框 */
+.form-control > .input.short {
+  max-width: 280px;
+}
+
+/* 模型名：输入框和右边的下拉箭头排一行（箭头从服务拉到的模型里选） */
+.form-control > .model-field {
+  flex-wrap: nowrap;
+  max-width: calc(280px + var(--sp-2) + 32px);
+}
+
+.model-field > .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-field > .model-pick {
+  flex: none;
+}
+
+/* 开关 + 一句说明 */
+.toggle-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--control-h);
+  color: var(--text);
+}
+
+.toggle-line > .toggle {
+  flex: none;
+}
+
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--accent-text);
+  font-size: var(--fs-sm);
+}
+
+.link-btn:hover {
+  background: var(--accent-soft);
+}
+
+.kbd-slot {
+  display: inline-flex;
+}
+
+.gap-l {
+  margin-left: 8px;
+}
+
+.path {
+  width: 100%;
+  max-width: 420px;
+  padding: 5px 9px;
+  border-radius: var(--r-sm);
+  background: var(--bg-inset);
+  border: 1px solid var(--stroke-soft);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.plain-line {
+  padding-top: 5px;
+}
+
+/* 预览框在最上面，占满表单宽度 */
+.page .cap-stage {
+  margin-bottom: 4px;
+}
+
+/* 关于 */
+.about-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.about-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+}
+
+.about-hero .title-xl {
+  margin-bottom: 2px;
+}
+
+.howto {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--text);
+  line-height: 1.7;
+}
+
+.howto li + li {
+  margin-top: 4px;
+}
+
+.howto li::marker {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.howto .kbd-group {
+  vertical-align: 1px;
+}
+
+.howto-actions {
+  margin-top: 14px;
+}

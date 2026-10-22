@@ -1,0 +1,200 @@
+/*
+ * 会议字幕 v3 设计变量。暗色优先，跟随系统；html[data-theme="dark" | "light"] 强制主题。
+ * 每个颜色用 light-dark(浅色值, 深色值) 写一次，由 color-scheme 决定取哪一个，
+ * 所以某个区域写 color-scheme: dark（比如悬浮窗 .hud）就会整块换成深色变量。
+ * 用法和变量表见 docs/v3-ui-kit.md。
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* 字体 */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI',
+    'PingFang SC', 'Microsoft YaHei UI', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, Menlo, 'Cascadia Mono', Consolas, monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs: 13px;
+  --fs-md: 14px;
+  --fs-lg: 15px;
+  --fs-xl: 17px;
+  --fs-2xl: 22px;
+  --lh-tight: 1.25;
+  --lh: 1.4;
+  --lh-prose: 1.6;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  /* 背景：窗口、侧栏、内陷区、弹层 */
+  --bg: light-dark(#ffffff, #1b1b1d);
+  --bg-sidebar: light-dark(#f3f3f5, #202023);
+  --bg-inset: light-dark(#f6f6f8, #161618);
+  --bg-elevated: light-dark(#ffffff, #252528);
+  --bg-popover: light-dark(rgba(252, 252, 253, 0.9), rgba(37, 37, 40, 0.88));
+  --bg-backdrop: light-dark(rgba(20, 20, 30, 0.16), rgba(0, 0, 0, 0.42));
+  /* Windows mica 时内容区的半透明层 */
+  --bg-layer: light-dark(rgba(255, 255, 255, 0.72), rgba(32, 32, 34, 0.7));
+
+  /* 叠加在背景上的表面：由弱到强 */
+  --fill-1: light-dark(rgba(0, 0, 0, 0.028), rgba(255, 255, 255, 0.04));
+  --fill-2: light-dark(rgba(0, 0, 0, 0.048), rgba(255, 255, 255, 0.07));
+  --fill-3: light-dark(rgba(0, 0, 0, 0.07), rgba(255, 255, 255, 0.1));
+  --fill-4: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.14));
+
+  /* 描边 */
+  --stroke-soft: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.05));
+  --stroke: light-dark(rgba(0, 0, 0, 0.09), rgba(255, 255, 255, 0.08));
+  --stroke-strong: light-dark(rgba(0, 0, 0, 0.15), rgba(255, 255, 255, 0.14));
+
+  /* 文字 */
+  --text: light-dark(#1d1d1f, #ececec);
+  --text-2: light-dark(#6c6c72, #9a9aa0);
+  --text-3: light-dark(#9c9ca2, #6b6b70);
+  --text-on-accent: #ffffff;
+
+  /* 普通按钮：浅色模式是白底加描边，深色模式是半透明白 */
+  --btn-bg: light-dark(#ffffff, rgba(255, 255, 255, 0.07));
+  --btn-bg-hover: light-dark(#f6f6f8, rgba(255, 255, 255, 0.1));
+  --btn-bg-active: light-dark(#ececef, rgba(255, 255, 255, 0.14));
+  --btn-stroke: light-dark(rgba(0, 0, 0, 0.12), rgba(255, 255, 255, 0.08));
+
+  /* 输入框 */
+  --field-bg: light-dark(#ffffff, rgba(255, 255, 255, 0.045));
+  --field-stroke: light-dark(rgba(0, 0, 0, 0.13), rgba(255, 255, 255, 0.09));
+  --field-stroke-hover: light-dark(rgba(0, 0, 0, 0.22), rgba(255, 255, 255, 0.16));
+
+  /* 强调色：和应用图标呼应的蓝紫，只用在主按钮、选中态、少量图标底色 */
+  --accent: light-dark(#5a5ff0, #7176ff);
+  --accent-bg: light-dark(#5a5ff0, #5e62f2);
+  --accent-bg-hover: light-dark(#4d52e4, #6b6ff7);
+  --accent-bg-active: light-dark(#4449d6, #5559e6);
+  --accent-text: light-dark(#4a4fdc, #a3a6ff);
+  --accent-soft: light-dark(rgba(90, 95, 240, 0.1), rgba(113, 118, 255, 0.17));
+  --accent-ring: light-dark(rgba(90, 95, 240, 0.35), rgba(125, 129, 255, 0.5));
+
+  /* 语义色 */
+  --green: light-dark(#1d9a54, #3fcf7f);
+  --green-soft: light-dark(rgba(29, 154, 84, 0.1), rgba(63, 207, 127, 0.14));
+  --yellow: light-dark(#b87400, #f5b83d);
+  --yellow-soft: light-dark(rgba(214, 140, 0, 0.12), rgba(245, 184, 61, 0.14));
+  --red: light-dark(#dc3545, #ff6369);
+  --red-soft: light-dark(rgba(220, 53, 69, 0.1), rgba(255, 99, 105, 0.14));
+  --blue: light-dark(#2272e8, #5aa9ff);
+  --blue-soft: light-dark(rgba(34, 114, 232, 0.1), rgba(90, 169, 255, 0.14));
+
+  /* 会议里的角色：我、对方、提问、译文 */
+  --me: var(--green);
+  --me-soft: var(--green-soft);
+  --other: var(--blue);
+  --other-soft: var(--blue-soft);
+  --question: var(--yellow);
+  --question-soft: var(--yellow-soft);
+  --tr: light-dark(#946300, #f2c75c);
+
+  /* 双语意群对照：英文片段和它的中文片段同色，4 种循环（蓝、琥珀、绿、粉）。
+     深色值在半透明深底（字幕窗）和深色主窗口上都清楚，浅色值在白底上对比度都在 5:1 以上 */
+  --chunk-1: light-dark(#1f64c8, #7cbcff);
+  --chunk-2: light-dark(#9a5b00, #f5c46b);
+  --chunk-3: light-dark(#177a45, #7ad69a);
+  --chunk-4: light-dark(#b8307a, #f59ac5);
+  /* AI 纠正过的词下面的点线：中性灰、很淡，和术语的虚线（跟文字同色）分开 */
+  --fix-line: light-dark(rgba(60, 60, 67, 0.4), rgba(235, 235, 245, 0.45));
+
+  /* 图标方块和项目颜色（实色底配白色图标） */
+  --c-gray: #8e8e96;
+  --c-red: #f2555a;
+  --c-orange: #f5883a;
+  --c-yellow: #e9a820;
+  --c-green: #34b86c;
+  --c-teal: #22b3a6;
+  --c-blue: #3a8ef6;
+  --c-indigo: #6166f5;
+  --c-purple: #a168f2;
+  --c-pink: #ec5b9e;
+
+  /* 圆角 */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 12px;
+  --r-full: 999px;
+
+  /* 间距（4px 网格） */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* 尺寸 */
+  --control-h: 28px;
+  --control-h-sm: 24px;
+  --control-h-lg: 36px;
+  --row-h: 40px;
+  --row-h-sm: 32px;
+  --nav-h: 30px;
+  --sidebar-w: 232px;
+  --titlebar-h: 52px; /* ui.applyChrome() 会按红绿灯位置或 Windows 标题栏高度改写 */
+  --traffic-end: 84px; /* Mac 红绿灯右边缘再留 12px，同一行放内容时用 */
+  --icon-stroke: 2;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px light-dark(rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.3));
+  --shadow-control: 0 1px 1px light-dark(rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.25)),
+    inset 0 1px 0 light-dark(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.04));
+  --shadow-pop: 0 0 0 0.5px light-dark(rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.6)),
+    0 10px 30px -4px light-dark(rgba(20, 20, 40, 0.16), rgba(0, 0, 0, 0.5)),
+    0 2px 6px light-dark(rgba(20, 20, 40, 0.06), rgba(0, 0, 0, 0.25));
+  --shadow-modal: 0 0 0 0.5px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.7)),
+    0 24px 64px -8px light-dark(rgba(20, 20, 40, 0.24), rgba(0, 0, 0, 0.6));
+  --blur-pop: saturate(1.6) blur(24px);
+
+  /* 动效：克制，120 到 180ms */
+  --dur-fast: 120ms;
+  --dur: 150ms;
+  --dur-slow: 180ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 层级 */
+  --z-sticky: 10;
+  --z-popover: 1000;
+  --z-modal: 1100;
+  --z-palette: 1200;
+  --z-toast: 1300;
+  --z-tip: 1400;
+
+  /* 悬浮字幕和答题框（始终深色半透明） */
+  --hud-bg: rgba(28, 28, 30, 0.86);
+  --hud-stroke: rgba(255, 255, 255, 0.1);
+  --hud-shadow: 0 12px 36px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
+  --hud-radius: 12px;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+/* 强制某一块用深色或浅色变量 */
+.scheme-dark {
+  color-scheme: dark;
+}
+
+.scheme-light {
+  color-scheme: light;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+}

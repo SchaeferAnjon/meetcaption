@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+    <title>AI 答题</title>
+    <link rel="stylesheet" href="../shared/tokens.css" />
+    <link rel="stylesheet" href="../shared/bilingual.css" />
+    <link rel="stylesheet" href="answer.css" />
+  </head>
+  <body>
+    <section id="panel" class="panel hit hidden">
+      <header class="bar">
+        <svg class="bar-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path d="M20 2v4" /><path d="M22 4h-4" /><circle cx="4" cy="20" r="2" /></svg>
+        <span class="title">AI 答题</span>
+        <span class="dot" id="dot"></span>
+        <span class="count" id="count"></span>
+        <button id="collapse" class="ghost" type="button">收起</button>
+      </header>
+      <div id="list" class="list"></div>
+    </section>
+    <div id="edit" class="edit">
+      <div class="edit-hint">拖动移动位置，拖边缘或角改大小</div>
+      <button id="done" class="done" type="button">完成</button>
+      <div class="handle l" data-edges="l"></div>
+      <div class="handle r" data-edges="r"></div>
+      <div class="handle b" data-edges="b"></div>
+      <div class="handle t" data-edges="t"></div>
+      <div class="handle lb" data-edges="lb"></div>
+      <div class="handle rb" data-edges="rb"></div>
+    </div>
+    <script src="../shared/bilingual.js"></script>
+    <script src="../shared/drag.js"></script>
+    <script src="answer.js"></script>
+  </body>
+</html>

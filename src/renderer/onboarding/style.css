@@ -1,0 +1,495 @@
+/* 首次引导窗口（760 × 580，不能改大小）。组件样式在 ../shared/ui.css 和 ../settings/parts.css */
+
+.ob {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+}
+
+/* Windows 11 Mica：整窗透出材质，内容叠一层半透明 */
+body.mica .ob {
+  background: var(--bg-layer);
+}
+
+/* 顶栏：步骤条，Mac 上从红绿灯右边开始 */
+.ob-top {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: var(--titlebar-h);
+  padding: 0 20px;
+  border-bottom: 1px solid var(--stroke-soft);
+}
+
+.is-mac .ob-top {
+  padding-left: var(--traffic-end);
+}
+
+.ob-top .steps {
+  flex: 1;
+  min-width: 0;
+}
+
+.ob-top .step {
+  border-radius: var(--r-sm);
+  outline-offset: 2px;
+}
+
+.ob-top .step:hover .step-label {
+  color: var(--text);
+}
+
+/* 已经做好的当前步：强调色底 + 勾 */
+.step.is-current.is-complete .step-dot {
+  background: var(--accent-bg);
+  color: #fff;
+}
+
+.step.is-complete::after {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.ob-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 40px 20px;
+}
+
+.ob-step {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 660px;
+  margin: 0 auto;
+  animation: ob-in var(--dur-slow) var(--ease);
+}
+
+@keyframes ob-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.ob-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 2px;
+}
+
+.ob-title {
+  margin: 1px 0 0;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+
+.ob-lead {
+  margin: 5px 0 0;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+/* 底部动作条 */
+.ob-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 52px;
+  padding: 0 14px;
+  border-top: 1px solid var(--stroke);
+  background: var(--fill-1);
+}
+
+.ob-foot > .spacer {
+  flex: 1;
+}
+
+.ob-count {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.ob-foot .btn-primary .kbd-group {
+  margin-left: 2px;
+}
+
+/* 表单：左标签、右控件 */
+.ob-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ob-field {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  column-gap: 14px;
+  align-items: start;
+}
+
+.ob-label {
+  padding-top: 5px;
+  color: var(--text-2);
+  text-align: right;
+  line-height: 18px;
+}
+
+.ob-control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ob-control > .input,
+.ob-control > .secret {
+  width: 100%;
+  max-width: none;
+}
+
+.ob-control > textarea.input {
+  resize: none;
+}
+
+/* 标签列之后开始的内容（和控件左边对齐） */
+.ob-inline-note,
+.ob-test,
+.ob-two {
+  margin-left: 110px;
+}
+
+.ob-step > .ob-panel > .account {
+  width: auto;
+  max-width: none;
+}
+
+.ob-inline-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-h);
+  color: var(--text-2);
+}
+
+.ob-inline-note .icon {
+  color: var(--text-3);
+}
+
+.ob-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.ob-two .ob-field {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 5px;
+}
+
+.ob-two .ob-label {
+  padding-top: 0;
+  text-align: left;
+  font-size: var(--fs-sm);
+}
+
+.ob-done {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--r-lg);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.ob-done > span {
+  color: var(--text);
+}
+
+.ob-foot-hint {
+  margin-top: -4px;
+}
+
+/* 选 AI、选识别：卡片里的密钥框和账号卡片 */
+.ob-step > .choice-group + .ob-panel {
+  margin-top: 2px;
+}
+
+/* 项目 */
+.ob-project {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ob-projects {
+  padding: 4px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-lg);
+  background: var(--fill-1);
+}
+
+.ob-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.ob-name > .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.ob-name-lead {
+  display: inline-flex;
+}
+
+.ob-look {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: var(--control-h);
+}
+
+.ob-look > .vr {
+  height: 18px;
+}
+
+.ob-swatches {
+  display: flex;
+  gap: 7px;
+}
+
+.ob-swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--tint);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  transition: box-shadow var(--dur-fast) var(--ease);
+}
+
+.ob-swatch[aria-checked='true'] {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--tint);
+}
+
+.ob-icons {
+  display: flex;
+  gap: 2px;
+}
+
+.ob-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.ob-icon:hover {
+  background: var(--fill-2);
+  color: var(--text);
+}
+
+.ob-icon[aria-checked='true'] {
+  background: color-mix(in srgb, var(--tint, var(--c-blue)) 18%, transparent);
+  color: light-dark(color-mix(in oklab, var(--tint, var(--c-blue)), black 15%), color-mix(in oklab, var(--tint, var(--c-blue)), white 15%));
+}
+
+/* 第 5 步：左边权限和声音测试，右边字幕样子和快捷键 */
+.ob-try {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 24px;
+}
+
+.ob-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ob-col > .ob-sub:not(:first-child) {
+  margin-top: 8px;
+}
+
+.ob-sub {
+  margin: 0;
+  font-size: var(--fs);
+  font-weight: var(--fw-semibold);
+}
+
+.ob-sub-desc {
+  margin: -4px 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.ob-perms {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-lg);
+  background: var(--fill-1);
+}
+
+.ob-perm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.ob-perm + .ob-perm {
+  border-top: 1px solid var(--stroke-soft);
+}
+
+.ob-perm > .icon-box {
+  margin-top: 1px;
+}
+
+.ob-perm > .btn {
+  flex: none;
+  align-self: center;
+}
+
+.ob-perm-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.ob-perm-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: var(--fw-medium);
+}
+
+.ob-perm-desc {
+  margin-top: 2px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.ob-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--r-lg);
+  background: var(--bg-inset);
+  border: 1px solid var(--stroke-soft);
+}
+
+.ob-meter {
+  display: grid;
+  grid-template-columns: 14px 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.ob-meter .meter {
+  height: 6px;
+}
+
+.ob-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ob-key {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ob-key > .kbd-slot {
+  display: inline-flex;
+  min-width: 78px;
+}
+
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--accent-text);
+  font-size: var(--fs-sm);
+}
+
+.link-btn:hover {
+  background: var(--accent-soft);
+}
+
+/* 第 0 步：登录 */
+.ob-account {
+  display: flex;
+  padding: 6px 0 2px;
+}
+
+.ob-account .account {
+  max-width: none;
+}
+
+/* 最后一步：提一句课堂模式 */
+.ob-class-tip {
+  align-items: center;
+  margin-top: 4px;
+}
+
+/* 配好了但还没在引导里选过（老设置里的 OpenAI Key）：提示选一张卡片 */
+.ob-choose-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.ob-choose-hint .icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+/* 最后一步：字幕预览下面的「显示中文翻译」开关 */
+.ob-toggle-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  color: var(--text);
+  font-size: var(--fs-sm);
+}
+
+.ob-toggle-line > .toggle {
+  flex: none;
+}

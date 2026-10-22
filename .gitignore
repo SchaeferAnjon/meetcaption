@@ -1,0 +1,15 @@
+node_modules/
+dist/
+out/
+.DS_Store
+*.log
+.env*
+release/
+.claude/
+resources/models/xasr/
+scripts/asr-bench/data/
+scripts/asr-bench/models/
+scripts/asr-bench/out/
+scripts/asr-bench/venv/
+.playwright-mcp/
+CLAUDE.md

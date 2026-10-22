@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+    <title>字幕</title>
+    <link rel="stylesheet" href="../shared/tokens.css" />
+    <link rel="stylesheet" href="../shared/bilingual.css" />
+    <link rel="stylesheet" href="overlay.css" />
+  </head>
+  <body>
+    <div id="tipZone" class="tip-zone"><span>术语解释在这里弹出</span></div>
+    <div id="box" class="box quiet">
+      <div id="lines" class="lines"></div>
+    </div>
+    <div id="tip" class="tip" aria-hidden="true">
+      <div class="tip-term"></div>
+      <div class="tip-text"></div>
+      <i class="tip-arrow"></i>
+    </div>
+    <div id="edit" class="edit">
+      <div class="edit-hint">
+        <span>拖动字幕条移动位置，拖左右边缘改宽度</span>
+        <span class="edit-keys" id="editKeys" hidden><span class="kbd-group" id="editKbd"></span><span>显示 / 隐藏</span></span>
+      </div>
+      <button id="done" class="done">完成</button>
+      <div class="handle left" data-side="left"></div>
+      <div class="handle right" data-side="right"></div>
+    </div>
+    <script src="../shared/bilingual.js"></script>
+    <script src="../shared/drag.js"></script>
+    <script src="overlay.js"></script>
+  </body>
+</html>

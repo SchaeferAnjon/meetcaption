@@ -1,0 +1,406 @@
+/*
+ * 字幕窗：和答题框、主窗口同一套 Raycast 风格。始终深色半透明，1px 细描边，12px 圆角，柔和阴影。
+ * 窗口本身透明、点击穿透；字幕条四周留 6px 给阴影。颜色和字号由 overlay.js 按设置写进变量。
+ */
+
+:root {
+  color-scheme: dark;
+  --font-size: 26px;
+  /* overlay.js 按「背景深浅」写成 rgba(12, 14, 20, 透明度)，这里只取它的透明度，底色换成设计系统的中性深灰 */
+  --bg: rgba(12, 14, 20, 0.6);
+  --text: #ffffff;
+  --tr: #ffd666;
+  --tip-space: 0px; /* 窗口顶部留给术语解释的透明区域，主进程按字号算好发过来 */
+  --tip-font: 16px;
+  --edge: 6px;
+  --accent-ring: #7176ff;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+
+body {
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei UI', 'Segoe UI', sans-serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+.box {
+  position: absolute;
+  left: var(--edge);
+  right: var(--edge);
+  bottom: var(--edge);
+  box-sizing: border-box;
+  /* 背景只包住实际的字：从底边往上长，最高到设置的行数（窗口高度减去上方术语区） */
+  max-height: calc(100% - var(--tip-space) - var(--edge));
+  padding: 8px 20px 9px;
+  border-radius: var(--hud-radius, 12px);
+  background: var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  transition: opacity 0.6s ease, background-color 0.3s, box-shadow 0.2s;
+}
+
+/* 底色统一成中性深灰 28,28,30，透明度跟设置走；背景调到 0 时描边和阴影也跟着没了 */
+@supports (color: rgb(from red r g b / alpha)) {
+  .box {
+    background: rgb(from var(--bg) 28 28 30 / alpha);
+    border-color: rgb(from var(--bg) 255 255 255 / calc(alpha * 0.16));
+    box-shadow: 0 4px 14px rgb(from var(--bg) 0 0 0 / calc(alpha * 0.5)), 0 1px 3px rgb(from var(--bg) 0 0 0 / calc(alpha * 0.3));
+  }
+}
+
+.box.quiet {
+  opacity: 0;
+}
+
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 100%;
+  overflow: hidden;
+  flex-shrink: 1;
+  min-height: 0;
+}
+
+.lines.clipped {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+}
+
+.seg {
+  text-align: center;
+}
+
+.en {
+  color: var(--text);
+  font-size: var(--font-size);
+  line-height: 1.42;
+  font-weight: 500;
+  letter-spacing: 0.002em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 1px rgba(0, 0, 0, 0.9);
+  overflow-wrap: anywhere;
+}
+
+.tr {
+  color: var(--tr);
+  font-size: calc(var(--font-size) * 0.86);
+  line-height: 1.42;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+/* 我 / 对方 的小标签（字幕里同时显示我说的话时才有） */
+.speaker {
+  display: inline-block;
+  font-size: max(11px, 0.5em);
+  font-weight: 600;
+  line-height: 1;
+  padding: 0.3em 0.5em;
+  margin-right: 0.45em;
+  border-radius: 5px;
+  vertical-align: 0.28em;
+  text-shadow: none;
+  color: #9ccaff;
+  background: rgba(90, 169, 255, 0.2);
+}
+
+.seg.mine .speaker {
+  color: #86e3ae;
+  background: rgba(63, 207, 127, 0.2);
+}
+
+.seg.mine .en {
+  color: color-mix(in srgb, var(--text) 78%, #3fcf7f);
+}
+
+/* 意群底部细色条、纠正词的点线：粗细跟字号走（bilingual.css） */
+.en,
+.tr {
+  --bi-bar-h: 0.1em;
+  --bi-bar-gap: 0.04em;
+  --fix-thick: max(1.5px, 0.06em);
+  --fix-offset: 0.36em;
+}
+
+/* 术语：虚线下划线，鼠标停留弹解释 */
+.term {
+  text-decoration: underline dashed;
+  text-decoration-color: color-mix(in srgb, currentColor 70%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.2em;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+}
+
+.term.hot {
+  background: rgba(255, 255, 255, 0.16);
+  text-decoration-color: currentColor;
+}
+
+/* 术语解释气泡：和主窗口的提示气泡同一个样子（深色、细描边、8px 圆角） */
+.tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  max-width: min(calc(var(--tip-font) * 28), calc(100vw - 16px));
+  padding: 7px 11px 8px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(44, 44, 48, 0.97);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.25);
+  color: #f2f2f4;
+  font-size: var(--tip-font);
+  line-height: 1.45;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, visibility 0.12s;
+}
+
+.tip.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.tip-term {
+  margin-bottom: 1px;
+  color: #ffffff;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.tip-text {
+  color: rgba(242, 242, 244, 0.86);
+  overflow-wrap: anywhere;
+}
+
+.tip-arrow {
+  position: absolute;
+  bottom: -12px;
+  margin-left: -6px;
+  border: 6px solid transparent;
+  border-top-color: rgba(44, 44, 48, 0.97);
+}
+
+.tip.below .tip-arrow {
+  bottom: auto;
+  top: -12px;
+  border-top-color: transparent;
+  border-bottom-color: rgba(44, 44, 48, 0.97);
+}
+
+.tip.no-arrow .tip-arrow {
+  display: none;
+}
+
+/* 快捷键徽标（同 ../shared/ui.css 的 .kbd，深色） */
+.kbd-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* 调整位置模式：上方给术语解释留的区域 */
+.tip-zone {
+  display: none;
+}
+
+body.editing.has-tip-space .tip-zone {
+  position: absolute;
+  left: var(--edge);
+  right: var(--edge);
+  top: 2px;
+  height: calc(var(--tip-space) - 10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px dashed rgba(125, 129, 255, 0.55);
+  background: rgba(113, 118, 255, 0.06);
+  color: rgba(214, 216, 255, 0.85);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.tip-zone span {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(28, 28, 30, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.edit {
+  display: none;
+}
+
+body.editing .box {
+  height: calc(100% - var(--tip-space) - var(--edge));
+  opacity: 1;
+  -webkit-app-region: drag;
+  cursor: move;
+  box-shadow: 0 0 0 2px var(--accent-ring), 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+body.editing .edit {
+  display: block;
+  position: absolute;
+  left: var(--edge);
+  right: var(--edge);
+  bottom: var(--edge);
+  height: calc(100% - var(--tip-space) - var(--edge));
+  pointer-events: none;
+}
+
+.edit-hint {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(22, 22, 24, 0.92);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.edit-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.edit-keys[hidden] {
+  display: none;
+}
+
+.done {
+  position: absolute;
+  top: 7px;
+  right: 10px;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+  height: 24px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: #5e62f2;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 1px 3px rgba(0, 0, 0, 0.3);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: default;
+}
+
+.done:hover {
+  background: #6b6ff7;
+}
+
+/* 上方留了术语区时，提示条和「完成」放在字幕条上面，不挡字幕 */
+body.has-tip-space .edit-hint,
+body.has-tip-space .done {
+  top: -33px;
+}
+
+body.has-tip-space .done {
+  right: 0;
+}
+
+.handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  -webkit-app-region: no-drag;
+  pointer-events: auto;
+  cursor: ew-resize;
+}
+
+.handle.left {
+  left: -4px;
+}
+
+.handle.right {
+  right: -4px;
+}
+
+.handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 4px;
+  height: 28px;
+  margin-top: -14px;
+  border-radius: 2px;
+  background: var(--accent-ring);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+/* 随时拖动：鼠标在字幕框上可以按住拖 */
+body:not(.editing) .box:not(.quiet) {
+  cursor: grab;
+}
+
+body.dragging,
+body.dragging * {
+  cursor: grabbing !important;
+}
+
+/* 字幕窗在屏幕上半部：字幕条贴着窗口顶边往下长，术语解释的透明区在下面 */
+body.anchor-top .box {
+  top: var(--edge);
+  bottom: auto;
+}
+
+body.editing.anchor-top .edit {
+  top: var(--edge);
+  bottom: auto;
+}
+
+body.editing.has-tip-space.anchor-top .tip-zone {
+  top: auto;
+  bottom: 2px;
+}
+
+body.has-tip-space.anchor-top .edit-hint,
+body.has-tip-space.anchor-top .done {
+  top: calc(100% + 9px);
+}

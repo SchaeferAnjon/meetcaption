@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: file: https:; frame-src file:" />
+    <title>会议字幕</title>
+    <link rel="stylesheet" href="../shared/tokens.css" />
+    <link rel="stylesheet" href="../shared/ui.css" />
+    <link rel="stylesheet" href="../shared/bilingual.css" />
+    <link rel="stylesheet" href="../../../node_modules/katex/dist/katex.min.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="app-sidebar" id="sidebar" aria-label="侧栏"></aside>
+      <main class="app-main" id="main">
+        <header class="titlebar drag main-header titlebar-safe-end" id="header"></header>
+        <div class="notices" id="notices" hidden></div>
+        <div class="main-body" id="view"></div>
+      </main>
+    </div>
+    <script src="../../../node_modules/marked/lib/marked.umd.js"></script>
+    <script src="../../../node_modules/katex/dist/katex.min.js"></script>
+    <script src="../shared/langs.js"></script>
+    <script src="../shared/bilingual.js"></script>
+    <script src="../shared/texfix.js"></script>
+    <script src="../shared/icons.js"></script>
+    <script src="../shared/ui.js"></script>
+    <script src="core.js"></script>
+    <script src="sidebar.js"></script>
+    <script src="view-home.js"></script>
+    <script src="notes.js"></script>
+    <script src="view-live.js"></script>
+    <script src="view-project.js"></script>
+    <script src="view-meeting.js"></script>
+    <script src="view-todos.js"></script>
+    <script src="palette.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
