@@ -594,14 +594,35 @@ function togglePause(pause = !engine.paused) {
   return (pause ? engine.pause() : engine.resume()).then(() => ({ ok: true, paused: engine.paused }))
 }
 
-function trayImage() {
-  const img = nativeImage.createFromPath(path.join(root, 'assets/tray.png'))
-  img.addRepresentation({ scaleFactor: 2, buffer: nativeImage.createFromPath(path.join(root, 'assets/tray@2x.png')).toPNG() })
+/**
+ * 托盘图标。Mac 用模板图（文件名以 Template 结尾，系统按菜单栏深浅反色）；
+ * Windows / Linux 不认模板图，按任务栏深浅（shouldUseDarkColorsForSystemIntegratedUI）各一套，16 / 24 / 32 对应缩放 100% / 150% / 200%。
+ * 录音中（在记录且没暂停）换成实心版。
+ */
+function trayImage(rec) {
+  const dir = path.join(root, 'assets/tray')
+  if (isMac) return nativeImage.createFromPath(path.join(dir, rec ? 'trayRecTemplate.png' : 'trayTemplate.png'))
+  const theme = nativeTheme.shouldUseDarkColorsForSystemIntegratedUI ? 'dark' : 'light'
+  const file = (n) => path.join(dir, `win-tray-${theme}-${rec ? 'rec' : 'idle'}-${n}.png`)
+  const img = nativeImage.createFromPath(file(16))
+  img.addRepresentation({ scaleFactor: 1.5, buffer: fs.readFileSync(file(24)) })
+  img.addRepresentation({ scaleFactor: 2, buffer: fs.readFileSync(file(32)) })
   return img
+}
+
+let trayIconKey = ''
+function updateTrayIcon() {
+  if (!tray) return
+  const rec = engine.state === 'running' && !engine.paused
+  const key = `${rec}|${nativeTheme.shouldUseDarkColorsForSystemIntegratedUI}`
+  if (key === trayIconKey) return
+  trayIconKey = key
+  tray.setImage(trayImage(rec))
 }
 
 function updateTrayMenu() {
   if (!tray || !projects) return
+  updateTrayIcon()
   const running = engine.state === 'running'
   const s = settings.get()
   const cur = currentProjectId()
@@ -632,7 +653,8 @@ function updateTrayMenu() {
 }
 
 function createTray() {
-  tray = new Tray(trayImage())
+  tray = new Tray(trayImage(false))
+  trayIconKey = `false|${nativeTheme.shouldUseDarkColorsForSystemIntegratedUI}`
   if (!isMac) tray.on('click', showControl) // Mac 上点托盘图标自动弹菜单
   updateTrayMenu()
 }
@@ -683,7 +705,7 @@ function uiWindow({ width, height, minWidth, minHeight, title, ...rest }) {
     ...fitToScreen({ width, height, minWidth, minHeight }),
     title,
     show: false,
-    icon: path.join(root, 'assets/icon.png'),
+    icon: path.join(root, isWin ? 'assets/icon.ico' : 'assets/icon.png'),
     ...chromeOptions({ dark: dark() }),
     ...rest,
     webPreferences: { preload: path.join(root, 'preload/control.cjs') },
@@ -1578,6 +1600,7 @@ function wireEngine() {
   nativeTheme.on('updated', () => {
     for (const w of [controlWin, settingsWin, onboardingWin]) applyTheme(w, dark())
     toUi('theme:changed', themeInfo())
+    updateTrayIcon()
   })
   settings.on('change', (next, prev) => {
     toUi('settings:changed', next)

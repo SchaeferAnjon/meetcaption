@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<defs>
+<mask id="m_51">
+<rect width="24" height="24" fill="#fff"/>
+<circle cx="8.6" cy="15.4" r="1.55" fill="#000"/>
+<circle cx="15.4" cy="15.4" r="1.55" fill="#000"/>
+</mask>
+</defs>
+  <g fill="#FFFFFF" mask="url(#m_51)">
+<rect x="4" y="1" width="7" height="12" rx="3.5"/>
+<rect x="13" y="1" width="7" height="12" rx="3.5"/>
+<ellipse cx="12" cy="15.5" rx="10" ry="7.6"/>
+</g>
+<circle cx="20.70" cy="20.70" r="4.05" fill="#202020"/>
+<circle cx="20.70" cy="20.70" r="2.92" fill="#E5484D"/>
+</svg>

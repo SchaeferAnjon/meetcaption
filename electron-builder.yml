@@ -37,7 +37,7 @@ extraResources:
 beforePack: ./scripts/sherpa-native.mjs
 mac:
   category: public.app-category.productivity
-  icon: build/icon.png
+  icon: build/icon.icns
   target:
     - dmg
   hardenedRuntime: true
@@ -60,7 +60,7 @@ dmg:
   title: 会议字幕 ${version}
 win:
   executableName: MeetCaption
-  icon: build/icon.png
+  icon: build/icon.ico
   target:
     - target: nsis
       arch: [x64]
