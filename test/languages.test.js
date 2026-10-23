@@ -99,3 +99,15 @@ test('a translation that times out is retried once with the plain prompt and sho
   assert.equal(seg.sentences[0].tr, 'Does anyone have a question?')
   assert.ok(!notices.some((n) => n.code === 'enhance'), '重试成功了就不报失败')
 })
+
+test('繁体中文只做翻译目标：中文的话不再翻，英文照翻；提示词说繁体，专业术语照样翻成中文', async () => {
+  const { needsTranslation, TARGET_CODES, SOURCE_LANGS } = await import('../src/main/languages.js')
+  const { enhanceMessages } = await import('../src/main/prompts.js')
+  assert.ok(TARGET_CODES.includes('zh-Hant'))
+  assert.ok(!SOURCE_LANGS.includes('zh-Hant'))
+  assert.equal(needsTranslation('我们下周开会', 'zh', 'zh-Hant'), false)
+  assert.equal(needsTranslation('We meet next week.', 'en', 'zh-Hant'), true)
+  const text = enhanceMessages({ sentence: 'The ablation drops.', target: 'zh-Hant' }).map((m) => (typeof m === 'string' ? m : m.content ?? '')).join('\n')
+  assert.match(text, /繁体中文/)
+  assert.match(text, /消融/)
+})

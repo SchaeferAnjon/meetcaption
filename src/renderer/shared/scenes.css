@@ -1,6 +1,6 @@
 /* 演示舞台（scenes.js）：设计尺寸 640×400，外面按容器缩放 */
 .stagefit { position: relative; overflow: hidden; border-radius: 14px; background: linear-gradient(160deg, light-dark(#eef0f6, #24252c), light-dark(#e2e5ee, #1b1c22)); border: 1px solid var(--stroke-soft); }
-.stage { position: absolute; left: 0; top: 0; width: 640px; height: 400px; transform-origin: 0 0; font-family: var(--font-sans); color-scheme: light; }
+.stage { position: absolute; left: 0; top: 0; width: 640px; height: 400px; transform-origin: 0 0; font-family: var(--font-sans); color-scheme: light; text-align: left; }
 .sc { position: absolute; inset: 0; }
 .callwin { position: absolute; left: 34px; top: 26px; width: 572px; height: 330px; border-radius: 10px; background: #1f2026; box-shadow: 0 14px 40px rgba(0,0,0,.25); overflow: hidden; }
 .callwin .bar { height: 24px; display: flex; align-items: center; gap: 5px; padding: 0 9px; background: #2a2b31; color: #aaa; font-size: 10px; }

@@ -277,7 +277,7 @@ VIEWS.project = {
       })
       const globalTarget = () => `跟设置走（${langLabel(state.settings?.translateTarget ?? 'zh')}）`
       const target = ui.select({
-        options: [{ value: '', label: globalTarget() }, ...LANGS],
+        options: [{ value: '', label: globalTarget() }, ...TARGET_LANGS],
         value: full.target ?? '',
         width: 200,
         ariaLabel: '翻译成',

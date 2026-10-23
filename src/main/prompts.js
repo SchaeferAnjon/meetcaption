@@ -1,5 +1,5 @@
 import { isMostlyChinese } from './text.js'
-import { needsOpenAI, promptLang } from './languages.js'
+import { isChinese, needsOpenAI, promptLang } from './languages.js'
 
 // 对方说的是中英文以外的语言（德语课等）：告诉模型原文是什么语言，识别稿里的错字按这种语言去理解
 const sourceLine = (source) => (needsOpenAI(source) ? `发言的原文是${promptLang(source)}。` : '')
@@ -8,7 +8,7 @@ export function translateMessages({ sentence, previous, target, source, context,
   const lang = promptLang(target)
   const system = [
     `你是会议同传字幕员，把会议发言翻译成${lang}字幕。${sourceLine(source)}`,
-    `要求：忠实原意，口语自然，简洁；人名、机构名、缩写、模型/数据集/工具名保留原文；${target === 'zh' ? '有通行中文说法的专业术语翻成中文；' : ''}数字、日期、截止时间必须准确。`,
+    `要求：忠实原意，口语自然，简洁；人名、机构名、缩写、模型/数据集/工具名保留原文；${isChinese(target) ? '有通行中文说法的专业术语翻成中文；' : ''}数字、日期、截止时间必须准确。`,
     '识别稿可能有错字或断句不全，按上下文理解，不要评论。只输出译文本身，不要引号、不要解释。',
     context ? `会议背景：${context}` : '',
     keywords?.length ? `术语表（识别稿里这些词的正确拼写；专有名词和缩写保留原文）：${keywords.join('、')}` : '',
@@ -193,7 +193,7 @@ export function enhanceMessages({ sentence, previous = [], target = 'zh', source
   if (withChunks) shape.chunks = [{ en: '原文片段', zh: '译文片段' }]
   if (terms) shape.terms = [translate ? { term: '原文片段', zh: '译文里对应的片段', explain: '解释' } : { term: '原文片段', explain: '解释' }]
   const tasks = []
-  const toZh = target === 'zh'
+  const toZh = isChinese(target)
   if (correct)
     tasks.push(
       [

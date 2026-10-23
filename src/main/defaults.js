@@ -18,7 +18,7 @@ export const DEFAULTS = {
   context: '',
   keywords: '',
   translate: true, // v4：字幕下面一句一对的中文是核心功能，默认开（老设置文件里没存这个键的也跟着开）
-  translateTarget: 'zh', // 翻译成什么：languages.js 的 LANG_CODES；项目上设了（project.target）用项目的
+  translateTarget: 'zh', // 翻译成什么：languages.js 的 TARGET_CODES（多一个 zh-Hant 繁体中文）；项目上设了（project.target）用项目的
   llmProvider: 'openai', // llm/providers.js 里的 id：chatgpt（ChatGPT 账号登录）| openai | deepseek、zhipu 等内置服务 | custom（自定义兼容接口）
   llmBaseUrl: 'https://api.openai.com/v1', // 只给 custom 用
   llmKey: '', // 只给 custom 用；OpenAI 用 openaiKey

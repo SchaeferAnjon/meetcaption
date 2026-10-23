@@ -4,9 +4,12 @@
 export const LANG_NAMES = { zh: '中文', en: '英语', de: '德语', fr: '法语', es: '西班牙语', it: '意大利语', pt: '葡萄牙语', ru: '俄语', ja: '日语', ko: '韩语' }
 export const LANG_CODES = Object.keys(LANG_NAMES)
 export const SOURCE_LANGS = [...LANG_CODES, 'auto'] // auto：中英混着说
+// 能翻成的：对方的语言之外多一个繁体中文（只做翻译目标，识别还是按「中文」认）
+export const TARGET_CODES = [...LANG_CODES, 'zh-Hant']
+export const isChinese = (code) => code === 'zh' || code === 'zh-Hant'
 
 // 写进 prompt 的名字（带上原名，模型不会弄错是哪种语言）
-const PROMPT_NAMES = { zh: '简体中文', en: '英语（English）', de: '德语（Deutsch）', fr: '法语（Français）', es: '西班牙语（Español）', it: '意大利语（Italiano）', pt: '葡萄牙语（Português）', ru: '俄语（Русский）', ja: '日语（日本語）', ko: '韩语（한국어）' }
+const PROMPT_NAMES = { zh: '简体中文', 'zh-Hant': '繁体中文（繁體字，台湾、香港的用词）', en: '英语（English）', de: '德语（Deutsch）', fr: '法语（Français）', es: '西班牙语（Español）', it: '意大利语（Italiano）', pt: '葡萄牙语（Português）', ru: '俄语（Русский）', ja: '日语（日本語）', ko: '韩语（한국어）' }
 export const promptLang = (code) => PROMPT_NAMES[code] ?? PROMPT_NAMES.zh
 
 /** 只有 OpenAI 识别能认的语言（中英文和自动以外的）。 */
@@ -47,5 +50,5 @@ export function detectLang(text) {
 /** 这句要不要翻：判出来的语言（判不出就按项目设的对方语言，自动识别当英语）和要翻成的不一样就翻。 */
 export function needsTranslation(text, source, target) {
   const lang = detectLang(text) ?? (source === 'auto' || !source ? 'en' : source)
-  return lang !== target
+  return lang !== (target === 'zh-Hant' ? 'zh' : target)
 }

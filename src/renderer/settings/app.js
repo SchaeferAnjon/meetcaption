@@ -344,7 +344,7 @@ function buildOverlay() {
   const resetColors = el('button.btn.btn-ghost.btn-sm', { type: 'button', onClick: () => (P.set('overlay.textColor', '#ffffff', 0), P.set('overlay.translationColor', '#ffd666', 0)) }, '恢复默认')
   P.watch((s) => (resetColors.hidden = (s.overlay?.textColor || '').toLowerCase() === '#ffffff' && (s.overlay?.translationColor || '').toLowerCase() === '#ffd666'))
 
-  const target = P.selectField('translateTarget', LANGS, { label: '翻译成', width: 140 })
+  const target = P.selectField('translateTarget', TARGET_LANGS, { label: '翻译成', width: 140 })
   const targetWrap = el('span.form-inline', {}, el('span.text-2', { text: '翻成' }), target)
   P.enableWhen(targetWrap, (s) => s.translate)
   const trRow = P.row('译文', toggleLine('overlay.showTranslation', '在字幕里显示'), '关掉后译文只在主窗口的实时记录里显示。')

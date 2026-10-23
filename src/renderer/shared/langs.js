@@ -14,5 +14,7 @@ window.LANGS = [
   { value: 'ko', label: '韩语' },
 ]
 window.SOURCE_LANGS = [...window.LANGS, { value: 'auto', label: '自动识别（中英混说）' }]
-window.langLabel = (code) => window.SOURCE_LANGS.find((l) => l.value === code)?.label ?? code
+// 翻译成什么：多一个繁体中文（只做翻译目标）
+window.TARGET_LANGS = [...window.LANGS.map((l) => (l.value === 'zh' ? { value: 'zh', label: '简体中文' } : l)), { value: 'zh-Hant', label: '繁体中文' }]
+window.langLabel = (code) => [...window.TARGET_LANGS, ...window.SOURCE_LANGS].find((l) => l.value === code)?.label ?? code
 window.needsOpenAI = (code) => !['zh', 'en', 'auto'].includes(code)

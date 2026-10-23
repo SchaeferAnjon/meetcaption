@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { LANG_CODES, SOURCE_LANGS } from './languages.js'
+import { TARGET_CODES, SOURCE_LANGS } from './languages.js'
 
 // 项目：根目录下一个项目一个文件夹，文件夹里的 project.json 就是项目本身（拷走文件夹就是完整的项目），
 // 会议文件夹放在所属项目的文件夹里。「未归类」id 固定 'inbox'，不能删、不能改名、不能归档。
@@ -13,7 +13,7 @@ export const INBOX_NAME = '未归类'
 export const PROJECT_FILE = 'project.json'
 export const PROJECT_COLORS = ['blue', 'purple', 'green', 'orange', 'pink', 'teal', 'yellow', 'red', 'gray']
 export const LANGUAGES = SOURCE_LANGS
-export const TARGETS = ['', ...LANG_CODES] // 翻译成什么，空就用设置里的
+export const TARGETS = ['', ...TARGET_CODES] // 翻译成什么，空就用设置里的
 export const PROJECT_MODES = ['meeting', 'interview', 'class'] // 项目的默认模式（开始按钮的下拉里可以临时换）
 export const PROJECT_CLASS_SOURCES = ['mic', 'system', ''] // 课堂的声音来源，空就用设置里的默认
 const TEXT_FIELDS = ['name', 'color', 'icon', 'description', 'context', 'keywords', 'profile']
