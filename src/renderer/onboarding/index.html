@@ -2,33 +2,20 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: https:" />
-    <title>欢迎使用会议字幕</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: file:" />
+    <title>欢迎使用 MeetCaption</title>
     <link rel="stylesheet" href="../shared/tokens.css" />
     <link rel="stylesheet" href="../shared/ui.css" />
-    <link rel="stylesheet" href="../shared/bilingual.css" />
-    <link rel="stylesheet" href="../settings/parts.css" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <div class="ob">
-      <header class="ob-top drag titlebar-safe-end">
-        <ol class="steps" id="steps" aria-label="步骤"></ol>
-      </header>
-      <main class="ob-main" id="main"></main>
-      <footer class="ob-foot">
-        <button class="btn btn-ghost" id="prev" type="button"></button>
-        <span class="ob-count num" id="count"></span>
-        <span class="spacer"></span>
-        <button class="btn btn-ghost" id="later" type="button">稍后再说</button>
-        <button class="btn btn-primary" id="next" type="button"></button>
-      </footer>
+      <header class="ob-top drag"></header>
+      <main class="ob-body" id="body" aria-live="polite"></main>
+      <footer class="ob-dots" id="dots" aria-hidden="true"></footer>
     </div>
-    <script src="../shared/langs.js"></script>
-    <script src="../shared/bilingual.js"></script>
     <script src="../shared/icons.js"></script>
     <script src="../shared/ui.js"></script>
-    <script src="../settings/parts.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

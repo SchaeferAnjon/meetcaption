@@ -39,6 +39,7 @@ const EVENTS = new Set([
   'member:update', // { info: { kind, code, balance, devices, trialOnly, recent }, session, buying, error }
   'member:paid', // 付完款、场次加上了：{ kind, code, balance, ... }
   'member:showPricing', // 别的窗口（设置）要求主窗口打开收费页
+  'guide:show', // 放主窗口上的演示（首次引导第二段，或设置里点「看演示」）
   'slides:added', // 截取了一张画面 { sessionId, file: 'slides/时.分.秒.jpg', at（截图时刻，毫秒时间戳，同 seg.startedAt）, url（file:// 地址）}
 ])
 
@@ -125,6 +126,8 @@ contextBridge.exposeInMainWorld('app', {
   memberBuy: invoke('member:buy'), // (pack: 'p1'|'p10'|'p30'|'p100', currency: 'cny'|'usd')：浏览器里结账，付完自动加上
   memberCancelBuy: invoke('member:cancelBuy'),
   showPricing: invoke('member:showPricing'), // 把主窗口叫出来、打开收费页
+  openGuide: invoke('guide:open'), // 把主窗口叫出来、放演示
+  dragApp: () => ipcRenderer.send('app:dragApp'), // 在 dragstart 里调：拖的是应用本身，放进系统设置的权限列表
 
 
   /** 订阅事件，返回取消订阅的函数。 */

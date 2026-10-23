@@ -805,7 +805,8 @@ function openOnboarding() {
     bringToFront(onboardingWin)
     return
   }
-  onboardingWin = uiWindow({ width: 760, height: 580, minWidth: 640, minHeight: 520, title: '欢迎使用会议字幕', resizable: false, maximizable: false, fullscreenable: false })
+  // 照 Typefree：440×500 的小窗只要权限，演示放在主窗口上（control/guide.js）
+  onboardingWin = uiWindow({ width: 440, height: 500, minWidth: 440, minHeight: 500, title: '欢迎使用 MeetCaption', resizable: false, maximizable: false, minimizable: false, fullscreenable: false })
   onboardingWin.loadFile(path.join(root, 'renderer/onboarding/index.html'))
   onboardingWin.once('ready-to-show', () => bringToFront(onboardingWin))
   onboardingWin.on('closed', () => {
@@ -819,6 +820,8 @@ function finishOnboarding() {
   settings.update({ onboarding: { done: true } })
   emitOnboarding()
   showControl()
+  // 主窗口已经开着时它不会重新加载，直接让它放演示（新开的主窗口自己看 onboarding.demo）
+  if (!settings.get().onboarding.demo) toUi('guide:show')
   if (onboardingWin && !onboardingWin.isDestroyed()) onboardingWin.close()
   return onboardingStatus()
 }
@@ -1528,6 +1531,15 @@ function wireIpc() {
     }),
   )
   ipcMain.handle('member:cancelBuy', () => member.cancelBuy())
+  // 引导里把应用图标拖进系统设置的权限列表：拖的是应用本身（.app / 安装目录里的 exe）
+  ipcMain.on('app:dragApp', (e) => {
+    const file = isMac ? path.resolve(process.execPath, '../../..') : process.execPath
+    e.sender.startDrag({ file, icon: nativeImage.createFromPath(path.join(root, 'assets/icon.png')).resize({ width: 64, height: 64 }) })
+  })
+  ipcMain.handle('guide:open', () => {
+    showControl()
+    toUi('guide:show')
+  })
   ipcMain.handle('member:showPricing', () => {
     showControl()
     toUi('member:showPricing')

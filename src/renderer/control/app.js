@@ -280,6 +280,7 @@ async function boot() {
   applySidebarOpacity()
   renderNotices()
   go(state.live && snap.state !== 'idle' ? 'live' : 'home', {}, { push: false })
+  wireGuide()
   if (!state.llm) refreshLlm()
   ensureProjectMode(state.currentProjectId)
 }

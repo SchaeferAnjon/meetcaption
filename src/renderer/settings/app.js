@@ -87,7 +87,7 @@ function buildGeneral() {
     P.section(
       '首次引导',
       null,
-      P.row('', el('button.btn', { type: 'button', onClick: () => api.openOnboarding() }, icon('play', 14), el('span', { text: '重新打开首次引导' })), '录声纹、连接 AI、语音识别、建项目和声音测试，一步步再走一遍。'),
+      P.row('', el('div.form-inline', {}, el('button.btn', { type: 'button', onClick: () => api.openGuide() }, icon('play', 14), el('span', { text: '看演示' })), el('button.btn.btn-ghost', { type: 'button', onClick: () => api.openOnboarding() }, el('span', { text: '重新给权限' }))), '演示：字幕、AI 答题、课堂笔记怎么用。重新给权限：麦克风和电脑声音的授权再走一遍。'),
     ),
   ]
 }
@@ -749,7 +749,7 @@ function buildAbout() {
       '使用说明',
       null,
       el('ol.howto', {}, ...steps.map((parts) => el('li', {}, ...parts))),
-      el('div.form-inline.howto-actions', {}, el('button.btn', { type: 'button', onClick: () => api.openOnboarding() }, icon('play', 14), el('span', { text: '重新打开首次引导' }))),
+      el('div.form-inline.howto-actions', {}, el('button.btn', { type: 'button', onClick: () => api.openGuide() }, icon('play', 14), el('span', { text: '看演示' }))),
     ),
   ]
 }

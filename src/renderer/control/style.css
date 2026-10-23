@@ -2325,3 +2325,208 @@ button.nav-section:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------- 首次引导第二段：主窗口上的演示（guide.js，design/onboarding 方向 A） ---------------- */
+
+.guide {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: var(--bg);
+  -webkit-app-region: no-drag;
+  overflow: auto;
+}
+.guide-top {
+  position: absolute;
+  left: 40px;
+  top: calc(var(--titlebar-h, 38px) + 4px);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.guide-skip {
+  position: absolute;
+  right: 16px;
+  top: calc(var(--titlebar-h, 38px) - 26px);
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.guide-skip:hover {
+  color: var(--text-2);
+}
+.guide-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 40px;
+  align-items: start;
+  padding: calc(var(--titlebar-h, 38px) + 52px) 40px 110px;
+}
+.guide-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.guide-chips button {
+  position: relative;
+  overflow: hidden;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--fill-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+.guide-chips button[aria-pressed='true'] {
+  background: var(--text);
+  color: var(--bg);
+}
+.guide-chips .pr {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 0;
+  background: var(--accent);
+}
+.guide-chips button.run .pr {
+  animation: guide-prog var(--dur) linear forwards;
+}
+@keyframes guide-prog {
+  to {
+    width: 100%;
+  }
+}
+.guide-copy h2 {
+  margin: 18px 0 8px;
+  font-size: var(--fs-xl);
+}
+.guide-copy p {
+  margin: 0;
+  color: var(--text-2);
+  line-height: var(--lh-prose);
+}
+.guide-copy p b {
+  color: var(--text);
+}
+.guide-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-weight: var(--fw-medium);
+}
+.guide-step::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text);
+}
+.guide-try {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--stroke-soft);
+  background: var(--fill-1);
+}
+.guide-try-title {
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.guide-try-title b {
+  color: var(--text);
+}
+.guide-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.guide-meter > span:first-child {
+  width: 56px;
+}
+.guide-meter .bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--fill-3);
+  overflow: hidden;
+}
+.guide-meter .bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--blue);
+  transition: width 0.08s;
+}
+.guide-meter.is-me .bar i {
+  background: var(--green);
+}
+.guide-try-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.guide-try-res {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+}
+.guide-try-res.is-ok {
+  color: var(--green);
+}
+.guide-try-res.is-bad {
+  color: var(--yellow);
+}
+.guide-note {
+  margin-top: 16px;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-prose);
+}
+.guide-foot {
+  position: fixed;
+  left: 40px;
+  right: 40px;
+  bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.guide-dots {
+  display: flex;
+  gap: 6px;
+}
+.guide-dots button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--fill-4);
+  cursor: pointer;
+  transition: width var(--dur) var(--ease);
+}
+.guide-dots button[aria-current='true'] {
+  width: 22px;
+  background: var(--text);
+}
+@media (max-width: 960px) {
+  .guide-body {
+    grid-template-columns: 1fr;
+  }
+}
+.guide-foot .spacer {
+  flex: 1;
+}
