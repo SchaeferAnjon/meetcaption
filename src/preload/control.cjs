@@ -35,6 +35,10 @@ const EVENTS = new Set([
   // v4 课堂
   'notes:update', // 实时笔记 { sessionId, notes: { sections, emphasis, homework, terms }, updatedAt, error }，error 非空时 notes 是上一版
   'materials:progress', // 读课件的进度 { sessionId, name, page, total }，读完一批发 { sessionId, done: true }
+  // 会员
+  'member:update', // { info: { kind, code, balance, devices, trialOnly, recent }, session, buying, error }
+  'member:paid', // 付完款、场次加上了：{ kind, code, balance, ... }
+  'member:showPricing', // 别的窗口（设置）要求主窗口打开收费页
   'slides:added', // 截取了一张画面 { sessionId, file: 'slides/时.分.秒.jpg', at（截图时刻，毫秒时间戳，同 seg.startedAt）, url（file:// 地址）}
 ])
 
@@ -113,6 +117,14 @@ contextBridge.exposeInMainWorld('app', {
   askLast: invoke('assist:askLast'),
   askSegment: invoke('assist:askSegment'), // askSegment(segId)：回答主窗口点的那句提问
   answerRegenerate: invoke('assist:regenerate'),
+
+  // 会员：都回 { ok, info, session, buying, error } | { ok: false, error, code }
+  memberRefresh: invoke('member:refresh'),
+  memberActivate: invoke('member:activate'), // (授权码)
+  memberUnbind: invoke('member:unbind'),
+  memberBuy: invoke('member:buy'), // (pack: 'p1'|'p10'|'p30'|'p100', currency: 'cny'|'usd')：浏览器里结账，付完自动加上
+  memberCancelBuy: invoke('member:cancelBuy'),
+  showPricing: invoke('member:showPricing'), // 把主窗口叫出来、打开收费页
 
 
   /** 订阅事件，返回取消订阅的函数。 */

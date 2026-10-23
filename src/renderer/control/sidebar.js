@@ -158,9 +158,10 @@ function sidebarFooter() {
   const ob = state.onboarding ?? {}
   const llm = state.llm
   const provider = s.llmProvider ?? llm?.provider
-  const aiName = provider === 'chatgpt' ? 'ChatGPT' : provider === 'openai' ? 'OpenAI' : provider === 'custom' ? '自定义' : (llm?.label ?? '')
+  const member = s.plan === 'member'
+  const aiName = member ? '会员' : provider === 'chatgpt' ? 'ChatGPT' : provider === 'openai' ? 'OpenAI' : provider === 'custom' ? '自定义' : (llm?.label ?? '')
   const aiOk = llm ? Boolean(llm.ready) : Boolean(ob.ai)
-  const asrName = s.engine === 'local' ? '本地' : s.engine === 'volc' ? '豆包' : 'OpenAI'
+  const asrName = member ? (s.memberAsr === 'local' ? '本地' : '会员云') : s.engine === 'local' ? '本地' : s.engine === 'volc' ? '豆包' : 'OpenAI'
   const micOn = s.captureMic !== false
   const chips = el(
     'div.status-strip',
@@ -178,7 +179,7 @@ function sidebarFooter() {
       kind: 'AI',
       label: aiName,
       tip: aiOk ? { title: 'AI 已连上', text: llm?.label || aiName || 'AI 服务' } : { title: 'AI 还没连上', text: llm?.reason || '翻译、纪要和 AI 答题要用' },
-      onClick: () => openSettings('ai'),
+      onClick: () => (member ? openPricing() : openSettings('ai')),
     }),
     statusChip({
       ok: ob.asr,
@@ -186,12 +187,13 @@ function sidebarFooter() {
       kind: '识别',
       label: asrName,
       tip: ob.asr ? { title: '语音识别已配好', text: s.engine === 'local' ? '在这台电脑上识别，免费' : s.engine === 'volc' ? '豆包流式识别' : 'OpenAI 实时识别' } : { title: '语音识别还没配好', text: s.engine === 'local' ? '本地识别模型缺失，重新安装一下' : '点这里填密钥' },
-      onClick: () => openSettings('asr'),
+      onClick: () => openSettings(member ? 'member' : 'asr'),
     }),
   )
   return el(
     'div.sidebar-footer',
     {},
+    memberCard(),
     chips,
     el('button.nav-item', { type: 'button', dataset: { nav: 'settings' }, onClick: () => openSettings() }, icon('settings', 16), el('span.nav-label', { text: '设置' }), keyHint('settings')),
   )
@@ -213,6 +215,7 @@ on('route', (v) => (v?.name === 'project' && projectOf(v.id)?.archived ? renderS
 on('projects', renderSidebar)
 on('status', renderSidebar)
 on('engine', renderSidebar)
+on('member', renderSidebar)
 // 快捷键提示跟着设置走
 let sidebarKeys = ''
 on('settings', () => {

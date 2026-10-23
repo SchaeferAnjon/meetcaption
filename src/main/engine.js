@@ -42,6 +42,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 export function engineLabel(s) {
   if (s.engine === 'local') return '本地识别（X-ASR）'
+  if (s.volcUrl) return '会员云识别（豆包 2.0）'
   return s.engine === 'volc' ? `豆包流式识别（${s.volcResourceId}）` : `OpenAI ${s.openaiModel}`
 }
 
@@ -66,7 +67,7 @@ function createProvider(s) {
   if (s.engine === 'local') return new LocalStreamASR()
   if (s.engine === 'volc') {
     if (!s.volcAppId || !s.volcAccessToken) throw new Error('还没填豆包的 App ID 和 Access Token，去「设置」里填')
-    return new VolcStreamASR({ appId: s.volcAppId, accessToken: s.volcAccessToken, resourceId: s.volcResourceId, hotwords })
+    return new VolcStreamASR({ appId: s.volcAppId, accessToken: s.volcAccessToken, resourceId: s.volcResourceId, hotwords, url: s.volcUrl })
   }
   if (!s.openaiKey) throw new Error('还没填 OpenAI API Key，去「设置」里填')
   return new OpenAIRealtimeASR({
@@ -272,6 +273,11 @@ export class MeetingEngine extends EventEmitter {
     this.project = project
     this.cfg = this.#settingsFor(this.settings.get())
     if (this.notes) this.notes.context = project.context ?? ''
+  }
+
+  /** 会员场次用完、退回本地识别这类：设置没变但实际用的识别变了，下次继续时按新的建识别。 */
+  refreshSettings() {
+    if (this.state !== 'idle') this.cfg = this.#settingsFor(this.settings.get())
   }
 
   notice(level, text, code) {
@@ -677,6 +683,8 @@ export class MeetingEngine extends EventEmitter {
       if (st === 'ready' && this.state === 'running') this.notice('info', '识别已重新连上', 'reconnected')
     })
     provider.on('warn', (msg) => this.notice('warn', msg))
+    // 会员服务器停了识别（场次用完、没说话自动暂停）：主进程决定暂停还是换本地识别
+    provider.on('member', (type) => this.emit('member', { type, source }))
     provider.on('fatal', (e) => {
       this.notice('error', e.message)
       if (this.state === 'running') this.stop().catch(() => {})

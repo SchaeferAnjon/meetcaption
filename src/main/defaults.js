@@ -2,6 +2,9 @@
 import { PRESET_IDS, PROVIDER_IDS, presetByUrl, providerOf } from './llm/providers.js'
 
 export const DEFAULTS = {
+  // 会员（member：识别和 AI 都经 MeetCaption 服务器，不用填 Key，按场扣）| 自带 Key（own：下面的识别和 AI 设置）
+  plan: 'member',
+  memberAsr: 'cloud', // 会员用哪种识别：cloud（豆包 2.0，经我们服务器）| local（本地识别，只用会员 AI）
   engine: 'local', // local（本地 X-ASR，免费、不联网、不用 Key）| volc（豆包）| openai
   // v3：对方语言、会议背景、术语、我的资料（assist.profile）挪到了项目里（project.json）。这里的四个值只在第一次升级时迁成「未归类」的默认值。
   language: 'en', // 对方说的语言：languages.js 的 SOURCE_LANGS（en | zh | de … | auto）
@@ -48,7 +51,7 @@ export const DEFAULTS = {
   launchAtLogin: false,
   currentProjectId: 'inbox', // 主窗口和托盘里选中的项目，开会就开在它里面
   onboarding: { done: false, shownAt: 0 }, // 首次引导：done 完成了；shownAt 自动弹过一次（之后只能从设置里再打开）
-  migrations: { projects: false, translateOn: false, volcSeed: false, localAsr: false, providers: false }, // providers：「其他兼容服务」填的是内置的那几家地址的，换成那一家；projects：v2 的全局会议背景等已经迁进「未归类」；translateOn：升级时打开过一次翻译；volcSeed：豆包资源 ID 从旧默认 1.0 换成过 2.0；localAsr：没配好识别 Key 的换成过本地识别
+  migrations: { projects: false, translateOn: false, volcSeed: false, localAsr: false, providers: false, plan: false }, // providers：「其他兼容服务」填的是内置的那几家地址的，换成那一家；projects：v2 的全局会议背景等已经迁进「未归类」；translateOn：升级时打开过一次翻译；volcSeed：豆包资源 ID 从旧默认 1.0 换成过 2.0；localAsr：没配好识别 Key 的换成过本地识别；plan：0.6 以前就在用的人（走完过引导）定成自带 Key
   terms: { enabled: true, correct: true }, // correct：AI 纠正识别错误（跟译文、术语同一个请求，显示纠正后的句子，识别原文留在存档里）
   voiceprint: { threshold: 0.5 }, // 声纹本体存 userData/voiceprint.json
   assist: {
@@ -112,6 +115,11 @@ export function upgradePatch(s) {
     const id = s?.llmProvider === 'custom' ? presetByUrl(s.llmBaseUrl) : null
     if (id) Object.assign(patch, { llmProvider: id, llmKeys: { [id]: s.llmKey ?? '' } })
     marks.providers = true
+  }
+  // 0.6：加了会员。已经在用的人保持自带 Key（他们的 Key 和识别设置不动），新装的默认会员
+  if (!done.plan) {
+    if (s?.onboarding?.done) patch.plan = 'own'
+    marks.plan = true
   }
   return Object.keys(marks).length ? { ...patch, migrations: marks } : null
 }

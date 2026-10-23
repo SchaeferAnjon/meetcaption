@@ -18,7 +18,7 @@ let screenWarnNode = null
 let renderEditBtn = () => {}
 
 const LAST = 'meetcaption.settings.section'
-const ALIAS = { permission: 'permissions', privacy: 'permissions', account: 'ai', login: 'ai', llm: 'ai', chatgpt: 'ai', hotkey: 'hotkeys', shortcuts: 'hotkeys', caption: 'overlay', captions: 'overlay', display: 'overlay', answer: 'assist', microphone: 'mic', recognition: 'asr', classroom: 'class', lecture: 'class', notes: 'class' }
+const ALIAS = { pricing: 'member', plan: 'member', license: 'member', permission: 'permissions', privacy: 'permissions', account: 'ai', login: 'ai', llm: 'ai', chatgpt: 'ai', hotkey: 'hotkeys', shortcuts: 'hotkeys', caption: 'overlay', captions: 'overlay', display: 'overlay', answer: 'assist', microphone: 'mic', recognition: 'asr', classroom: 'class', lecture: 'class', notes: 'class' }
 
 /* ---------------- 小部件 ---------------- */
 
@@ -97,11 +97,25 @@ async function pickDir() {
   if (typeof dir === 'string' && dir) P.set('saveDir', dir, 0)
 }
 
+// 会员模式下「账号与 AI」「语音识别」里的设置不起作用：顶上说一句，给个换用法的入口
+function memberNote(what) {
+  const note = P.callout(
+    'info',
+    'sparkles',
+    `正在用会员的${what}`,
+    `会员模式下${what}由 MeetCaption 提供，不用填 Key。下面的设置在换成「自带 Key」后才用。`,
+    el('button.btn.btn-sm', { type: 'button', onClick: () => go('member') }, '会员设置'),
+  )
+  P.showWhen(note, (s) => s.plan === 'member')
+  return note
+}
+
 function buildAi() {
   const test = P.testButton('测试 AI 服务', () => P.call('testLlm', {}), (r) => `可以用，${((r.ms ?? 0) / 1000).toFixed(1)} 秒：${r.sample ?? ''}`)
   const testRow = P.row('', test)
   P.showWhen(testRow, (s) => s.llmProvider !== 'chatgpt')
   return [
+    memberNote('AI'),
     P.section('AI 服务', '翻译、术语解释、会后纪要和 AI 答题都用它。每家的 Key 分开存，换来换去不会丢。', P.providerPicker({ recommend: null }), ...P.providerSetup(), testRow),
     P.section(
       '模型',
@@ -204,6 +218,7 @@ function buildAsr() {
   P.showWhen(advanced, (s) => s.engine === 'openai')
   const test = P.testButton('测试', () => P.call('testAsr', {}), () => (P.get('engine') === 'local' ? '本地识别可以用了' : '连接成功，可以开始用了'))
   return [
+    memberNote('识别'),
     P.section(
       '识别服务',
       '把对方和你说的话实时转成文字。对方说的语言在每个项目的「资料」里设置。',
@@ -585,6 +600,120 @@ function buildMic() {
   ]
 }
 
+/* ---------------- 会员 ---------------- */
+
+let memberSnap = null
+let renderMember = () => {}
+
+function buildMember() {
+  const box = el('div.member-status')
+  const codeInput = el('input.input.mono', { type: 'text', placeholder: 'MC-XXXX-XXXX-XXXX', spellcheck: 'false', autocomplete: 'off', 'aria-label': '授权码' })
+  const codeOut = el('div.test-line', { role: 'status' })
+  const activate = el('button.btn', { type: 'button' }, el('span', { text: '激活' }))
+  activate.addEventListener('click', async () => {
+    const code = codeInput.value.trim()
+    if (!code) return codeInput.focus()
+    activate.classList.add('is-loading')
+    const r = await P.call('memberActivate', code)
+    activate.classList.remove('is-loading')
+    codeOut.dataset.state = r?.ok ? 'ok' : 'err'
+    codeOut.replaceChildren(icon(r?.ok ? 'circle-check' : 'circle-alert', 14), el('span', { text: r?.ok ? `已激活，剩 ${r.info?.balance ?? 0} 场` : r?.error || '没能激活' }))
+    if (r?.ok) {
+      codeInput.value = ''
+      if (P.get('plan') !== 'member') P.set('plan', 'member', 0)
+    }
+  })
+  codeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.isComposing) activate.click()
+  })
+
+  renderMember = () => {
+    const info = memberSnap?.info
+    const rows = []
+    if (!info) {
+      rows.push(el('div.form-hint', { text: memberSnap?.error ? `连不上会员服务器：${memberSnap.error}` : '正在连接会员服务器…' }))
+    } else {
+      const trial = info.kind !== 'paid'
+      rows.push(
+        el(
+          'div.member-balance',
+          {},
+          el('b', { text: String(Math.max(0, info.balance)) }),
+          el('span', { text: ` 场${trial ? '（免费试用）' : ''}，每场最长 2 小时` }),
+        ),
+      )
+      if (info.code)
+        rows.push(
+          el(
+            'div.member-code',
+            {},
+            el('span.form-hint', { text: '授权码' }),
+            el('code.selectable', { text: info.code }),
+            el('button.btn.btn-sm.btn-ghost', { type: 'button', onClick: () => navigator.clipboard.writeText(info.code).then(() => ui.toast({ title: '授权码已复制', type: 'success' })) }, icon('copy', 13), el('span', { text: '复制' })),
+          ),
+          el('div.form-hint', { text: `用在 ${info.devices ?? 1} 台电脑上，最多 2 台。` }),
+        )
+      const recent = (info.recent ?? []).filter((x) => x.ended_at || x.active_ms)
+      if (recent.length)
+        rows.push(
+          el(
+            'div.member-recent',
+            {},
+            recent.map((x) =>
+              el('div', {
+                text: `${new Date(x.started_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · 用了 ${Math.round((x.active_ms ?? 0) / 60000)} 分钟 · ${x.refunded ? '不到 5 分钟，没扣' : `扣 ${x.charged} 场`}`,
+              }),
+            ),
+          ),
+        )
+    }
+    const actions = el(
+      'div.form-inline',
+      {},
+      el('button.btn.btn-primary', { type: 'button', onClick: () => P.call('showPricing') }, el('span', { text: memberSnap?.buying ? '正在等付款…' : '购买场次' })),
+      info && !info.trialOnly
+        ? el(
+            'button.btn.btn-ghost',
+            {
+              type: 'button',
+              onClick: async () => {
+                if (!(await ui.confirm({ title: '解绑这台电脑？', message: '这台电脑不再用这个授权码，退回它自己的试用场次。授权码在别的电脑上照常用，以后输码还能再绑回来。', okLabel: '解绑' }))) return
+                await P.call('memberUnbind')
+              },
+            },
+            el('span', { text: '解绑这台电脑' }),
+          )
+        : null,
+    )
+    box.replaceChildren(...rows, actions)
+  }
+  renderMember()
+
+  const own = P.callout(null, 'key-round', '正在用自带 Key', '识别和 AI 用你在「账号与 AI」「语音识别」里配的服务，不经过我们，不扣场次。')
+  P.showWhen(own, (s) => s.plan === 'own')
+  const memberRows = [
+    P.row('剩余场次', box),
+    P.row('识别', P.segField('memberAsr', [
+      { value: 'cloud', label: '云识别（豆包 2.0）', icon: 'audio-lines' },
+      { value: 'local', label: '本地识别', icon: 'monitor' },
+    ], { label: '会员用哪种识别' }), '云识别更准，专有名词少听错；本地识别在电脑上跑、断网也能用。两种都按场算，AI 照样能用。'),
+  ]
+  for (const r of memberRows) P.showWhen(r, (s) => s.plan === 'member')
+  return [
+    P.section(
+      '用法',
+      '会员不用填任何 Key，识别和 AI 都由我们提供，按场扣；自带 Key 永久免费，费用直接付给你选的服务商。',
+      P.row('', P.segField('plan', [
+        { value: 'member', label: '会员（免配置）', icon: 'sparkles' },
+        { value: 'own', label: '自带 Key', icon: 'key-round' },
+      ], { label: '用法' })),
+      own,
+      ...memberRows,
+    ),
+    P.section('授权码', '在别的电脑上买过，或者官网买的：输入授权码，这台电脑就用那里的场次。', P.row('', el('div.form-inline', {}, codeInput, activate), codeOut)),
+  ]
+}
+
 function buildAbout() {
   const toggleKbd = el('span.kbd-slot')
   const askKbd = el('span.kbd-slot')
@@ -629,6 +758,7 @@ function buildAbout() {
 
 const SECTIONS = [
   { id: 'general', label: '通用', icon: 'settings', tint: 'gray', build: buildGeneral },
+  { id: 'member', label: '会员', icon: 'star', tint: 'yellow', build: buildMember },
   { id: 'ai', label: '账号与 AI', icon: 'sparkles', tint: 'indigo', build: buildAi, warn: () => onboarding.ai === false },
   { id: 'asr', label: '语音识别', icon: 'audio-lines', tint: 'blue', build: buildAsr, warn: () => onboarding.asr === false },
   { id: 'voiceprint', label: '声纹', icon: 'fingerprint-pattern', tint: 'purple', build: buildVoiceprint, warn: () => onboarding.voiceprint === false && P.get('captureMic') },
@@ -741,6 +871,7 @@ async function boot() {
   screenPerm = init.screenPermission ?? null
   perms = init.permissions ?? {}
   overlayState = init.overlay || overlayState
+  memberSnap = init.member ?? null
   P.boot(init)
   buildNav()
   const q = new URLSearchParams(location.search).get('section')
@@ -768,6 +899,10 @@ async function boot() {
     renderNavWarn()
   })
   P.on('settings:section', (sec) => go(sec))
+  P.on('member:update', (snap) => {
+    memberSnap = snap
+    renderMember()
+  })
   P.on('overlay:state', (st) => {
     overlayState = st || overlayState
     renderEditBtn()

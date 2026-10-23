@@ -11,6 +11,7 @@ import { NOTES_HTML, Summarizer } from './summary.js'
 import { aggregateTodos, openTodoCounts, patchTodo } from './todos.js'
 import { searchLibrary } from './search.js'
 import { MeetingEngine } from './engine.js'
+import { Member, memberSettings, PACKS as MEMBER_PACKS } from './member/client.js'
 import { RendererCapture } from './rendererCapture.js'
 import { ChatGPTAuth, complete, listModels, llmStatus, resolveModel, isAbort, PROVIDERS } from './llm/index.js'
 import { OpenAIRealtimeASR } from './asr/openai.js'
@@ -47,7 +48,7 @@ const selfTest = process.argv.find((a) => a.startsWith('--selftest'))
 const uiSelfTest = selfTest?.startsWith('--selftest=ui') ? Number(selfTest.split(':')[1]) || 8 : 0
 if (!selfTest && !app.requestSingleInstanceLock()) app.quit()
 
-let settings, projects, store, summarizer, engine, capture, chatgptAuth, assistant, vpStore
+let settings, projects, store, summarizer, engine, capture, chatgptAuth, assistant, vpStore, member
 let controlWin = null
 let settingsWin = null
 let onboardingWin = null
@@ -82,9 +83,12 @@ const toOverlay = (ch, p) => send(overlayWin, ch, p)
 const toAnswer = (ch, p) => send(answerWin, ch, p)
 const senderWin = (e) => BrowserWindow.fromWebContents(e.sender) ?? controlWin
 
+// 实际用的设置：会员模式下识别和 AI 换成经我们服务器的通道（设置窗口看到的还是用户自己存的）
+const effective = (s = settings.get()) => (member ? memberSettings(s, member) : s)
+
 // 翻译、纪要、答题统一走 A 模块的 complete；每次取最新设置，切换 AI 服务不用重建什么
-const llm = (o) => complete(settings.get(), chatgptAuth, o)
-const aiStatus = (s = settings.get()) => llmStatus(s, chatgptAuth)
+const llm = (o) => complete(effective(), chatgptAuth, o)
+const aiStatus = (s = effective()) => llmStatus(s, chatgptAuth)
 
 function vpProfile() {
   const p = vpStore.load()
@@ -261,8 +265,9 @@ function onboardingStatus() {
   return {
     done: Boolean(s.onboarding?.done),
     voiceprint: vpStatus().enrolled,
-    ai: aiStatus(s).ready,
-    asr: s.engine === 'local' ? localAsrAvailable() : s.engine === 'volc' ? Boolean(s.volcAppId && s.volcAccessToken) : Boolean(s.openaiKey),
+    ai: aiStatus(effective(s)).ready,
+    // 会员的云识别不用 Key；选本地识别的照样看模型在不在
+    asr: s.plan === 'member' && s.memberAsr !== 'local' ? true : s.engine === 'local' || s.plan === 'member' ? localAsrAvailable() : s.engine === 'volc' ? Boolean(s.volcAppId && s.volcAccessToken) : Boolean(s.openaiKey),
     project: projects.list().some((p) => p.id !== INBOX_ID && !p.archived),
   }
 }
@@ -588,10 +593,18 @@ async function toggleRecording() {
   toUi('engine:notice', { level: 'error', text: `没能开始记录：${r.error}`, code: 'hotkey-start' })
 }
 
-/** 暂停 / 继续记录（同一场会议）。pause 不给就是切换。 */
-function togglePause(pause = !engine.paused) {
+/** 暂停 / 继续记录（同一场会议）。pause 不给就是切换。会员被服务器自动暂停过的，继续前先告诉服务器放行。 */
+async function togglePause(pause = !engine.paused) {
   if (engine.state !== 'running') return { ok: false, error: '没在记录' }
-  return (pause ? engine.pause() : engine.resume()).then(() => ({ ok: true, paused: engine.paused }))
+  if (!pause && member?.session?.idle) {
+    try {
+      await member.resumeIdle()
+    } catch (e) {
+      return { ok: false, error: e.message }
+    }
+  }
+  await (pause ? engine.pause() : engine.resume())
+  return { ok: true, paused: engine.paused }
 }
 
 /**
@@ -897,12 +910,54 @@ async function startEngine({ projectId, mode, classSource } = {}) {
     let project = projects.get(id)
     const m = resolveMode({ mode, classSource }, project, settings.get())
     if (m.mode === 'class' && classSource && project.classSource !== m.classSource) project = projects.update(id, { classSource: m.classSource })
-    await engine.start({ project, mode: m.mode, classSource: m.classSource, extraKeywords: otherProjectWords(id) })
+    const memberNote = await startMemberSession()
+    try {
+      await engine.start({ project, mode: m.mode, classSource: m.classSource, extraKeywords: otherProjectWords(id) })
+    } catch (e) {
+      member?.endSession()
+      throw e
+    }
+    if (memberNote) engine.notice('warn', memberNote, 'member')
     return { ok: true, projectId: id, sessionId: engine.session?.id ?? null, mode: m.mode, classSource: m.classSource }
   } catch (e) {
     if (e.code === 'start-cancelled') return { ok: false, cancelled: true, error: e.message, code: e.code }
     return { ok: false, error: e.message }
   }
+}
+
+/**
+ * 会员开始记录前先开一场（扣一场，或接上 30 分钟内断开的那场）。场次不够或连不上服务器：这一场退回本地识别，
+ * 回一句给用户看的说明；够的话回 null。
+ */
+async function startMemberSession() {
+  if (!member || settings.get().plan !== 'member') return null
+  member.fallback = false
+  try {
+    await member.startSession()
+    return null
+  } catch (e) {
+    member.fallback = true
+    if (e.code === 'no-balance') return '会员场次用完了：这一场用本地识别，翻译和答题这些 AI 功能先关着。去「设置 → 会员」买场次。'
+    return `连不上会员服务器（${e.message}），这一场先用本地识别，AI 功能可能用不了。`
+  }
+}
+
+/** 会员服务器停了识别：场次用完就换本地识别接着记；15 分钟没说话就暂停，等用户点继续。 */
+async function onMemberStop({ type }) {
+  if (engine.state !== 'running') return
+  if (type === 'idle') {
+    member?.markIdle()
+    await engine.pause()
+    engine.notice('warn', '15 分钟没听到有人说话，已经自动暂停，不再计时。要接着记就点「继续」。', 'member-idle')
+    return
+  }
+  // exhausted（场次用完）或 ended（服务器那边这一场已结束）：退回本地识别
+  member?.markExhausted()
+  if (member) member.fallback = true
+  engine.refreshSettings()
+  await engine.pause()
+  await engine.resume()
+  engine.notice('warn', '会员场次用完了，已经换成本地识别接着记，翻译和答题先关着。去「设置 → 会员」买场次。', 'member-exhausted')
 }
 
 // 其他没归档项目的名字和术语：加进识别热词，会上顺带提到别的项目时少听错
@@ -1293,7 +1348,9 @@ function wireIpc() {
     chatgpt: chatgptAuth.status(),
     voiceprint: vpStatus(),
     llm: aiStatus(),
-    llmProviders: PROVIDERS,
+    llmProviders: PROVIDERS.filter((p) => !p.hidden),
+    member: member?.snapshot() ?? null,
+    memberPacks: MEMBER_PACKS,
     screenPermission: screenPermission(),
     permissions: permissionStatus(),
     projects: listProjects(),
@@ -1450,6 +1507,31 @@ function wireIpc() {
   ipcMain.handle('test:asr', (_e, patch) => testAsr(patch))
   ipcMain.handle('test:llm', (_e, patch) => testLlm(patch))
   ipcMain.handle('llm:models', () => listModels(settings.get()))
+  // 会员：状态、输授权码、解绑、购买（浏览器里结账，付完自动加上）
+  const memberCall = (fn) => async (_e, ...args) => {
+    try {
+      return { ok: true, ...(await fn(...args)) }
+    } catch (e) {
+      return { ok: false, error: e.message, code: e.code }
+    }
+  }
+  ipcMain.handle('member:refresh', memberCall(() => member.refresh()))
+  ipcMain.handle('member:activate', memberCall((code) => member.activate(String(code ?? ''))))
+  ipcMain.handle('member:unbind', memberCall(() => member.unbind()))
+  ipcMain.handle(
+    'member:buy',
+    memberCall(async (pack, currency) => {
+      const url = await member.buy(pack, currency === 'usd' ? 'usd' : 'cny')
+      // 自测时不打开系统浏览器，结账网址带回去由测试脚本自己付
+      if (!process.env.MEETCAPTION_NO_EXTERNAL) await shell.openExternal(url)
+      return { ...member.snapshot(), url }
+    }),
+  )
+  ipcMain.handle('member:cancelBuy', () => member.cancelBuy())
+  ipcMain.handle('member:showPricing', () => {
+    showControl()
+    toUi('member:showPricing')
+  })
   ipcMain.handle('test:audio', (_e, opts) => testAudio(opts ?? {}))
   ipcMain.handle('llm:status', () => aiStatus())
   ipcMain.handle('permission:request', (_e, kind) => requestPermission(kind))
@@ -1532,6 +1614,7 @@ function wireIpc() {
 
 function wireEngine() {
   engine.on('state', (st) => {
+    if (st.state === 'idle') member?.endSession()
     toUi('engine:state', { ...st, dir: sessionDir(st.sessionId ?? st.lastSessionId) })
     if (st.state === 'running') {
       classAnswered = false
@@ -1560,10 +1643,12 @@ function wireEngine() {
   })
   engine.on('level', (lv) => toUi('engine:level', lv))
   engine.on('pause', (p) => {
+    member?.setRunning(!p.paused)
     toUi('engine:pause', p)
     toOverlay('overlay:config', overlayConfig())
     updateTrayMenu()
   })
+  engine.on('member', (m) => onMemberStop(m).catch((e) => console.error('[member]', e)))
   engine.on('devices', (d) => toUi('engine:devices', d))
   engine.on('notice', (n) => toUi('engine:notice', n))
   engine.on('notes', (n) => toUi('notes:update', n))
@@ -1604,6 +1689,7 @@ function wireEngine() {
   })
   settings.on('change', (next, prev) => {
     toUi('settings:changed', next)
+    if (next.plan === 'member' && prev.plan !== 'member') member.refresh()
     if (
       next.hotkeyToggle !== prev.hotkeyToggle ||
       next.hotkeyRecord !== prev.hotkeyRecord ||
@@ -1675,8 +1761,24 @@ app.whenReady().then(async () => {
   chatgptAuth = new ChatGPTAuth({ file: path.join(app.getPath('userData'), 'chatgpt-auth.json'), safeStorage })
   assistant = new Assistant({ complete: llm, captureScreen, screenReady: () => screenPermission() === 'granted' })
   vpStore = new VoiceprintStore(path.join(app.getPath('userData'), 'voiceprint.json'))
+  member = new Member({ file: path.join(app.getPath('userData'), 'member.json') })
+  member.on('update', (snap) => {
+    toUi('member:update', snap)
+    emitOnboarding()
+  })
+  member.on('paid', (info) => {
+    toUi('member:paid', info)
+    showControl()
+  })
+  member.on('session', (e) => {
+    if (e.type === 'rolled') engine.notice('info', `这一场已满 2 小时，自动开始第 ${e.charged} 场`, 'member-rolled')
+    // 本地识别 + 会员 AI 时没有识别连接可断，靠心跳知道用完了
+    if (e.type === 'exhausted' && engine.state === 'running' && !engine.paused) onMemberStop({ type: 'exhausted' }).catch(() => {})
+  })
+  if (settings.get().plan === 'member') member.refresh()
   engine = new MeetingEngine({
-    settings,
+    // 引擎看到的是实际用的设置（会员模式换了识别和 AI 通道）；改设置的事件也换成实际的
+    settings: { get: () => effective(), on: (ev, fn) => settings.on(ev, (next, prev) => fn(effective(next), prev)) },
     store,
     rendererCapture: capture,
     llm,
@@ -1684,7 +1786,7 @@ app.whenReady().then(async () => {
     assistant,
     voiceprint: { profile: vpProfile, loadModel: () => loadVoiceprintModel() },
   })
-  summarizer = new Summarizer({ store, projects, llm, aiStatus: () => aiStatus(), modelName: (m) => resolveModel(settings.get(), m), loadImage: slideDataUrl, renderPdf })
+  summarizer = new Summarizer({ store, projects, llm, aiStatus: () => aiStatus(), modelName: (m) => resolveModel(effective(), m), loadImage: slideDataUrl, renderPdf })
 
   if (useFakes) engine.useFakeSources(fakeFiles)
 

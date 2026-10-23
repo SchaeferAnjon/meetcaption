@@ -258,6 +258,7 @@ async function boot() {
   state.hotkey = init.hotkey ?? state.hotkey
   state.overlay = init.overlay ?? state.overlay
   ui.applyChrome(init.chrome)
+  wireMember(init)
 
   const snap = init.snapshot ?? { state: 'idle', segments: [] }
   const sess = snap.session ?? {}

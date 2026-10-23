@@ -23,6 +23,10 @@ import WebSocket from 'ws'
 
 class FatalError extends Error {}
 
+// 经会员服务器转发时（url 指向 api.us-cloud.uk）它会主动断开或拒绝重连的几种情况：关闭码 / 握手时 X-Api-Message 里的代码
+const MEMBER_CLOSE = { 4002: 'exhausted', 4008: 'idle' }
+const MEMBER_STOPS = { exhausted: 'exhausted', idle: 'idle', ended: 'ended' }
+
 const RATE = 16000
 const PER_MS = RATE / 1000 // 16 个样本 1 毫秒
 const PACKET_BYTES = 3200 // 攒够 100ms 发一包
@@ -144,7 +148,7 @@ export class VolcStreamASR extends EventEmitter {
 
   constructor({ appId, accessToken, resourceId, hotwords, url, timing }) {
     super()
-    this.opts = { appId, accessToken, resourceId: resourceId || 'volc.seedasr.sauc.duration', hotwords, url } // url、timing 只给单测用
+    this.opts = { appId, accessToken, resourceId: resourceId || 'volc.seedasr.sauc.duration', hotwords, url } // url：会员模式下是我们服务器的转发地址，单测里是假服务器
     this.t = { ...TIMING, ...timing }
     this.conn = null
     this.closing = false
@@ -207,6 +211,11 @@ export class VolcStreamASR extends EventEmitter {
         res.on('end', () => {
           req.destroy()
           const status = res.statusCode
+          const memberStop = MEMBER_STOPS[res.headers['x-api-message']]
+          if (memberStop && (status === 402 || status === 409)) {
+            fail(new Error(memberStop))
+            return this.#memberStop(conn, memberStop)
+          }
           const msg = handshakeError(status, body, { resourceId, apiMessage: res.headers['x-api-message'] })
           // 429（并发超限，常见于刚断的旧会话还没释放）和 5xx 过一会儿再连；其余 4xx 是账号或参数的问题
           const err = status >= 400 && status < 500 && status !== 429 ? new FatalError(msg) : new Error(msg)
@@ -231,7 +240,10 @@ export class VolcStreamASR extends EventEmitter {
       })
       ws.on('message', (data) => this.#onFrame(conn, data))
       ws.on('error', (e) => fail(e))
-      ws.on('close', (code, reason) => this.#onConnLost(conn, new Error(`豆包连接断开（${code} ${reason}）`)))
+      ws.on('close', (code, reason) => {
+        if (MEMBER_CLOSE[code]) return this.#memberStop(conn, MEMBER_CLOSE[code])
+        this.#onConnLost(conn, new Error(`豆包连接断开（${code} ${reason}）`))
+      })
     })
     conn.ready.catch(() => {})
     this.conn = conn
@@ -359,6 +371,19 @@ export class VolcStreamASR extends EventEmitter {
       const next = this.#open()
       next.ready.catch((e) => this.#onConnLost(next, e))
     }, delay)
+  }
+
+  // 会员服务器主动停的（场次用完、15 分钟没说话自动暂停、这一场已结束）：不重连，没定稿的当定稿，交给上层换本地识别或暂停
+  #memberStop(conn, type) {
+    if (conn.lost) return
+    conn.lost = true
+    conn.done?.()
+    if (conn !== this.conn || this.closing) return this.#finalize(conn.open)
+    this.#finalize(conn.open)
+    this.#finalize(this.orphans)
+    this.#stopWatchdog()
+    clearTimeout(this.retryTimer)
+    this.emit('member', type)
   }
 
   // 下一条连接从哪里补发：有没定稿的句子，从上一句定稿的终点（这几句作废，新连接重新认）；没有就从服务端说收到的地方往前 1 秒

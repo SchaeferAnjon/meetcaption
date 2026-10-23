@@ -4,6 +4,9 @@
 // fast：翻译、术语、答题，每句话都用；smart：纪要、实时笔记。
 // icon：renderer/shared/providers/ 下的文件；mono 的是单色图标，按文字颜色画。
 
+// member：会员通道（经 MeetCaption 服务器转到 DeepSeek），只在会员模式下由主进程换上，设置里不列出来（hidden）。
+const MEMBER_API = (process.env.MEETCAPTION_API ?? 'https://api.us-cloud.uk').replace(/\/+$/, '')
+
 export const PROVIDERS = [
   { id: 'chatgpt', name: 'ChatGPT 账号', blurb: '用订阅，不另外花钱', region: 'global', icon: 'openai.svg', mono: true },
   { id: 'deepseek', name: 'DeepSeek', blurb: '便宜，中文好', region: 'cn', icon: 'deepseek.svg', baseUrl: 'https://api.deepseek.com', keyPage: 'https://platform.deepseek.com/api_keys', fast: 'deepseek-flash', smart: 'deepseek-v4-pro' },
@@ -16,6 +19,7 @@ export const PROVIDERS = [
   { id: 'claude', name: 'Claude', blurb: '需要海外网络', region: 'global', icon: 'claude.svg', baseUrl: 'https://api.anthropic.com/v1', keyPage: 'https://platform.claude.com/settings/keys', fast: 'claude-haiku-5-5', smart: 'claude-sonnet-5-5' },
   { id: 'openrouter', name: 'OpenRouter', blurb: '一个 Key 用多家模型', region: 'global', icon: 'openrouter.svg', mono: true, baseUrl: 'https://openrouter.ai/api/v1', keyPage: 'https://openrouter.ai/settings/keys', fast: 'openai/gpt-5.6-luna', smart: 'openai/gpt-5.6-terra' },
   { id: 'custom', name: '自定义', blurb: '任何 OpenAI 兼容接口', region: 'global' },
+  { id: 'member', name: 'MeetCaption 会员', blurb: '不用 Key', region: 'global', hidden: true, baseUrl: `${MEMBER_API}/v1`, fast: 'deepseek-flash', smart: 'deepseek-flash' },
 ]
 
 export const PROVIDER_IDS = PROVIDERS.map((p) => p.id)
