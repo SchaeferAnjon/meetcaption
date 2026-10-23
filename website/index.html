@@ -234,7 +234,7 @@ button { font: inherit; color: inherit; }
 </style>
 <style>/* 演示舞台：设计尺寸 640×400，外面按容器缩放 */
 .stagefit { position: relative; overflow: hidden; border-radius: 14px; background: linear-gradient(160deg, light-dark(#eef0f6, #24252c), light-dark(#e2e5ee, #1b1c22)); border: 1px solid var(--stroke-soft); }
-.stage { position: absolute; left: 0; top: 0; width: 640px; height: 400px; transform-origin: 0 0; font-family: var(--font-sans); color-scheme: light; }
+.stage { position: absolute; left: 0; top: 0; width: 640px; height: 400px; transform-origin: 0 0; font-family: var(--font-sans); color-scheme: light; text-align: left; }
 .sc { position: absolute; inset: 0; }
 .callwin { position: absolute; left: 34px; top: 26px; width: 572px; height: 330px; border-radius: 10px; background: #1f2026; box-shadow: 0 14px 40px rgba(0,0,0,.25); overflow: hidden; }
 .callwin .bar { height: 24px; display: flex; align-items: center; gap: 5px; padding: 0 9px; background: #2a2b31; color: #aaa; font-size: 10px; }
@@ -491,11 +491,17 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
 .packs button b { font-size: 13px; } .packs button span { font-size: 13px; font-variant-numeric: tabular-nums; } .packs button i { font-style: normal; font-size: 11px; opacity: .6; }
 .packs button.on { border-color: currentColor; background: rgba(127,127,127,.18); }
 .sec.ask .thesis { font-size: clamp(40px, 7vw, 84px); }
+.thesis.latin { font-size: 54px; letter-spacing: -.02em; }
+.langrow { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 18px auto 0; max-width: 720px; }
+.langrow button { border: 1px solid var(--line); background: none; color: var(--lead); border-radius: 999px; padding: 3px 11px; font: inherit; font-size: 12.5px; cursor: pointer; transition: all .2s; }
+.langrow button:hover { color: var(--ink); }
+.langrow button.on { background: var(--ink); border-color: var(--ink); color: var(--paper, #fff); }
 .toast { display: none; }
 @media (max-width: 760px) {
   .snav .links, .snav .gh { display: none; }
   .wrap { padding-left: 16px; padding-right: 16px; }
   .thesis, .sec.ask .thesis { font-size: 34px; }
+  .thesis.latin { font-size: 26px; }
   .thesis .ln { white-space: normal; }
   .thesis .fl { font-size: .45em; max-width: 9em; }
   .h2, .hero h1.h2 { font-size: 30px !important; }
@@ -569,7 +575,7 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
       html: () => call(hud()), run(s, at) { s.querySelectorAll('.w').forEach((w) => w.classList.add('on')); const ck = [...s.querySelectorAll('.ck')], zc = [...s.querySelectorAll('.zc')]; [[0, 0], [1, 2], [2, 1]].forEach(([e, z], j) => at(500 + j * 900, () => { ck[e].classList.add('col'); zc[z].classList.add('on'); })); at(3300, () => zc[3].classList.add('on')); } },
     term: { name: '鼠标停在术语上看解释', desc: '专业词两边都画了虚线，<b>鼠标停上去</b>就弹出一句解释；字幕窗不挡点击，会议软件照常用。', step: '停在「ablation」上', dur: 6000,
       html: () => call(hud() + '<div class="tip"><b>ablation · 消融实验</b><br>去掉模型的某个部分，看效果掉多少，用来判断这部分有没有用。</div>' + CURSOR),
-      run(s, at) { s.querySelectorAll('.w,.zc').forEach((w) => w.classList.add('on')); s.querySelectorAll('.ck').forEach((w) => w.classList.add('col')); const c = s.querySelector('.cursor'); at(400, () => { c.style.left = '300px'; c.style.top = '326px'; }); at(1500, () => s.querySelector('.tip').classList.add('on')); } },
+      run(s, at) { s.querySelectorAll('.w,.zc').forEach((w) => w.classList.add('on')); s.querySelectorAll('.ck').forEach((w) => w.classList.add('col')); const c = s.querySelector('.cursor'), tip = s.querySelector('.tip'), term = s.querySelector('.caphud .term'); at(400, () => { const o = s.getBoundingClientRect(), r = term.getBoundingClientRect(), k = o.width / W || 1; const x = (r.left - o.left + r.width * 0.5) / k, top = (r.top - o.top) / k; c.style.left = `${x - 3}px`; c.style.top = `${top + (r.height / k) * 0.45}px`; tip.style.left = `${Math.max(8, Math.min(W - 238, x - 115))}px`; tip.style.bottom = `${H - top + 8}px`; }); at(1500, () => tip.classList.add('on')); } },
     ask: { name: '对方提问，答案就浮出来', desc: '听出是在问你，右上角的答题框<b>马上给出能照着说的回答</b>，下面带中文。', step: '对方问完，答案自己出来', dur: 7600,
       html: () => call(`<div class="caphud"><div class="en"><span class="qtag">提问</span><span class="qq">What would you do differently if you had more time?</span></div><div class="zh" style="color:#bbb">如果时间更多，你会怎么做得不一样？</div></div><div class="ansbox"><div class="ah"><span class="dt"></span>AI 回答 · 1.2 秒</div><div class="q">如果时间更多，你会怎么做？</div><div class="a"></div><div class="az">我会先缩小实验规模，在一个数据集上验证假设，再扩大。</div></div>`),
       run(s, at) { at(600, () => s.querySelector('.qtag').classList.add('on')); at(1100, () => s.querySelector('.ansbox').classList.add('on')); const t = "I'd scale the experiment down first, validate the idea on one dataset, then expand."; const a = s.querySelector('.a'); for (let i = 0; i <= t.length; i += 3) at(1500 + i * 28, () => (a.textContent = t.slice(0, i))); at(1500 + t.length * 28 + 100, () => { a.textContent = t; s.querySelector('.az').classList.add('on'); }); } },
@@ -580,7 +586,7 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
       html: () => `<div class="split2"><div class="pane"><div class="mini" style="transform:scale(.458)">${call(hud() + '<div class="ansbox on"><div class="ah"><span class="dt"></span>AI 回答</div><div class="a">I would start with the smaller model.</div></div>')}</div><div class="lab">你的屏幕：字幕和答题框都在</div></div><div class="pane"><div class="mini" style="transform:scale(.458)">${call()}</div><div class="lab">对方看到的共享屏幕：什么都没有</div></div></div>`,
       run(s) { s.querySelectorAll('.w,.zc').forEach((w) => w.classList.add('on')); s.querySelectorAll('.ck').forEach((w) => w.classList.add('col')); } },
     notes: { name: '每两分钟整理一版笔记', desc: '上课时右边是<b>实时笔记</b>：小节、要点、公式、老师强调的考点，边听边长出来，下课生成完整的课堂笔记。', step: '笔记跟着老师讲的长出来', dur: 7000,
-      html: () => `<div class="slidewin"><div class="bar"><i></i><i></i><i></i><span style="margin-left:6px">Machine Learning · 第 7 讲</span></div><h5>Gradient Descent</h5><p>Step size matters: too large oscillates, too small is slow.</p><svg class="cv" viewBox="0 0 340 170"><path d="M10 20 Q170 330 330 20" fill="none" stroke="#5a5ff0" stroke-width="3"/><g fill="#f5883a"><circle cx="40" cy="62" r="5"/><circle cx="290" cy="58" r="5"/><circle cx="70" cy="100" r="5"/><circle cx="250" cy="100" r="5"/></g><path d="M40 62L290 58L70 100L250 100" fill="none" stroke="#f5883a" stroke-dasharray="4 4"/></svg></div>
+      html: () => `<div class="slidewin"><div class="bar"><i></i><i></i><i></i><span style="margin-left:6px">Machine Learning · 第 7 讲</span></div><h5>Gradient Descent</h5><p>Step size matters: too large oscillates, too small is slow.</p><svg class="cv" viewBox="0 0 340 170"><path d="M10 20 Q170 300 330 20" fill="none" stroke="#5a5ff0" stroke-width="3"/><path d="M42 70L282 91L80 116L240 133L132 152L196 156" fill="none" stroke="#f5883a" stroke-dasharray="4 4"/><g fill="#f5883a"><circle cx="42" cy="70" r="5"/><circle cx="282" cy="91" r="5"/><circle cx="80" cy="116" r="5"/><circle cx="240" cy="133" r="5"/><circle cx="132" cy="152" r="5"/><circle cx="196" cy="156" r="5"/></g></svg></div>
         <div class="notes"><div class="nh"><span class="dt"></span>实时笔记</div><div class="it h">1. 梯度下降的直觉</div><div class="it">· 沿着坡最陡的方向往下走</div><div class="it">· 学习率太大会来回震荡</div><div class="it">· 太小收敛很慢</div><div class="it ex">★ 考点：学习率怎么选</div><div class="it h">2. 收敛条件</div><div class="it">· 损失不再下降就停</div></div>`,
       run(s, at) { [...s.querySelectorAll('.notes .it')].forEach((x, i) => at(500 + i * 700, () => x.classList.add('on'))); } },
     shot: { name: '按 ⌥⌘P 截下课件', desc: '网课时按一下就把<b>当前课件截下来</b>，放进这节课；笔记和下课生成的图文笔记会在讲到它的地方插这张图。', step: '截下课件，放进笔记', dur: 5600,
@@ -624,9 +630,27 @@ const ck = (t) => `<li><svg class="i"><use href="#i-check"/></svg><span>${t}</sp
 const dlBtn = (cls = 'sbtn ink lg') => `<span style="position:relative;display:inline-block"><a class="${cls}" data-dl="auto"><svg><use href="#i-download"/></svg><span class="dltext">${OS === 'win' ? '免费下载 Windows 版' : '免费下载 Mac 版'}</span></a></span>`;
 
 /* ---------------- 首屏：两个方向不同 ---------------- */
-const HERO_A = `<h1 class="thesis" id="thesis" aria-label="对方说的每一句，中文就在下面。">
-  <span class="ln"><span class="fl k1" style="--r:-4deg;--y:-.3em"><span class="tx">what they say,</span></span><span class="big dim" data-k="1">对方说的</span><span class="fl k2" style="--r:3deg;--y:.35em"><span class="tx">every line,</span></span><span class="big dim" data-k="2">每一句，</span></span>
-  <span class="ln"><span class="fl k3" style="--r:3.5deg;--y:.3em"><span class="tx">in Chinese</span></span><span class="big dim" data-k="3">中文</span><span class="fl k4" style="--r:-3.5deg;--y:-.35em"><span class="tx">right below.</span></span><span class="big dim" data-k="4">就在下面。</span><span class="caret"></span></span></h1>`;
+// 首屏标题轮流换语言：灰色小字是对方说的（原文），大字是字幕下面跟的译文，同一块同一种颜色
+const EN_SRC = (lang) => ['every line', 'they say,', `in ${lang}`, 'right below.'];
+const HERO_LANGS = [
+  { code: 'zh', name: '简体中文', src: ['what they say,', 'every line,', 'in Chinese', 'right below.'], big: ['对方说的', '每一句，', '中文', '就在下面。'] },
+  { code: 'zh-Hant', name: '繁體中文', src: ['what they say,', 'every line,', 'in Chinese', 'right below.'], big: ['對方說的', '每一句，', '中文', '就在下面。'] },
+  { code: 'en', name: 'English', latin: true, src: ['对方说的', '每一句，', '英文', '就在下面。'], big: ['Every word', 'they say,', 'in English,', 'right below.'] },
+  { code: 'ja', name: '日本語', src: ['what they say,', 'every line,', 'in Japanese', 'right below.'], big: ['相手の言葉、', '一文ずつ、', '日本語で', 'すぐ下に。'] },
+  { code: 'ko', name: '한국어', src: ['what they say,', 'every line,', 'in Korean', 'right below.'], big: ['상대의 말,', '한 문장씩,', '한국어로', '바로 아래에.'] },
+  { code: 'de', name: 'Deutsch', latin: true, src: EN_SRC('German'), big: ['Jeder Satz,', 'den sie sagen,', 'auf Deutsch', 'direkt darunter.'] },
+  { code: 'fr', name: 'Français', latin: true, src: EN_SRC('French'), big: ['Chaque phrase', 'qu’ils disent,', 'en français', 'juste en dessous.'] },
+  { code: 'es', name: 'Español', latin: true, src: EN_SRC('Spanish'), big: ['Cada frase', 'que dicen,', 'en español', 'justo debajo.'] },
+  { code: 'it', name: 'Italiano', latin: true, src: EN_SRC('Italian'), big: ['Ogni frase', 'che dicono,', 'in italiano', 'proprio sotto.'] },
+];
+let heroLang = 0;
+const ROT = [['-4deg', '-.3em'], ['3deg', '.35em'], ['3.5deg', '.3em'], ['-3.5deg', '-.35em']];
+function heroLines(v) {
+  const piece = (i) => `<span class="fl k${i + 1}" style="--r:${ROT[i][0]};--y:${ROT[i][1]}"><span class="tx">${v.src[i]}</span></span><span class="big dim" data-k="${i + 1}">${v.big[i]}</span>`;
+  return `<span class="ln">${piece(0)}${piece(1)}</span><span class="ln">${piece(2)}${piece(3)}<span class="caret"></span></span>`;
+}
+const HERO_A = `<h1 class="thesis${HERO_LANGS[0].latin ? ' latin' : ''}" id="thesis" lang="zh-CN" aria-label="对方说的每一句，中文就在下面。">${heroLines(HERO_LANGS[0])}</h1>
+  <div class="langrow" id="langrow" aria-label="字幕能翻成的语言">${HERO_LANGS.map((v, i) => `<button data-hl="${i}" lang="${v.code}" class="${i === 0 ? 'on' : ''}">${v.name}</button>`).join('')}</div>`;
 const HERO_B = `<h1 class="thesis" id="thesis" aria-label="对方一问，答案就到。">
   <span class="ln"><span class="fl" style="--r:-4deg;--y:-.3em"><span class="tx">So, um,</span></span><span class="big" data-k="1">对方</span><span class="fl" style="--r:3deg;--y:.35em"><span class="tx">what would you</span></span><span class="big" data-k="2">一问，</span></span>
   <span class="ln"><span class="fl" style="--r:3.5deg;--y:.3em"><span class="tx">do differently</span></span><span class="big dim" data-k="3">答案</span><span class="fl" style="--r:-3deg;--y:-.3em"><span class="tx">with more time?</span><span class="qmark">提问</span></span><span class="big dim" data-k="4">就到。</span><span class="caret"></span></span></h1>
@@ -636,7 +660,7 @@ function home() {
   return `<section class="hero" data-part="首屏"><div class="wrap">
     <span class="kicker">开源 · 会议、面试、网课的实时双语字幕</span>
     ${DIR === 'A' ? HERO_A : HERO_B}
-    <p class="hero-sub">${DIR === 'A' ? '开 Zoom、Teams、腾讯会议或者上网课，电脑里放出来的声音实时变成字幕，每句英文下面跟一句中文，同一个意思同一种颜色。' : '开会、面试、上网课时，听出是在问你，屏幕角上马上给出能照着说的回答。字幕、中文、答案都只有你看得见。'}</p>
+    <p class="hero-sub">${DIR === 'A' ? '开 Zoom、Teams、腾讯会议或者上网课，电脑里放出来的声音实时变成字幕，每句下面跟一句译文，同一个意思同一种颜色。简体、繁体中文，英、日、韩、德、法、西、意等语言都能翻。' : '开会、面试、上网课时，听出是在问你，屏幕角上马上给出能照着说的回答。字幕、中文、答案都只有你看得见。'}</p>
     <div class="hero-cta">${dlBtn()}<a class="sbtn lg" href="https://github.com/SchaeferAnjon/meetcaption" target="_blank" rel="noopener"><svg><use href="#i-github"/></svg>在 GitHub 看源码</a></div>
     <p class="hero-meta"><b>不用注册，不用登录</b> · 新用户送 3 场 · macOS 14.2+ · Windows 10+ · 开源 GPL-3.0</p>
     <p class="hero-alt">也有 <a data-dl="${OS === 'win' ? 'arm' : 'win'}">${OS === 'win' ? 'Mac 版' : 'Windows 版'}</a> · <a data-dl="intel">Intel 芯片的 Mac</a> · <span id="verline"></span></p>
@@ -788,14 +812,25 @@ function initThesis(th, dir) {
   stops.push(() => timers.forEach(clearTimeout));
   const at = (ms, f) => timers.push(setTimeout(f, ms));
   const card = th.nextElementSibling?.querySelector('.anscard');
-  const fls = $$('.fl', th), bigs = $$('.big', th);
-  const texts = fls.map((f) => f.querySelector('.tx').textContent);
+  let fls, bigs, texts;
+  const load = () => { fls = $$('.fl', th); bigs = $$('.big', th); texts = fls.map((f) => f.querySelector('.tx').textContent); };
+  load();
+  // A 方向：每轮换一种语言；点语言按钮直接跳过去
+  const setLang = (i) => {
+    heroLang = (i + HERO_LANGS.length) % HERO_LANGS.length;
+    const v = HERO_LANGS[heroLang];
+    th.innerHTML = heroLines(v); th.classList.toggle('latin', !!v.latin); th.lang = v.code; th.setAttribute('aria-label', v.big.join(' '));
+    $$('#langrow button').forEach((b) => b.classList.toggle('on', +b.dataset.hl === heroLang));
+    load();
+  };
+  if (dir === 'A') $$('#langrow button').forEach((b) => (b.onclick = () => { setLang(+b.dataset.hl); cycle(true); }));
   let hover = false;
   th.addEventListener('mouseenter', () => { hover = true; th.classList.add('clean'); });
   th.addEventListener('mouseleave', () => { hover = false; th.classList.remove('clean'); });
   const COL = ['', 'var(--chunk-1)', 'var(--chunk-2)', 'var(--chunk-3)', 'var(--chunk-4)'];
-  function cycle() {
+  function cycle(keep) {
     timers.forEach(clearTimeout); timers.length = 0;
+    if (dir === 'A' && keep !== true) setLang(heroLang + 1);
     if (!hover) th.classList.remove('clean');
     fls.forEach((f) => { f.classList.remove('st', 'col'); f.querySelector('.tx').textContent = ''; });
     if (dir === 'A') bigs.forEach((b) => { b.classList.add('dim'); b.classList.remove('ul'); b.style.color = ''; });
@@ -817,7 +852,7 @@ function initThesis(th, dir) {
     }
   }
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) { th.classList.add('clean'); bigs.forEach((b) => b.classList.remove('dim')); card?.classList.add('on'); return; }
-  cycle();
+  cycle(true);
 }
 function initStage() {
   const order = DIR === 'A' ? [['双语字幕', '英文下面跟中文，意群同色', ['talk', 'color', 'term']], ['AI 答题', '问题一来，答案就到', ['ask', 'key', 'share']], ['课堂笔记', '边听边记，下课出笔记', ['notes', 'shot']]]
