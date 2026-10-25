@@ -74,8 +74,8 @@ async function askScreen() {
 function doneText() {
   const info = member?.info
   if (init.settings?.plan !== 'member') return '字幕用本地识别，在你电脑上跑，一直免费。翻译和 AI 答题用你在设置里配好的服务。'
-  if (!info) return member?.error ? `会员服务器暂时连不上（${member.error}）。字幕照常能用（本地识别），连上以后自动送你 3 场。` : '正在领取 3 场免费试用…'
-  if (info.balance > 0) return `${info.kind === 'paid' ? '你的会员还剩' : '送你的'} ${info.balance} 场已经到账：每场最长 2 小时，云识别和翻译、AI 答题、笔记都不用配 Key。用完以后字幕照常，AI 再买场次或换自带 Key。`
+  if (!info) return member?.error ? `会员服务器暂时连不上（${member.error}）。字幕照常能用（本地识别），连上以后自动送你 1 场。` : '正在领取免费试用…'
+  if (info.balance > 0) return `${info.kind === 'paid' ? '你的会员还剩' : '送你的'} ${info.balance} 场已经到账：每场最长 ${(info.sessionMs ?? 2 * 3600_000) / 3600_000} 小时，云识别和翻译、AI 答题、笔记都不用配 Key。用完以后字幕照常，AI 再买场次或换自带 Key。`
   return '这台电脑的试用场次已经用过了。字幕照常能用（本地识别）；AI 在「设置 → 会员」里买场次或换自带 Key。'
 }
 

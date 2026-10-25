@@ -1234,7 +1234,8 @@ export class MeetingEngine extends EventEmitter {
           }
           this.enh.set(job.text, null)
           this.enhEarly.delete(job.text)
-          if (!this.enhWarned) {
+          // 402：会员场次用完，另有「场次用完」的提示，这里不再报
+          if (!this.enhWarned && e.status !== 402) {
             this.enhWarned = true
             this.notice('warn', `${job.translate ? '翻译' : '术语解释'}失败：${e.message}`, 'enhance')
           }

@@ -940,12 +940,21 @@ async function startMemberSession() {
     return null
   } catch (e) {
     member.fallback = true
-    if (e.code === 'no-balance') return '会员场次用完了：这一场用本地识别，翻译和答题这些 AI 功能先关着。去「设置 → 会员」买场次。'
+    if (e.code === 'no-balance') {
+      showPricing({ pack: 'p1' })
+      return '会员场次用完了：这一场用本地识别，翻译和答题这些 AI 功能先关着。买了场次，下一场就能用。'
+    }
     return `连不上会员服务器（${e.message}），这一场先用本地识别，AI 功能可能用不了。`
   }
 }
 
-/** 会员服务器停了识别：场次用完就换本地识别接着记；15 分钟没说话就暂停，等用户点继续。 */
+/** 把主窗口叫出来、打开收费页。场次用完时（字幕不停，照常用本地识别记）先选好单买 1 场。 */
+function showPricing(opts) {
+  showControl()
+  toUi('member:showPricing', opts)
+}
+
+/** 会员服务器停了识别：场次用完就换本地识别接着记，弹出收费页；15 分钟没说话就暂停，等用户点继续。 */
 async function onMemberStop({ type }) {
   if (engine.state !== 'running') return
   if (type === 'idle') {
@@ -960,7 +969,9 @@ async function onMemberStop({ type }) {
   engine.refreshSettings()
   await engine.pause()
   await engine.resume()
-  engine.notice('warn', '会员场次用完了，已经换成本地识别接着记，翻译和答题先关着。去「设置 → 会员」买场次。', 'member-exhausted')
+  const trial = member?.info?.kind !== 'paid'
+  engine.notice('warn', `${trial ? '试用的 1 小时用完了' : '会员场次用完了'}，已经换成本地识别接着记，翻译和答题先关着。买了场次，下一场就能用。`, 'member-exhausted')
+  showPricing({ pack: 'p1' })
 }
 
 // 其他没归档项目的名字和术语：加进识别热词，会上顺带提到别的项目时少听错
@@ -1540,10 +1551,7 @@ function wireIpc() {
     showControl()
     toUi('guide:show')
   })
-  ipcMain.handle('member:showPricing', () => {
-    showControl()
-    toUi('member:showPricing')
-  })
+  ipcMain.handle('member:showPricing', () => showPricing())
   ipcMain.handle('test:audio', (_e, opts) => testAudio(opts ?? {}))
   ipcMain.handle('llm:status', () => aiStatus())
   ipcMain.handle('permission:request', (_e, kind) => requestPermission(kind))

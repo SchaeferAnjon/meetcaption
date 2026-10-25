@@ -9,6 +9,9 @@ const CURRENCY_KEY = 'meetcaption.pricing.currency'
 const PACK_KEY = 'meetcaption.pricing.pack'
 const isMember = () => state.settings?.plan === 'member'
 
+// 一场最长几小时：服务器按授权给（只试用的 1 小时，买过的 2 小时）
+const sessionHours = (info) => (info?.sessionMs ?? 2 * 3600_000) / 3600_000
+
 function memberBalance() {
   return state.member?.info?.balance ?? null
 }
@@ -40,9 +43,10 @@ function memberCard() {
   } else if (info) {
     const trial = info.kind !== 'paid'
     title = trial ? '免费试用' : '会员'
-    if (n > 0) text = `还剩 ${n} 场，每场最长 2 小时${live ? '。这一场正在计时' : ''}`
+    if (n > 0) text = `还剩 ${n} 场，每场最长 ${sessionHours(info)} 小时${live ? '。这一场正在计时' : ''}`
+    else if (live && !live.exhausted) text = `最后一场正在计时，最长 ${sessionHours(info)} 小时`
     else {
-      text = trial ? '3 场试用用完了。字幕照常（本地识别），AI 要买场次或换自带 Key。' : '场次用完了。字幕照常（本地识别），AI 要再买场次。'
+      text = trial ? '试用用完了。字幕照常（本地识别），AI 要买场次或换自带 Key。' : '场次用完了。字幕照常（本地识别），AI 要再买场次。'
       warn = true
     }
   }
@@ -60,13 +64,14 @@ function memberCard() {
 
 let pricing = null // 打开时 { close, render }
 
-function openPricing() {
+/** pack：先选中哪一包（场次用完时主进程给 p1），不给就用上次选的。 */
+function openPricing({ pack } = {}) {
   if (pricing) return pricing.render()
   const box = el('div.pricing', { role: 'dialog', 'aria-modal': 'true', 'aria-label': '方案和价格' })
   const backdrop = el('div.pricing-backdrop', {}, box)
   const prevFocus = document.activeElement
   let currency = localStorage.getItem(CURRENCY_KEY) === 'usd' ? 'usd' : 'cny'
-  let packId = localStorage.getItem(PACK_KEY) || 'p10'
+  let packId = pack || localStorage.getItem(PACK_KEY) || 'p10'
   let codeInput = null
   let codeMsg = ''
   let codeBusy = false
@@ -151,8 +156,8 @@ function openPricing() {
     const trial = column({
       name: '免费试用',
       tags: [{ text: '新用户' }],
-      price: '3 场',
-      unit: '· 每场最长 2 小时',
+      price: '1 场',
+      unit: '· 最长 1 小时',
       sub: '装好就能用，不用填任何 Key',
       action: trialBtn,
       items: ['云识别和 AI 全都能用', ['不用注册，', '不用登录'], '一场不到 5 分钟停止的不算', '用完以后字幕照常（本地识别）'],
@@ -343,7 +348,7 @@ function wireMember(init) {
   subscribe('member:paid', (info) => {
     ui.toast({ title: '付款成功，场次已经加上', message: `现在剩 ${info.balance} 场${info.code ? `，授权码 ${info.code}` : ''}`, type: 'success' })
   })
-  subscribe('member:showPricing', () => openPricing())
+  subscribe('member:showPricing', (opts) => openPricing(opts ?? {}))
   let plan = state.settings?.plan
   on('settings', () => {
     if (state.settings?.plan === plan) return

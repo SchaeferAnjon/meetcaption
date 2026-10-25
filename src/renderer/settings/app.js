@@ -639,7 +639,7 @@ function buildMember() {
           'div.member-balance',
           {},
           el('b', { text: String(Math.max(0, info.balance)) }),
-          el('span', { text: ` 场${trial ? '（免费试用）' : ''}，每场最长 2 小时` }),
+          el('span', { text: ` 场${trial ? '（免费试用）' : ''}，每场最长 ${(info.sessionMs ?? 2 * 3600_000) / 3600_000} 小时` }),
         ),
       )
       if (info.code)
