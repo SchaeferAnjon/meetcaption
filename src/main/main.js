@@ -44,7 +44,8 @@ const isWin = process.platform === 'win32'
 
 if (process.env.MEETCAPTION_USERDATA) app.setPath('userData', process.env.MEETCAPTION_USERDATA)
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
-if (isMac) app.setName('会议字幕')
+// 从源码跑（electron .）时名字是包名，换成「会议字幕」；打好的包用打包时的名字（开发版叫「MeetCaption 开发版」，数据目录、单实例锁都和正式版分开）
+if (isMac && !app.isPackaged) app.setName('会议字幕')
 
 const selfTest = process.argv.find((a) => a.startsWith('--selftest'))
 // --selftest=ui:N 正常打开界面，字幕窗和答题框进入调整模式（显示示例），N 秒后退出；给 CI 截图看 Windows 上的显示。
