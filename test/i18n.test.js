@@ -56,3 +56,23 @@ test('界面语言：auto 跟系统（简体、繁体、九种以外用英语）
   setUiLang('zh')
   assert.equal(t('还剩 {0} 场，每场最长 {1} 小时{2}', 3, 2, ''), '还剩 3 场，每场最长 2 小时')
 })
+
+test('官网的八张语言表覆盖页面脚本里所有 t() 的原文，占位符、{{名}} 和链接属性都在', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'website/index.html'), 'utf8')
+  const keys = new Set()
+  for (const [, body] of html.matchAll(/<script>([\s\S]*?)<\/script>/g))
+    for (const m of body.replace(/^\s*(\/\/|\*|\/\*).*$/gm, '').matchAll(/\bt\((['"`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
+      if (m[1] === '`' && m[2].includes('${')) continue
+      const k = Function(`return ${m[1]}${m[2]}${m[1]}`)()
+      if (/[一-鿿]/.test(k)) keys.add(k)
+    }
+  assert.ok(keys.size > 150, `只找到 ${keys.size} 条`)
+  const siteMarks = (s) => [...(s.match(/\{\d+\}/g) ?? []), ...(s.match(/\{\{名\}\}/g) ?? []), ...(s.match(/\s(?:href|data-go|data-dl|data-buy|data-p|data-c|id)="[^"]*"/g) ?? [])].sort().join('|')
+  for (const lang of UI_LANGS.filter((l) => l !== 'zh')) {
+    const dict = JSON.parse(fs.readFileSync(path.join(ROOT, 'website/i18n', `${lang}.json`), 'utf8'))
+    const missing = [...keys].filter((k) => typeof dict[k] !== 'string')
+    assert.deepEqual(missing.slice(0, 5), [], `${lang} 缺 ${missing.length} 条`)
+    const broken = [...keys].filter((k) => siteMarks(k) !== siteMarks(dict[k]))
+    assert.deepEqual(broken.slice(0, 5), [], `${lang} 占位符或链接对不上`)
+  }
+})
