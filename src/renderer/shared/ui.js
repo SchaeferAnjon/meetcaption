@@ -919,7 +919,7 @@
         if (g.title) items.push({ section: g.title });
         for (const o of normOptions(g.options)) {
           items.push({
-            label: o.label, icon: o.icon, tint: o.tint, description: o.description, disabled: o.disabled, keywords: o.keywords,
+            label: o.label, icon: o.icon, tint: o.tint, description: o.description, hint: o.hint, disabled: o.disabled, keywords: o.keywords,
             checked: o.value === current,
             onSelect: () => {
               const changed = o.value !== current;

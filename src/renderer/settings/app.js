@@ -320,7 +320,7 @@ function buildAssist() {
         ],
         { label: t('回答语言') },
       ),
-      t('最前面一行中文要点总是有的。'),
+      t('最前面一行要点总是有的，用「翻译成」的语言写。'),
     ),
     P.row(t('快捷键'), el('div.form-inline', {}, askKbd, el('span.text-2', { text: t('让 AI 回答刚才的问题') }), linkButton(t('修改'), () => go('hotkeys')))),
   )
@@ -333,7 +333,7 @@ function buildAssist() {
     aiWarn,
     P.section(
       t('AI 答题'),
-      t('对方提问后，屏幕右侧的答题框马上给出你可以照着说的回答：先一行中文要点，再两到四句口语。答题框和字幕一样，共享屏幕时对方看不到。'),
+      t('对方提问后，屏幕右侧的答题框马上给出你可以照着说的回答：先一行要点（用「翻译成」的语言），再两到四句口语。答题框和字幕一样，共享屏幕时对方看不到。'),
       P.row(t('AI 答题'), toggleLine('assist.enabled', t('开启 AI 答题'))),
       dep,
     ),
@@ -372,7 +372,7 @@ function buildOverlay() {
   // 意群颜色的两种样子：并排两张小预览，点哪张就用哪种
   const styleCards = el('div.chunk-styles', { role: 'radiogroup', 'aria-label': t('意群颜色的样式') })
   for (const [value, label, desc] of [
-    ['text', t('文字着色'), t('英文片段和对应的中文直接上同一种颜色')],
+    ['text', t('文字着色'), t('原文片段和对应的译文直接上同一种颜色')],
     ['bar', t('底部色条'), t('文字颜色不变，下面一条同色细线')],
   ]) {
     const card = el(
@@ -396,7 +396,7 @@ function buildOverlay() {
     P.section(null, null, P.captionPreview()),
     P.section(
       t('双语对照'),
-      t('每句英文下面紧跟它的中文，一句一对。按意群（主干、从句、介词短语）分色，英文片段和它的中文用同一种颜色；难词在两边都画虚线，悬停任一边都能看解释。字幕窗、主窗口的实时记录和字幕记录都一样。'),
+      t('每句原文下面紧跟它的译文，一句一对。按意群（主干、从句、介词短语）分色，原文片段和它的译文用同一种颜色；难词在两边都画虚线，悬停任一边都能看解释。字幕窗、主窗口的实时记录和字幕记录都一样。'),
       P.row(t('意群颜色对照'), toggleLine('display.chunkColors', t('按意群给中英文上同样的颜色')), t('关掉就是单色，翻译时也不再让 AI 额外做意群对齐。')),
       styleRow,
     ),
@@ -414,7 +414,7 @@ function buildOverlay() {
       t('都用「账号与 AI」里的服务，每说完一句翻一句，一般比原文晚 2 到 5 秒出现。对方提问时先出答案，这句的译文再晚一两秒。'),
       P.row(t('翻译'), el('div.form-inline', {}, toggleLine('translate', t('翻译对方说的话')), targetWrap)),
       trRow,
-      P.row(t('术语解释'), toggleLine('terms.enabled', t('专业词加虚线，悬停看解释')), t('鼠标停在字幕里的专业词上，弹出一句中文解释。主窗口的实时记录里也一样。')),
+      P.row(t('术语解释'), toggleLine('terms.enabled', t('专业词加虚线，悬停看解释')), t('鼠标停在字幕里的专业词上，弹出一句解释（用「翻译成」的语言）。主窗口的实时记录里也一样。')),
       P.row(t('纠错'), toggleLine('terms.correct', t('AI 纠正识别错误')), t('翻译时顺带改掉听错的词（近音误听、人名、术语拼写），改过的词下面有很淡的点线，悬停能看识别原文，存档里也留着识别原文。')),
     ),
     P.section(

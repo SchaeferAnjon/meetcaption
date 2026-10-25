@@ -121,12 +121,18 @@ test('界面的语言清单（renderer/shared/langs.js）和主进程同一份�
   assert.deepEqual([...window.LANG_CODES], LANG_CODES)
   assert.equal(LANG_CODES.length, 60)
   assert.deepEqual([...window.TARGET_LANGS.map((l) => l.value)], TARGET_CODES)
-  assert.equal(window.langLabel('de'), '德语')
-  assert.equal(window.langLabel('zh-Hant'), '繁体中文')
+  // 每种语言用它自己的写法，右边灰字是界面语言的叫法
+  assert.equal(window.langLabel('de'), 'Deutsch')
+  assert.equal(window.langLabel('fr'), 'Français')
+  assert.equal(window.langLabel('id'), 'Bahasa Indonesia')
+  assert.equal(window.langLabel('zh-Hant'), '繁體中文')
+  assert.equal(window.LANGS.find((l) => l.value === 'de').hint, '德语')
+  assert.ok(window.LANGS.find((l) => l.value === 'de').keywords.includes('German'), '英文名也能搜')
   assert.equal(promptLang('ja'), '日语（日本語）')
   const en = {}
   vm.runInNewContext(fs.readFileSync(new URL('../src/renderer/shared/langs.js', import.meta.url), 'utf8'), { window: Object.assign(en, { UI_LANG: 'en' }), Intl, t: (x) => x })
-  assert.equal(en.langLabel('de'), 'German')
+  assert.equal(en.langLabel('de'), 'Deutsch')
+  assert.equal(en.LANGS.find((l) => l.value === 'de').hint, 'German')
 })
 
 test('AI 写给用户看的东西跟这一场「翻译成」的语言：纪要、课堂笔记、实时笔记、待办、术语解释', async () => {
@@ -167,4 +173,16 @@ test('纪要里的截止认任何语言的截止词：德语、日语、英语�
   assert.deepEqual(got.map((x) => x.due), ['2026-10-26', '2026-10-26', '2026-10-26', '2026-10-30'])
   assert.equal(got[0].text, 'Folien senden')
   assert.equal(got[0].quote, 'send me the slides before Monday.')
+})
+
+test('每种语言的自称（母语名）：软件和官网是同一份手写表，60 种都有', async () => {
+  const fs = await import('node:fs')
+  const { LANG_CODES } = await import('../src/main/languages.js')
+  const grab = (file, re) => Function(`return ${fs.readFileSync(new URL(file, import.meta.url), 'utf8').match(re)[1]}`)()
+  const app = grab('../src/renderer/shared/langs.js', /const NATIVE = (\{[^}]+\})/)
+  const site = grab('../website/index.html', /const NATIVE = (\{[^}]+\});/)
+  assert.deepEqual(site, app)
+  assert.deepEqual(LANG_CODES.filter((c) => !app[c]), [])
+  assert.equal(app.sq, 'Shqip')
+  assert.equal(app.cy, 'Cymraeg')
 })

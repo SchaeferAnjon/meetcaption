@@ -28,24 +28,47 @@ function autoNext() {
 }
 
 // 欢迎页上写明支持的语言（偏好「写明支持的语言」）：一行概括，点开看全部
+// 欢迎页上写明支持的语言（偏好「写明支持的语言」「语言列表可搜索用母语」）：一行概括，点开是能搜索的列表，
+// 每种语言用它自己的写法，右边灰字是界面语言里的叫法；搜母语名、界面语言名、英文名、代码都行
+const fold = (s) => String(s).toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 function langsBlock() {
-  const names = LANGS.map((l) => l.label).join(t('、'))
+  const rows = [...LANGS, { ...TARGET_LANGS.find((l) => l.value === 'zh-Hant'), only: true }].map((l) =>
+    el(
+      'li.ob-lang',
+      { dataset: { q: fold([l.label, l.local, ...(l.keywords ?? [])].join(' ')) } },
+      el('span.ob-lang-n', { lang: l.value, text: l.label }),
+      l.only ? el('span.ob-lang-tag', { text: t('只做翻译') }) : null,
+      l.hint ? el('span.ob-lang-l', { text: l.hint }) : null,
+    ),
+  )
+  const empty = el('li.ob-lang-empty', { hidden: true, text: t('没有这种语言') })
+  const search = el('input.ob-lang-q', { type: 'search', placeholder: t('搜索语言'), spellcheck: 'false', 'aria-label': t('搜索语言') })
+  search.addEventListener('input', () => {
+    const q = fold(search.value.trim())
+    let n = 0
+    // 拉丁字母只认词首（fr 不会搜出 Afrikaans）；中日韩文字任意位置
+    const hit = (hay) => (/^[a-z0-9]/.test(q) ? hay.split(/[\s()（）-]+/).some((w) => w.startsWith(q)) : hay.includes(q))
+    for (const r of rows) n += (r.hidden = Boolean(q) && !hit(r.dataset.q)) ? 0 : 1
+    empty.hidden = n > 0
+  })
+  // Enter 在搜索框里不要触发「开始设置」
+  search.addEventListener('keydown', (e) => e.key === 'Enter' && e.stopPropagation())
   return el(
     'div.ob-langs',
     {},
     el(
       'button.ob-langs-sum',
-      { type: 'button', 'aria-expanded': String(langsOpen), onClick: () => ((langsOpen = !langsOpen), render()) },
+      { type: 'button', 'aria-expanded': String(langsOpen), onClick: () => ((langsOpen = !langsOpen), render(), langsOpen && document.querySelector('.ob-lang-q')?.focus()) },
       icon('languages', 14),
       el('span', { text: t('支持 {0} 种语言的识别和翻译', LANGS.length) }),
       icon('chevron-down', 13),
     ),
     langsOpen
       ? el(
-          'div.ob-langs-list',
+          'div.ob-langs-panel',
           {},
-          el('p', {}, el('b', { text: t('识别和翻译：') }), names, t('。')),
-          el('p', {}, el('b', { text: t('只做翻译：') }), t('繁体中文。')),
+          el('label.ob-lang-search', {}, icon('search', 13), search),
+          el('ul.ob-lang-list', {}, rows, empty),
           el('p.ob-langs-note', { text: t('本地识别（免费、不联网）只认中文和英文；其他语言用云识别。') }),
         )
       : null,
@@ -110,9 +133,10 @@ function render() {
   let body = []
   if (key === 'welcome') {
     body = [
-      el('img.ob-logo', { src: '../../assets/icon.png', alt: '' }),
+      langsOpen ? null : el('img.ob-logo', { src: '../../assets/icon.png', alt: '' }),
       el('h2', { text: t('欢迎使用 MeetCaption') }),
-      el('p', { text: t('开会、面试、上网课时，对方说的每一句都实时出字幕和译文；问题一来，答案就到。简单几步就能开始。') }),
+      // 语言列表展开时让出地方：图标和这段介绍先收起来，「开始设置」留在窗口里
+      langsOpen ? null : el('p', { text: t('开会、面试、上网课时，对方说的每一句都实时出字幕和译文；问题一来，答案就到。简单几步就能开始。') }),
       langsBlock(),
       el('button.btn.btn-primary.ob-cta', { type: 'button', onClick: next }, t('开始设置')),
     ]

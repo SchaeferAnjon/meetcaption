@@ -329,6 +329,13 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
 .lpop a:hover { background: var(--line); } .lpop a.on::after { content: "✓"; color: var(--lead); }
 /* 支持的语言 */
 .langs60 { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 8px; max-width: 900px; margin: 26px auto 0; }
+.langs60 { align-items: center; }
+.langs60 .lsearch { flex: 0 0 100%; display: flex; justify-content: center; margin-bottom: 10px; }
+.langs60 .lbox { display: flex; align-items: center; gap: 8px; width: min(360px, 100%); padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; color: var(--lead); }
+.langs60 .lsearch input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--ink); font: inherit; font-size: 14px; }
+.langs60 .lsearch .i { width: 15px; height: 15px; }
+.langs60 span[hidden] { display: none; }
+.langs60 .lnone { border: 0; }
 .langs60 span { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--lead); font-size: 13.5px; }
 .langnote { color: var(--lead); font-size: 14px; margin-top: 18px; }
 .sbtn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 20px; border-radius: 999px; border: 1px solid var(--line2); background: var(--card); color: var(--ink); font-weight: 600; font-size: 14.5px; cursor: pointer; white-space: nowrap; transition: transform .15s, background .15s; }
@@ -682,8 +689,27 @@ const LOGO = 'icon.png';
 let REL = null; // 最新一版的文件：{ arm, intel, win: 下载地址, version, date }，从 GitHub 取，取不到就去发布页
 // 识别和翻译支持的语言（和软件 src/main/languages.js 同一份：Soniox 实时识别的 60 种）
 const RECOG_LANGS = ['en', 'zh', 'ja', 'ko', 'de', 'fr', 'es', 'it', 'pt', 'ru', ...'af sq ar az eu be bn bs bg ca hr cs da nl et fi gl el gu he hi hu id kn kk lv lt mk ms ml mr no fa pl pa ro sr sk sl sw sv tl ta te th tr uk ur vi cy'.split(' ')];
+// 每种语言用它自己的写法（Deutsch、日本語），悬停看页面语言里的叫法；上面一个搜索框，母语名、页面语言名、英文名都能搜
 const langNames = new Intl.DisplayNames([LOCALE], { type: 'language' });
-const langName = (c) => langNames.of(c);
+const enNames = new Intl.DisplayNames(['en'], { type: 'language' });
+// 每种语言自己的写法，手写一份（和软件 src/renderer/shared/langs.js 同一份）：浏览器的语言数据缺一些语言的自称
+const NATIVE = { en: 'English', zh: '中文', ja: '日本語', ko: '한국어', de: 'Deutsch', fr: 'Français', es: 'Español', it: 'Italiano', pt: 'Português', ru: 'Русский', af: 'Afrikaans', sq: 'Shqip', ar: 'العربية', az: 'Azərbaycan', eu: 'Euskara', be: 'Беларуская', bn: 'বাংলা', bs: 'Bosanski', bg: 'Български', ca: 'Català', hr: 'Hrvatski', cs: 'Čeština', da: 'Dansk', nl: 'Nederlands', et: 'Eesti', fi: 'Suomi', gl: 'Galego', el: 'Ελληνικά', gu: 'ગુજરાતી', he: 'עברית', hi: 'हिन्दी', hu: 'Magyar', id: 'Bahasa Indonesia', kn: 'ಕನ್ನಡ', kk: 'Қазақ тілі', lv: 'Latviešu', lt: 'Lietuvių', mk: 'Македонски', ms: 'Bahasa Melayu', ml: 'മലയാളം', mr: 'मराठी', no: 'Norsk', fa: 'فارسی', pl: 'Polski', pa: 'ਪੰਜਾਬੀ', ro: 'Română', sr: 'Српски', sk: 'Slovenčina', sl: 'Slovenščina', sw: 'Kiswahili', sv: 'Svenska', tl: 'Filipino', ta: 'தமிழ்', te: 'తెలుగు', th: 'ไทย', tr: 'Türkçe', uk: 'Українська', ur: 'اردو', vi: 'Tiếng Việt', cy: 'Cymraeg', 'zh-Hant': '繁體中文' };
+const nativeName = (c) => NATIVE[c] || langNames.of(c);
+const fold = (x) => String(x).toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+function langList() {
+  const chip = (c) => { const n = nativeName(c), here = langNames.of(c); return `<span lang="${c}" title="${here}" data-q="${fold([n, here, enNames.of(c), c].join(' '))}">${n}</span>`; };
+  return `<div class="lsearch"><label class="lbox">${ic('search')}<input id="lq" type="search" placeholder="${t('搜索语言')}" aria-label="${t('搜索语言')}"></label></div>${RECOG_LANGS.map(chip).join('')}<span class="lnone" hidden>${t('没有这种语言')}</span>`;
+}
+function initLangSearch() {
+  const q = $('#lq'); if (!q) return;
+  q.oninput = () => {
+    const v = fold(q.value.trim()); let n = 0;
+    // 拉丁字母只认词首，中日韩文字任意位置
+    const hit = (h) => (/^[a-z0-9]/.test(v) ? h.split(/\s+/).some((w) => w.startsWith(v)) : h.includes(v));
+    $$('.langs60 span[data-q]').forEach((x) => { x.hidden = !!v && !hit(x.dataset.q); n += x.hidden ? 0 : 1; });
+    $('.langs60 .lnone').hidden = n > 0;
+  };
+}
 const FILES = { arm: ['MeetCaption-mac-arm64.dmg', t('Mac · Apple 芯片（M1 到 M4）')], intel: ['MeetCaption-mac-x64.dmg', 'Mac · Intel'], win: ['MeetCaption-win-x64.exe', 'Windows 10 / 11'] };
 let OS = /Win/.test(navigator.platform) ? 'win' : 'mac';
 const st = { cur: LANG.startsWith('zh') ? 'cny' : 'usd', pack: 'p10' };
@@ -760,7 +786,7 @@ function home() {
   <section class="sec" data-part="价格条"><div class="wrap center"><span class="kicker">价格</span><h2 class="h2">软件开源免费，会员买的是省心。</h2>{11}<div style="margin-top:26px"><a class="sbtn" data-go="pricing">看价格详情</a></div></div></section>
 
   <section class="sec" data-part="常见问题"><div class="wrap center"><span class="kicker">常见问题</span><h2 class="h2">常见问题</h2><div class="faq" style="text-align:left">{12}</div></div></section>
-  <section class="finale"><div class="wrap"><h2 class="h2">下次开会，<br>试试看。</h2><p class="hero-sub" style="margin-top:-6px">新用户送 1 场，不用填任何东西。</p><div class="hero-cta">{13}<a class="sbtn lg" data-go="pricing">看价格</a></div></div></section>`, DIR === 'A' ? HERO_A : HERO_B, DIR === 'A' ? t('开 Zoom、Teams、腾讯会议或者上网课，电脑里放出来的声音实时变成字幕，每句下面跟一句译文，同一个意思同一种颜色。支持 60 种语言的识别和翻译。') : t('开会、面试、上网课时，听出是在问你，屏幕角上马上给出能照着说的回答。字幕、中文、答案都只有你看得见。'), dlBtn(), OS === 'win' ? 'arm' : 'win', OS === 'win' ? t('Mac 版') : t('Windows 版'), RECOG_LANGS.length, RECOG_LANGS.length, RECOG_LANGS.map((c) => `<span lang="${c}">${langName(c)}</span>`).join(''), HERO_B.replace('id="thesis"', 'id="thesis2"').replace('id="anscard"', 'id="anscard2"'), [['captions', t('悬浮双语字幕'), t('浮在所有窗口最上层，点击穿透不挡操作；放在屏幕上半就往下长，下半就往上长。')], ['message-square-text', t('AI 答题'), t('听出是在问你就给出能照着说的回答，带中文；没自动出来就按一下快捷键。')], ['notebook-pen', t('课堂笔记'), t('每两分钟整理一版实时笔记，截下网课课件，下课生成图文并茂的课堂笔记。')], ['fingerprint-pattern', t('分得清是谁在说'), t('录 12 秒声纹就能分清你和对方；外放时串进麦克风的声音也能滤掉。')], ['list-todo', t('会后纪要和待办'), t('一键整理要点、修改意见、待办和截止日期，「下周五」会换算成具体日期。')], ['eye-off', t('共享屏幕时隐藏'), t('对方看你的共享屏幕、录屏、截图，都看不到字幕和答题框。')]].map(([i, t, d]) => `<div class="feat"><div class="ic"><svg class="i"><use href="#i-${i}"/></svg></div><b>${t}</b><p>${d}</p></div>`).join(''), [t('本地识别时的声音'), t('会议记录、纪要、课堂笔记'), t('声纹'), t('你填的 API Key')].map((x) => `<li><svg class="i"><use href="#i-check"/></svg>${x}</li>`).join(''), plans(false), faqHome(), dlBtn());
+  <section class="finale"><div class="wrap"><h2 class="h2">下次开会，<br>试试看。</h2><p class="hero-sub" style="margin-top:-6px">新用户送 1 场，不用填任何东西。</p><div class="hero-cta">{13}<a class="sbtn lg" data-go="pricing">看价格</a></div></div></section>`, DIR === 'A' ? HERO_A : HERO_B, DIR === 'A' ? t('开 Zoom、Teams、腾讯会议或者上网课，电脑里放出来的声音实时变成字幕，每句下面跟一句译文，同一个意思同一种颜色。支持 60 种语言的识别和翻译。') : t('开会、面试、上网课时，听出是在问你，屏幕角上马上给出能照着说的回答。字幕、中文、答案都只有你看得见。'), dlBtn(), OS === 'win' ? 'arm' : 'win', OS === 'win' ? t('Mac 版') : t('Windows 版'), RECOG_LANGS.length, RECOG_LANGS.length, langList(), HERO_B.replace('id="thesis"', 'id="thesis2"').replace('id="anscard"', 'id="anscard2"'), [['captions', t('悬浮双语字幕'), t('浮在所有窗口最上层，点击穿透不挡操作；放在屏幕上半就往下长，下半就往上长。')], ['message-square-text', t('AI 答题'), t('听出是在问你就给出能照着说的回答，带中文；没自动出来就按一下快捷键。')], ['notebook-pen', t('课堂笔记'), t('每两分钟整理一版实时笔记，截下网课课件，下课生成图文并茂的课堂笔记。')], ['fingerprint-pattern', t('分得清是谁在说'), t('录 12 秒声纹就能分清你和对方；外放时串进麦克风的声音也能滤掉。')], ['list-todo', t('会后纪要和待办'), t('一键整理要点、修改意见、待办和截止日期，「下周五」会换算成具体日期。')], ['eye-off', t('共享屏幕时隐藏'), t('对方看你的共享屏幕、录屏、截图，都看不到字幕和答题框。')]].map(([i, t, d]) => `<div class="feat"><div class="ic"><svg class="i"><use href="#i-${i}"/></svg></div><b>${t}</b><p>${d}</p></div>`).join(''), [t('本地识别时的声音'), t('会议记录、纪要、课堂笔记'), t('声纹'), t('你填的 API Key')].map((x) => `<li><svg class="i"><use href="#i-check"/></svg>${x}</li>`).join(''), plans(false), faqHome(), dlBtn());
 }
 function faqHome() {
   return [[t('对方不开字幕也行吗？'), t('行。它听的是你电脑里放出来的声音，Zoom、Teams、腾讯会议、网课网页都一样，不用对方做任何事。')], [t('不联网能用吗？'), t('字幕能：本地识别在你电脑上跑。翻译、AI 答题、笔记要联网。')], [t('怎么收费？'), t('新用户送 1 场，最长 1 小时，什么都不用填。之后两种选择：填你自己的 AI Key，永久免费；或者按场买会员，不用配任何 Key，¥12.8 一场起。详见 <a data-go="pricing" style="text-decoration:underline">价格</a>。')], [t('对方能看到字幕吗？'), t('看不到。共享屏幕、录屏、截图里都没有字幕和答题框。')], [t('它是开源的吗？'), t('是，GPL-3.0，代码在 GitHub。自己编译的版本填自己的 Key，功能一样。')], [t('Mac 打开时说「无法验证开发者」？'), t('去「系统设置 → 隐私与安全性」，拉到最下面点「仍要打开」，只要第一次。')]].map(([q, a]) => `<details><summary>${q}</summary><div class="ans">${a}</div></details>`).join('');
@@ -829,7 +855,7 @@ function go(target) {
   $$('img[data-logo]').forEach((i) => (i.src = LOGO)); fillName(m);
   $$('.links a').forEach((a) => a.classList.toggle('on', a.dataset.go === pg));
   scrollTo(0, 0);
-  if (pg === 'home') { initThesis($('#thesis'), DIR); initThesis($('#thesis2'), 'B'); initStage(); }
+  if (pg === 'home') { initThesis($('#thesis'), DIR); initThesis($('#thesis2'), 'B'); initStage(); initLangSearch(); }
   if (pg === 'pricing') initPick();
   bindPlans();
   showVersion();
