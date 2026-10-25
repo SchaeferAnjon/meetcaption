@@ -575,6 +575,8 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
   }
   const one = (n) => (lang === 'fr' ? Math.abs(Number(n)) < 2 : Number(n) === 1);
   window.LANG = lang;
+  // 访客自己选过语言（右上角菜单、带 ?lang= 的链接）：首屏标题停在这种语言，不再轮播（偏好「官网默认轮播选了就停」）
+  window.LANG_PICKED = LANGS.includes(q) || LANGS.includes(saved);
   window.LOCALE = { zh: 'zh-CN', 'zh-Hant': 'zh-TW' }[lang] || lang;
   window.t = (str, ...args) => {
     let out = dict[str] ?? str;
@@ -920,7 +922,7 @@ function initThesis(th, dir) {
   const COL = ['', 'var(--chunk-1)', 'var(--chunk-2)', 'var(--chunk-3)', 'var(--chunk-4)'];
   function cycle(keep) {
     timers.forEach(clearTimeout); timers.length = 0;
-    if (dir === 'A' && keep !== true) setLang(heroLang + 1);
+    if (dir === 'A' && keep !== true && !LANG_PICKED) setLang(heroLang + 1);
     if (!hover) th.classList.remove('clean');
     fls.forEach((f) => { f.classList.remove('st', 'col'); f.querySelector('.tx').textContent = ''; });
     if (dir === 'A') bigs.forEach((b) => { b.classList.add('dim'); b.classList.remove('ul'); b.style.color = ''; });

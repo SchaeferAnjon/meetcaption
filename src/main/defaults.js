@@ -52,7 +52,7 @@ export const DEFAULTS = {
   sidebarOpacity: 0.85, // Mac 毛玻璃、Windows 11 云母上侧栏底色有多实：1 不透明，太低了深色桌面前看不清字
   launchAtLogin: false,
   currentProjectId: 'inbox', // 主窗口和托盘里选中的项目，开会就开在它里面
-  onboarding: { done: false, shownAt: 0, demo: false }, // 首次引导：done 走完权限小窗；shownAt 自动弹过一次（之后只能从设置里再打开）；demo 看过（或跳过）主窗口上的演示
+  onboarding: { done: false, shownAt: 0, demo: false, resume: false, step: '' }, // 首次引导：done 走完权限小窗；shownAt 自动弹过一次；resume 引导开着时应用退出了（系统授权要「退出并重新打开」），下次启动接着出；step 走到哪一步；demo 看过（或跳过）主窗口上的演示
   migrations: { projects: false, translateOn: false, volcSeed: false, localAsr: false, providers: false, plan: false }, // providers：「其他兼容服务」填的是内置的那几家地址的，换成那一家；projects：v2 的全局会议背景等已经迁进「未归类」；translateOn：升级时打开过一次翻译；volcSeed：豆包资源 ID 从旧默认 1.0 换成过 2.0；localAsr：没配好识别 Key 的换成过本地识别；plan：0.6 以前就在用的人（走完过引导）定成自带 Key
   terms: { enabled: true, correct: true }, // correct：AI 纠正识别错误（跟译文、术语同一个请求，显示纠正后的句子，识别原文留在存档里）
   voiceprint: { threshold: 0.5 }, // 声纹本体存 userData/voiceprint.json

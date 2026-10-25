@@ -813,15 +813,19 @@ function openOnboarding() {
   onboardingWin = uiWindow({ width: 440, height: 500, minWidth: 440, minHeight: 500, title: t('欢迎使用 MeetCaption'), resizable: false, maximizable: false, minimizable: false, fullscreenable: false })
   onboardingWin.loadFile(path.join(root, 'renderer/onboarding/index.html'))
   onboardingWin.once('ready-to-show', () => bringToFront(onboardingWin))
+  // 引导开着时应用退出（macOS 给录屏与系统录音权限要「退出并重新打开」）：下次启动接着出引导，从同一步开始
+  if (!settings.get().onboarding.done) settings.update({ onboarding: { resume: true } })
   onboardingWin.on('closed', () => {
     onboardingWin = null
+    // 用户自己关掉的：以后不再自动弹（设置里还能再打开）
+    if (!quitting) settings.update({ onboarding: { resume: false } })
     // 没走完就关了：主窗口得出来，不然应用只剩托盘
     if (!quitting && (!controlWin || controlWin.isDestroyed() || !controlWin.isVisible())) showControl()
   })
 }
 
 function finishOnboarding() {
-  settings.update({ onboarding: { done: true } })
+  settings.update({ onboarding: { done: true, resume: false, step: '' } })
   emitOnboarding()
   showControl()
   // 主窗口已经开着时它不会重新加载，直接让它放演示（新开的主窗口自己看 onboarding.demo）
@@ -1537,6 +1541,7 @@ function wireIpc() {
   ipcMain.handle('window:showMain', () => showControl())
   ipcMain.handle('onboarding:status', () => onboardingStatus())
   ipcMain.handle('onboarding:finish', () => finishOnboarding())
+  ipcMain.handle('onboarding:step', (_e, key) => settings.update({ onboarding: { step: String(key ?? '') } }) && null)
 
   ipcMain.handle('test:asr', (_e, patch) => testAsr(patch))
   ipcMain.handle('test:llm', (_e, patch) => testLlm(patch))
@@ -1873,10 +1878,10 @@ app.whenReady().then(async () => {
   createAnswer()
   createTray()
   registerHotkeys()
-  // 第一次启动：先出引导（只自动出一次，没走完关掉的以后从设置里再打开），完成后再开主窗口
+  // 第一次启动：先出引导，完成后再开主窗口。没走完就被系统授权重启打断的，接着出（从同一步）；自己关掉的以后从设置里再打开
   const ob = settings.get().onboarding
-  if (!ob.done && !ob.shownAt && !uiSelfTest) {
-    settings.update({ onboarding: { shownAt: Date.now() } })
+  if (!ob.done && (!ob.shownAt || ob.resume) && !uiSelfTest) {
+    if (!ob.shownAt) settings.update({ onboarding: { shownAt: Date.now() } })
     openOnboarding()
   } else createControl()
   lastOnboarding = JSON.stringify(onboardingStatus())

@@ -12,6 +12,8 @@ let sys = 'idle' // idle | asked
 let screen = 'ask' // ask | granted | skip
 let member = null
 let langsOpen = false
+let resumed = false // 被系统授权重启打断后重新打开：从上次那一步接着来，顶上说一声
+let savedStep = ''
 
 const steps = () => (isMac ? ['welcome', 'mic', 'sys', 'done'] : ['welcome', 'mic', 'done'])
 
@@ -130,6 +132,10 @@ function doneText() {
 
 function render() {
   const key = steps()[step]
+  if (key !== savedStep) {
+    savedStep = key
+    api.saveOnboardingStep?.(key)
+  }
   let body = []
   if (key === 'welcome') {
     body = [
@@ -188,6 +194,7 @@ function render() {
       nav(false),
     ]
   }
+  if (resumed && key !== 'welcome') body.unshift(el('span.ob-pill.is-ok.ob-resumed', {}, icon('refresh-cw', 13), t('已重新打开，从这一步接着来')))
   document.getElementById('body').replaceChildren(...body.flat().filter(Boolean))
   document.getElementById('dots').replaceChildren(...steps().map((_, i) => el('i', { class: i === step ? 'on' : '' })))
 }
@@ -205,6 +212,11 @@ async function refreshMic() {
 
 async function boot() {
   init = await api.init()
+  const last = init.settings?.onboarding?.step
+  if (last && last !== 'welcome') {
+    const i = (init.platform === 'darwin' ? ['welcome', 'mic', 'sys', 'done'] : ['welcome', 'mic', 'done']).indexOf(last)
+    if (i > 0) [step, resumed, savedStep] = [i, true, last]
+  }
   ui.applyChrome(init.chrome)
   isMac = init.platform === 'darwin'
   member = init.member ?? null

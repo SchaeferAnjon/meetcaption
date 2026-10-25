@@ -97,6 +97,7 @@ contextBridge.exposeInMainWorld('app', {
   openSettings: invoke('window:openSettings'),
   openOnboarding: invoke('window:openOnboarding'),
   finishOnboarding: invoke('onboarding:finish'),
+  saveOnboardingStep: invoke('onboarding:step'), // 引导走到哪一步（被系统授权重启打断后从这里接着来）
   onboardingStatus: invoke('onboarding:status'),
   showMain: invoke('window:showMain'),
 
