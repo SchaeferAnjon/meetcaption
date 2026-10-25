@@ -4,6 +4,7 @@ import { normalizeDate, parseAt, resolveRelativeDate, ruleDate } from '../todos.
 import { overlap, tokenize } from '../speaker.js'
 import { notesMessages } from './prompts.js'
 import '../../renderer/shared/texfix.js'
+import { t } from '../i18n.js'
 
 const { repair } = globalThis.texfix
 
@@ -204,7 +205,7 @@ export function applyNotes(prev, delta, { fallbackStart = null } = {}) {
     if (!target && d.title) target = [...sections, ...fresh].find((s) => norm(s.title) === norm(d.title)) ?? null
     if (!target && !d.title && sections.length) target = fresh.at(-1) ?? sections.at(-1)
     if (!target) {
-      target = { title: d.title || '要点', start: d.start ?? fallbackStart, points: [], formulas: [], examples: [] }
+      target = { title: d.title || t('要点'), start: d.start ?? fallbackStart, points: [], formulas: [], examples: [] }
       fresh.push(target)
     }
     addUnique(target.points, d.points, LIMITS.points, same)
@@ -314,7 +315,7 @@ export class LiveNotes extends EventEmitter {
     if (st && !st.ready) {
       if (!this.warned) {
         this.warned = true
-        this.emit('update', { notes: this.notes, updatedAt: this.updatedAt, error: `实时笔记暂停了：${st.reason}` })
+        this.emit('update', { notes: this.notes, updatedAt: this.updatedAt, error: t(`实时笔记暂停了：{0}`, st.reason) })
       }
       this.retryAt = this.now() + this.opts.retryMs
       return null
@@ -347,7 +348,7 @@ export class LiveNotes extends EventEmitter {
     try {
       const raw = await this.llm({ model: 'smart', effort: 'low', json: true, timeoutMs: this.opts.timeoutMs, system: system.content, messages: [user] })
       const parsed = parseNotes(raw, { startedAt: this.startedAt })
-      if (!parsed) throw new Error('AI 返回的笔记格式不对')
+      if (!parsed) throw new Error(t('AI 返回的笔记格式不对'))
       this.notes = applyNotes(this.notes, parsed, { fallbackStart: lines.length ? clock(lines[0].at) : null })
       this.updatedAt = this.now()
       this.retryAt = 0
@@ -357,7 +358,7 @@ export class LiveNotes extends EventEmitter {
       // 这批内容放回去，下次和新内容一起再整理
       this.pending = [...batch, ...this.pending]
       this.retryAt = this.now() + this.opts.retryMs
-      this.emit('update', { notes: this.notes, updatedAt: this.updatedAt, error: `实时笔记这次没更新：${reason(e)}`, ms: this.now() - t0 })
+      this.emit('update', { notes: this.notes, updatedAt: this.updatedAt, error: t(`实时笔记这次没更新：{0}`, reason(e)), ms: this.now() - t0 })
     }
   }
 }

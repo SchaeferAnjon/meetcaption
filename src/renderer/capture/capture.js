@@ -49,7 +49,7 @@ async function openSystem() {
     t.stop()
     stream.removeTrack(t)
   }
-  if (!stream.getAudioTracks().length) throw new Error('没拿到系统声音（loopback 音轨为空）')
+  if (!stream.getAudioTracks().length) throw new Error(t('没拿到系统声音（loopback 音轨为空）'))
   return { stream, fallback: false, followsDefault: false, label: '' }
 }
 

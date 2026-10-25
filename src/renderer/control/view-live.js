@@ -22,19 +22,19 @@ VIEWS.live = {
     const otherMeter = el('div.live-meter', {}, otherIcon, otherLabel, meterOther)
     const meMeter = el('div.live-meter', {}, meIcon, meLabel, meterMe)
     // 会上换麦克风：显示正在用的那个，点开列出电脑上的麦克风
-    const micBtn = el('button.btn.btn-sm.btn-ghost.live-mic', { type: 'button', title: '换麦克风', onClick: () => pickMic(micBtn) })
+    const micBtn = el('button.btn.btn-sm.btn-ghost.live-mic', { type: 'button', title: t('换麦克风'), onClick: () => pickMic(micBtn) })
     const meters = el('div.live-meters', {}, otherMeter, meMeter, micBtn)
     const captureBtn = el('button.btn.btn-sm.live-capture', { type: 'button', onClick: () => capture() })
     const toggleBtn = el('button.btn.btn-sm', { type: 'button', onClick: () => call('toggleOverlay') })
     const editBtn = el('button.btn.btn-sm.btn-ghost', { type: 'button', onClick: () => call('editOverlay', !state.overlay.editMode) })
-    const moreBtn = iconButton('ellipsis', '字幕窗的更多操作', () =>
+    const moreBtn = iconButton('ellipsis', t('字幕窗的更多操作'), () =>
       ui.menu(
         moreBtn,
         [
-          { label: '恢复字幕和答题框的默认位置', icon: 'refresh-cw', onSelect: () => call('resetOverlayPosition').then(() => ui.toast({ title: '已回到默认位置', type: 'success' })) },
-          { label: '字幕与答题框设置…', icon: 'captions', onSelect: () => openSettings('overlay') },
-          { label: 'AI 答题设置…', icon: 'sparkles', onSelect: () => openSettings('assist') },
-          isClass() && { label: '课堂设置…', icon: 'graduation-cap', onSelect: () => openSettings('class') },
+          { label: t('恢复字幕和答题框的默认位置'), icon: 'refresh-cw', onSelect: () => call('resetOverlayPosition').then(() => ui.toast({ title: t('已回到默认位置'), type: 'success' })) },
+          { label: t('字幕与答题框设置…'), icon: 'captions', onSelect: () => openSettings('overlay') },
+          { label: t('AI 答题设置…'), icon: 'sparkles', onSelect: () => openSettings('assist') },
+          isClass() && { label: t('课堂设置…'), icon: 'graduation-cap', onSelect: () => openSettings('class') },
         ].filter(Boolean),
         { align: 'end' },
       ),
@@ -46,10 +46,10 @@ VIEWS.live = {
     const summaryLine = el('div.live-summary.text-2')
 
     // 实时记录（字幕和课堂截图按时间排在一起）
-    const list = el('div.transcript.live-transcript', { role: 'log', 'aria-live': 'off', 'aria-label': '实时记录' })
+    const list = el('div.transcript.live-transcript', { role: 'log', 'aria-live': 'off', 'aria-label': t('实时记录') })
     const empty = el('div.live-empty')
     const scroller = el('div.pane-body.live-scroll', { tabindex: '0' }, empty, list)
-    const jump = el('button.btn.btn-sm.jump-latest', { type: 'button', hidden: true, onClick: () => ((scroller.scrollTop = scroller.scrollHeight), (jump.hidden = true)) }, icon('chevron-down', 14), '回到最新')
+    const jump = el('button.btn.btn-sm.jump-latest', { type: 'button', hidden: true, onClick: () => ((scroller.scrollTop = scroller.scrollHeight), (jump.hidden = true)) }, icon('chevron-down', 14), t('回到最新'))
     const left = el('div.live-left', {}, scroller, jump)
 
     // 右栏：AI 回答
@@ -58,13 +58,13 @@ VIEWS.live = {
     const answerNote = el('div.answer-note-line', { hidden: true })
     const answerCount = el('span.count.num')
     // 会开完了顶上那条就收起来，「让 AI 回答」挪到这里（会后按快捷键也能答刚才那场会的问题）
-    const askAfter = el('button.btn.btn-sm.btn-ghost', { type: 'button', hidden: true, onClick: () => ask(askAfter) }, icon('sparkles', 14), '让 AI 回答')
+    const askAfter = el('button.btn.btn-sm.btn-ghost', { type: 'button', hidden: true, onClick: () => ask(askAfter) }, icon('sparkles', 14), t('让 AI 回答'))
     const answersBody = el('div.pane-body.answer-scroll', {}, answerNote, answerEmpty, answerList)
 
     // 右栏：实时笔记
     const every = () => state.settings?.class?.notesEveryMin ?? 2
-    const notesWhat = { class: '老师讲大约 {n} 分钟后，AI 把要点、公式、老师强调的考点和作业整理在这里', meeting: '开会大约 {n} 分钟后，AI 把议题、结论和待办整理在这里', interview: '面试大约 {n} 分钟后，AI 把问过的问题、你答的要点和面试官在意的地方整理在这里' }
-    const notes = notesView({ mode, collapseOld: true, emptyText: () => `${(notesWhat[mode()] ?? notesWhat.meeting).replace('{n}', every())}，之后每 ${every()} 分钟更新一次。` })
+    const notesWhat = { class: t('老师讲大约 {n} 分钟后，AI 把要点、公式、老师强调的考点和作业整理在这里'), meeting: t('开会大约 {n} 分钟后，AI 把议题、结论和待办整理在这里'), interview: t('面试大约 {n} 分钟后，AI 把问过的问题、你答的要点和面试官在意的地方整理在这里') }
+    const notes = notesView({ mode, collapseOld: true, emptyText: () => t(`{0}，之后每 {1} 分钟更新一次。`, (notesWhat[mode()] ?? notesWhat.meeting).replace('{n}', every()), every()) })
     const notesLine = el('div.notes-line', { hidden: true })
     const notesBody = el('div.pane-body.notes-scroll', {}, notesLine, notes.root)
     ctx.dispose(notes.destroy)
@@ -72,11 +72,11 @@ VIEWS.live = {
     // 右栏的头：「实时笔记 | AI 回答」两页；答题关着时只有实时笔记
     const firstTab = () => (mode() === 'interview' ? 'answers' : 'notes')
     let sideTab = firstTab()
-    const tabNotes = el('button.side-tab', { type: 'button', role: 'tab', onClick: () => setSide('notes') }, icon('notebook-pen', 14), '实时笔记')
-    const tabAnswers = el('button.side-tab', { type: 'button', role: 'tab', onClick: () => setSide('answers') }, icon('sparkles', 14), 'AI 回答', answerCount)
+    const tabNotes = el('button.side-tab', { type: 'button', role: 'tab', onClick: () => setSide('notes') }, icon('notebook-pen', 14), t('实时笔记'))
+    const tabAnswers = el('button.side-tab', { type: 'button', role: 'tab', onClick: () => setSide('answers') }, icon('sparkles', 14), t('AI 回答'), answerCount)
     const notesStamp = el('span.side-stamp.num')
     const sideHead = el('div.pane-subheader.side-head', { role: 'tablist' }, tabNotes, tabAnswers, el('span.header-spacer'), notesStamp, askAfter)
-    const side = el('aside.live-answers', { 'aria-label': '右栏' }, sideHead, notesBody, answersBody)
+    const side = el('aside.live-answers', { 'aria-label': t('右栏') }, sideHead, notesBody, answersBody)
     const split = el('div.live-split', {}, left, side)
     ctx.body.append(bar, summaryLine, split)
 
@@ -108,7 +108,7 @@ VIEWS.live = {
       notesBody.hidden = tab !== 'notes'
       answersBody.hidden = tab !== 'answers'
       notesStamp.hidden = tab !== 'notes' || !state.live?.notesAt
-      if (!notesStamp.hidden) notesStamp.textContent = `${fmtTime(state.live.notesAt)} 更新`
+      if (!notesStamp.hidden) notesStamp.textContent = t(`{0} 更新`, fmtTime(state.live.notesAt))
     }
 
     function renderMeters() {
@@ -119,15 +119,15 @@ VIEWS.live = {
       // 课堂教室现场：麦克风是主声源（老师）；网课：电脑声音是老师
       fill(otherIcon, icon(cls && src === 'system' ? 'monitor' : 'volume-2', 14))
       fill(meIcon, icon('mic', 14))
-      otherLabel.textContent = cls ? (src === 'system' ? '网课' : '电脑') : '对方'
-      meLabel.textContent = cls && src === 'mic' ? '教室' : '我'
-      otherMeter.title = `${otherLabel.textContent}的音量`
-      meMeter.title = `${meLabel.textContent}的音量`
+      otherLabel.textContent = cls ? (src === 'system' ? t('网课') : t('电脑')) : t('对方')
+      meLabel.textContent = cls && src === 'mic' ? t('教室') : t('我')
+      otherMeter.title = t(`{0}的音量`, otherLabel.textContent)
+      meMeter.title = t(`{0}的音量`, meLabel.textContent)
       otherMeter.hidden = cls && src === 'mic'
       meMeter.hidden = !(cls && src === 'mic') && s.captureMic === false
       const mic = state.devices?.mic
       micBtn.hidden = meMeter.hidden || !mic || state.engine.paused
-      if (!micBtn.hidden) fill(micBtn, el('span.truncate', { text: mic.label || '系统默认麦克风' }), icon('chevron-down', 12))
+      if (!micBtn.hidden) fill(micBtn, el('span.truncate', { text: mic.label || t('系统默认麦克风') }), icon('chevron-down', 12))
     }
 
     function renderBar() {
@@ -144,14 +144,14 @@ VIEWS.live = {
       moreBtn.hidden = !on
       captureBtn.hidden = !on || !isClass()
       const slideKey = s.class?.hotkeySlide
-      fill(captureBtn, icon('camera', 14), '截取画面', slideKey ? kbd(slideKey, { size: 'sm' }) : null)
-      fill(toggleBtn, icon(ov.visible ? 'eye-off' : 'eye', 14), ov.visible ? '隐藏字幕' : '显示字幕', state.hotkey.accel ? kbd(state.hotkey.accel, { size: 'sm' }) : null)
-      fill(editBtn, icon(ov.editMode ? 'check' : 'monitor', 14), ov.editMode ? '完成调整' : '调整位置')
+      fill(captureBtn, icon('camera', 14), t('截取画面'), slideKey ? kbd(slideKey, { size: 'sm' }) : null)
+      fill(toggleBtn, icon(ov.visible ? 'eye-off' : 'eye', 14), ov.visible ? t('隐藏字幕') : t('显示字幕'), state.hotkey.accel ? kbd(state.hotkey.accel, { size: 'sm' }) : null)
+      fill(editBtn, icon(ov.editMode ? 'check' : 'monitor', 14), ov.editMode ? t('完成调整') : t('调整位置'))
       editBtn.classList.toggle('btn-ghost', !ov.editMode)
       const assistOn = s.assist?.enabled !== false
       askBtn.hidden = !assistOn
       askVr.hidden = !assistOn || !on
-      fill(askBtn, icon('sparkles', 14), '让 AI 回答', s.assist?.hotkeyAsk && state.hotkey.ask?.accel ? kbd(s.assist.hotkeyAsk, { size: 'sm' }) : null)
+      fill(askBtn, icon('sparkles', 14), t('让 AI 回答'), s.assist?.hotkeyAsk && state.hotkey.ask?.accel ? kbd(s.assist.hotkeyAsk, { size: 'sm' }) : null)
       if (!on) for (const m of [meterOther, meterMe]) m.style.setProperty('--value', '0%')
       renderSide()
     }
@@ -161,9 +161,9 @@ VIEWS.live = {
       summaryLine.hidden = !live?.ended
       if (!live?.ended) return
       const segs = [...live.segs.values()].filter((x) => x.text)
-      const bits = [live.endedAt && live.startedAt ? fmtDuration(live.endedAt - live.startedAt) : null, `${segs.length} 段字幕`, live.slides?.length ? `${live.slides.length} 张截图` : null, live.answers.size ? `${live.answers.size} 条 AI 回答` : null]
-      const after = isClass() ? '生成课堂笔记时 AI 会整理出大纲、公式、考点和作业。' : '生成纪要时 AI 会整理出要点、待办和 DDL。'
-      fill(summaryLine, icon('circle-check', 14), `已保存到「${projectName(live.projectId)}」：${bits.filter(Boolean).join('，')}。${after}`)
+      const bits = [live.endedAt && live.startedAt ? fmtDuration(live.endedAt - live.startedAt) : null, t(`{0} 段字幕`, segs.length), live.slides?.length ? t(`{0} 张截图`, live.slides.length) : null, live.answers.size ? t(`{0} 条 AI 回答`, live.answers.size) : null]
+      const after = isClass() ? t('生成课堂笔记时 AI 会整理出大纲、公式、考点和作业。') : t('生成纪要时 AI 会整理出要点、待办和 DDL。')
+      fill(summaryLine, icon('circle-check', 14), t(`已保存到「{0}」：{1}。{2}`, projectName(live.projectId), bits.filter(Boolean).join(t('，')), after))
     }
 
     function renderEmpty() {
@@ -172,10 +172,10 @@ VIEWS.live = {
       empty.append(
         ui.emptyState({
           icon: cls ? 'graduation-cap' : 'captions',
-          title: cls ? '等老师开讲' : '等对方开口',
+          title: cls ? t('等老师开讲') : t('等对方开口'),
           description: cls
-            ? '识别出来的字幕会出现在这里，每句英文下面紧跟中文，同一种颜色是对应的意思。网课的课件可以点「截取画面」存下来。'
-            : '识别出来的字幕会出现在这里。每句英文下面紧跟中文，同一种颜色是对应的意思；提问句标黄，专业术语悬停看解释。',
+            ? t('识别出来的字幕会出现在这里，每句英文下面紧跟中文，同一种颜色是对应的意思。网课的课件可以点「截取画面」存下来。')
+            : t('识别出来的字幕会出现在这里。每句英文下面紧跟中文，同一种颜色是对应的意思；提问句标黄，专业术语悬停看解释。'),
         }),
       )
       empty.hidden = nodes.size + slideNodes.size > 0
@@ -222,17 +222,17 @@ VIEWS.live = {
         qBoxes.delete(segId)
         return
       }
-      const body = el('div.qbox-body', {}, el('div.qbox-wait', {}, el('span.spinner'), el('span', { text: '正在回答这句…' })))
-      const close = iconButton('x', '收起回答', () => toggleQuestion(segId))
+      const body = el('div.qbox-body', {}, el('div.qbox-wait', {}, el('span.spinner'), el('span', { text: t('正在回答这句…') })))
+      const close = iconButton('x', t('收起回答'), () => toggleQuestion(segId))
       close.classList.add('btn-sm')
-      const b = { root: el('div.qbox', {}, el('div.qbox-head', {}, icon('sparkles', 13), el('span', { text: 'AI 回答' }), el('span.header-spacer'), close), body), body, card: null }
+      const b = { root: el('div.qbox', {}, el('div.qbox-head', {}, icon('sparkles', 13), el('span', { text: t('AI 回答') }), el('span.header-spacer'), close), body), body, card: null }
       qBoxes.set(segId, b)
       attachQBox(segId)
       const have = answerFor(segId)
       if (have && !have.error && !have.cancelled) return fillQBox(b, have)
       const r = await call('askSegment', segId)
       if (!ctx.alive() || qBoxes.get(segId) !== b) return
-      if (failed(r)) body.replaceChildren(el('div.answer-note.is-error', { text: r?.error || '没能开始回答' }))
+      if (failed(r)) body.replaceChildren(el('div.answer-note.is-error', { text: r?.error || t('没能开始回答') }))
     }
 
     list.addEventListener('click', (e) => {
@@ -307,7 +307,7 @@ VIEWS.live = {
       notesLine.hidden = !err
       notesLine.className = 'notes-line is-warn'
       // 主进程的 error 已经是完整的一句（实时笔记这次没更新：原因 / 实时笔记暂停了：原因），这里只补后半句
-      const msg = err ? `${String(err).replace(/[。.，,\s]+$/, '')}。先保留上一版，稍后再试。` : ''
+      const msg = err ? t(`{0}。先保留上一版，稍后再试。`, String(err).replace(/[。.，,\s]+$/, '')) : ''
       fill(notesLine, err ? [icon('triangle-alert', 13), el('span', { text: msg })] : [])
       renderSide()
     }
@@ -319,17 +319,17 @@ VIEWS.live = {
       answerEmpty.hidden = cards.size > 0
       if (llm && !llm.ready) {
         answerEmpty.append(
-          el('div.callout.callout-warn', {}, icon('triangle-alert', 16), el('div.callout-body', {}, el('div.callout-title', { text: 'AI 答题用不了' }), el('div.callout-desc', { text: llm.reason || 'AI 服务还没设置好' })), el('button.btn.btn-sm', { type: 'button', onClick: () => openSettings('ai') }, '去设置')),
+          el('div.callout.callout-warn', {}, icon('triangle-alert', 16), el('div.callout-body', {}, el('div.callout-title', { text: t('AI 答题用不了') }), el('div.callout-desc', { text: llm.reason || t('AI 服务还没设置好') })), el('button.btn.btn-sm', { type: 'button', onClick: () => openSettings('ai') }, t('去设置'))),
         )
         return
       }
       const auto = mode() === 'interview' || (mode() !== 'class' && s.assist?.auto)
       const text = isClass()
-        ? '上课时不自动回答。老师点名提问时按快捷键或点「让 AI 回答」，AI 就回答刚才的问题。'
+        ? t('上课时不自动回答。老师点名提问时按快捷键或点「让 AI 回答」，AI 就回答刚才的问题。')
         : auto
-          ? '对方一问完，这里马上给出你可以照着说的回答，屏幕上的答题框也会同步出现。'
-          : '自动回答关着。点「让 AI 回答」或按快捷键，AI 就回答对方刚才的问题。'
-      answerEmpty.append(el('div.answer-hint', {}, el('div', { text }), s.assist?.hotkeyAsk ? el('div.answer-hint-kbd', {}, kbd(s.assist.hotkeyAsk, { size: 'sm' }), el('span', { text: '回答刚才的问题' })) : null))
+          ? t('对方一问完，这里马上给出你可以照着说的回答，屏幕上的答题框也会同步出现。')
+          : t('自动回答关着。点「让 AI 回答」或按快捷键，AI 就回答对方刚才的问题。')
+      answerEmpty.append(el('div.answer-hint', {}, el('div', { text }), s.assist?.hotkeyAsk ? el('div.answer-hint-kbd', {}, kbd(s.assist.hotkeyAsk, { size: 'sm' }), el('span', { text: t('回答刚才的问题') })) : null))
     }
 
     function renderAnswers() {
@@ -362,8 +362,8 @@ VIEWS.live = {
       btn.classList.remove('is-loading')
       if (!ctx.alive()) return
       setSide('answers')
-      if (failed(r)) showNote(r?.error || '没能开始回答')
-      else if (r?.question && !cards.size) showNote(`正在回答：${r.question}`, 'info')
+      if (failed(r)) showNote(r?.error || t('没能开始回答'))
+      else if (r?.question && !cards.size) showNote(t(`正在回答：{0}`, r.question), 'info')
     }
 
     async function capture() {
@@ -453,7 +453,7 @@ function renderLiveHeader(ctx) {
   const m = modeInfo(live?.mode)
   const cls = live?.mode === 'class'
   const p = projectOf(live?.projectId ?? state.engine.projectId)
-  const projectCrumb = el('button.crumb-button', { type: 'button', onClick: () => p && go('project', { id: p.id }) }, projectBox(p, 'sm'), el('span.truncate', { text: p?.name ?? '未归类' }))
+  const projectCrumb = el('button.crumb-button', { type: 'button', onClick: () => p && go('project', { id: p.id }) }, projectBox(p, 'sm'), el('span.truncate', { text: p?.name ?? t('未归类') }))
   const modeTag = live && live.mode !== 'meeting' ? el('span.tag.mode-tag.header-mode', { dataset: { tint: m.tint } }, icon(m.icon, 12), cls && live.classSource ? `${m.label} · ${CLASS_SOURCES[sourceOf(live.classSource)].label}` : m.label) : null
   // 模式标签跟在项目名后面，不当一级面包屑
   const projectWithMode = modeTag ? el('span.crumb-group', {}, projectCrumb, modeTag) : projectCrumb
@@ -463,21 +463,21 @@ function renderLiveHeader(ctx) {
       crumbs: [el('span.crumb.crumb-title', {}, icon('circle-check', 16), m.ended), live ? projectWithMode : null],
       actions: live
         ? [
-            el('button.btn', { type: 'button', onClick: () => sid && go('meeting', { id: sid, tab: 'summary', summarize: true }) }, icon(cls ? 'notebook-pen' : 'sparkles', 14), cls ? '生成课堂笔记' : '生成纪要'),
-            el('button.btn.btn-primary', { type: 'button', onClick: () => sid && go('meeting', { id: sid }) }, cls ? '查看课堂记录' : '查看会议记录', icon('arrow-right', 14)),
+            el('button.btn', { type: 'button', onClick: () => sid && go('meeting', { id: sid, tab: 'summary', summarize: true }) }, icon(cls ? 'notebook-pen' : 'sparkles', 14), cls ? t('生成课堂笔记') : t('生成纪要')),
+            el('button.btn.btn-primary', { type: 'button', onClick: () => sid && go('meeting', { id: sid }) }, cls ? t('查看课堂记录') : t('查看会议记录'), icon('arrow-right', 14)),
           ]
-        : [el('button.btn.btn-primary', { type: 'button', onClick: () => startMeeting() }, icon('mic', 14), '开始会议')],
+        : [el('button.btn.btn-primary', { type: 'button', onClick: () => startMeeting() }, icon('mic', 14), t('开始会议'))],
     })
     return
   }
   const paused = st === 'running' && state.engine.paused
-  const label = st === 'starting' ? '正在连接' : st === 'stopping' ? '正在保存' : paused ? '已暂停' : m.live
+  const label = st === 'starting' ? t('正在连接') : st === 'stopping' ? t('正在保存') : paused ? t('已暂停') : m.live
   ctx.header({
     crumbs: [el('span.crumb.crumb-title', {}, paused ? icon('pause', 14) : st === 'running' ? el('span.dot.dot-live') : ui.spinner(12), label), projectWithMode],
     actions: [
       live.startedAt ? el('span.live-elapsed.num', { dataset: { elapsed: '' }, text: fmtOffset(Date.now() - live.startedAt) }) : null,
-      el('button.btn', { type: 'button', disabled: st !== 'running', title: paused ? '接着记录，还在这一场里' : '先停一下：麦克风和识别都关掉，会议不结束', onClick: togglePause }, icon(paused ? 'play' : 'pause', 14), paused ? '继续' : '暂停'),
-      el('button.btn.btn-danger', { type: 'button', disabled: st !== 'running', class: st === 'stopping' ? 'is-loading' : '', onClick: stopMeeting }, icon('square', 14), '停止', recordKbd()),
+      el('button.btn', { type: 'button', disabled: st !== 'running', title: paused ? t('接着记录，还在这一场里') : t('先停一下：麦克风和识别都关掉，会议不结束'), onClick: togglePause }, icon(paused ? 'play' : 'pause', 14), paused ? t('继续') : t('暂停')),
+      el('button.btn.btn-danger', { type: 'button', disabled: st !== 'running', class: st === 'stopping' ? 'is-loading' : '', onClick: stopMeeting }, icon('square', 14), t('停止'), recordKbd()),
     ],
   })
 }

@@ -3,6 +3,7 @@ import { chatgptComplete } from './chatgpt.js'
 import { compatComplete, listModels as compatModels } from './openaiCompat.js'
 import { LlmError } from './errors.js'
 import { PRESET_IDS, PROVIDERS, providerOf } from './providers.js'
+import { t } from '../i18n.js'
 
 export { ChatGPTAuth } from './chatgptAuth.js'
 export { LlmError, isAbort } from './errors.js'
@@ -56,11 +57,11 @@ export async function complete(settings, auth, o) {
   const provider = settings.llmProvider ?? 'openai'
   const model = resolveModel(settings, o.model)
   if (provider === 'chatgpt') {
-    if (!auth) throw new LlmError('not-logged-in', '还没用 ChatGPT 账号登录（设置 → AI 服务）')
+    if (!auth) throw new LlmError('not-logged-in', t('还没用 ChatGPT 账号登录（设置 → AI 服务）'))
     return chatgptComplete(auth, { ...o, model })
   }
   const cfg = compatConfig(settings)
-  if (!cfg.baseUrl) throw new LlmError('bad-request', '还没填 AI 服务地址（设置 → 账号与 AI）')
+  if (!cfg.baseUrl) throw new LlmError('bad-request', t('还没填 AI 服务地址（设置 → 账号与 AI）'))
   return compatComplete(cfg, { ...o, model })
 }
 
@@ -69,8 +70,8 @@ export async function listModels(settings) {
   const provider = settings.llmProvider ?? 'openai'
   if (provider === 'chatgpt') return { ok: true, models: [...new Set(Object.values(CHATGPT_MODELS))].sort(), label: 'ChatGPT' }
   const cfg = compatConfig(settings)
-  if (!cfg.baseUrl) return { ok: false, error: '还没填接口地址' }
-  if (!cfg.key) return { ok: false, error: '还没填 API Key' }
+  if (!cfg.baseUrl) return { ok: false, error: t('还没填接口地址') }
+  if (!cfg.key) return { ok: false, error: t('还没填 API Key') }
   try {
     return { ok: true, models: await compatModels(cfg), label: provider === 'custom' ? hostOf(cfg.baseUrl) || cfg.baseUrl : providerOf(provider).name }
   } catch (e) {
@@ -91,22 +92,22 @@ export function llmStatus(settings, auth) {
   const provider = settings.llmProvider ?? 'openai'
   if (provider === 'chatgpt') {
     const label = 'ChatGPT 账号'
-    if (!auth) return { provider, ready: false, label, reason: '主进程还没创建 ChatGPT 登录模块' }
+    if (!auth) return { provider, ready: false, label, reason: t('主进程还没创建 ChatGPT 登录模块') }
     const st = auth.status()
-    if (st.loggingIn) return { provider, ready: false, label, reason: '正在等浏览器里完成登录' }
-    if (!st.loggedIn) return { provider, ready: false, label, reason: st.error ?? '还没用 ChatGPT 账号登录' }
+    if (st.loggingIn) return { provider, ready: false, label, reason: t('正在等浏览器里完成登录') }
+    if (!st.loggedIn) return { provider, ready: false, label, reason: st.error ?? t('还没用 ChatGPT 账号登录') }
     const who = [st.email, st.planLabel].filter(Boolean).join('，')
     return {
       provider,
       ready: true,
-      label: who ? `ChatGPT（${who}）` : 'ChatGPT',
+      label: who ? t(`ChatGPT（{0}）`, who) : 'ChatGPT',
       reason: null,
       account: { email: st.email, plan: st.plan, planLabel: st.planLabel, source: st.source },
     }
   }
   const cfg = compatConfig(settings)
   const label = provider === 'custom' ? hostOf(cfg.baseUrl) || '自定义 AI 服务' : providerOf(provider).name
-  if (!cfg.baseUrl) return { provider, ready: false, label, reason: '没填 AI 服务地址' }
-  if (!cfg.key) return { provider, ready: false, label, reason: provider === 'openai' ? '没填 OpenAI Key' : provider === 'custom' ? '没填 AI 服务的 Key' : `没填 ${label} 的 Key` }
+  if (!cfg.baseUrl) return { provider, ready: false, label, reason: t('没填 AI 服务地址') }
+  if (!cfg.key) return { provider, ready: false, label, reason: provider === 'openai' ? t('没填 OpenAI Key') : provider === 'custom' ? t('没填 AI 服务的 Key') : t(`没填 {0} 的 Key`, label) }
   return { provider, ready: true, label, reason: null }
 }

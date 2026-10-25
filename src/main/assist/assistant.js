@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { answerMessages, withImage } from './answerPrompt.js'
 import { noDashes } from '../prompts.js'
+import { t } from '../i18n.js'
 
 // 实时答题：截图和组 prompt 同时做，流式出字；新问题来了就停掉还在生成的旧回答。
 // complete 由主进程注入：(opts) => complete(settings, auth, opts)，单测里换成假的。
@@ -35,7 +36,7 @@ export class Assistant extends EventEmitter {
     dedupeMs = 20_000,
   } = {}) {
     super()
-    if (typeof complete !== 'function') throw new Error('Assistant 需要 complete')
+    if (typeof complete !== 'function') throw new Error(t('Assistant 需要 complete'))
     this.complete = complete
     this.captureScreen = captureScreen
     this.screenReady = screenReady
@@ -182,18 +183,18 @@ export class Assistant extends EventEmitter {
   }
 
   async #shot(signal) {
-    if (!this.captureScreen) return { error: '没有接入截屏，这次没带截图' }
+    if (!this.captureScreen) return { error: t('没有接入截屏，这次没带截图') }
     const t0 = performance.now()
     let timer
     try {
       const timeout = new Promise((resolve) => {
-        timer = setTimeout(() => resolve({ error: '截图太慢，这次没带截图', ms: Math.round(performance.now() - t0) }), this.opts.screenTimeoutMs)
+        timer = setTimeout(() => resolve({ error: t('截图太慢，这次没带截图'), ms: Math.round(performance.now() - t0) }), this.opts.screenTimeoutMs)
       })
       const shot = Promise.resolve()
         .then(() => this.captureScreen({ maxWidth: this.opts.screenMaxWidth }))
         .then(
         (r) => ({ dataUrl: r.dataUrl, ms: r.ms ?? Math.round(performance.now() - t0) }),
-        (e) => ({ error: e.code === 'no-permission' ? e.message : `截图失败，这次没带截图：${e.message}`, code: e.code, ms: Math.round(performance.now() - t0) }),
+        (e) => ({ error: e.code === 'no-permission' ? e.message : t(`截图失败，这次没带截图：{0}`, e.message), code: e.code, ms: Math.round(performance.now() - t0) }),
       )
       const aborted = new Promise((resolve) => signal.addEventListener('abort', () => resolve({ error: 'cancelled' }), { once: true }))
       return await Promise.race([shot, timeout, aborted])

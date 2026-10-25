@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import zlib from 'node:zlib'
 import WebSocket from 'ws'
+import { t } from '../i18n.js'
 
 // 豆包（火山引擎）大模型流式识别 v3：wss://openspeech.bytedance.com/api/v3/sauc/bigmodel。
 // 帧：[4 字节 header][4 字节大端 payload 长度][payload]；响应带序号时 header 后多 4 字节，错误帧多 4 字节错误码。
@@ -242,7 +243,7 @@ export class VolcStreamASR extends EventEmitter {
       ws.on('error', (e) => fail(e))
       ws.on('close', (code, reason) => {
         if (MEMBER_CLOSE[code]) return this.#memberStop(conn, MEMBER_CLOSE[code])
-        this.#onConnLost(conn, new Error(`豆包连接断开（${code} ${reason}）`))
+        this.#onConnLost(conn, new Error(t(`豆包连接断开（{0} {1}）`, code, reason)))
       })
     })
     conn.ready.catch(() => {})
@@ -471,7 +472,7 @@ export class VolcStreamASR extends EventEmitter {
     if (buf < 1024 || drained > 1024) conn.movingAt = now
     else if (now - conn.movingAt >= this.t.stallMs) {
       trace({ ev: 'stall', c: conn.id, buf })
-      this.#onConnLost(conn, new Error('豆包连接卡住了，音频发不出去'))
+      this.#onConnLost(conn, new Error(t('豆包连接卡住了，音频发不出去')))
       conn.ws.terminate()
       return
     }

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { voiceprintPaths } from '../audio/voiceprint.js'
+import { t } from '../i18n.js'
 
 // 本地识别（X-ASR，免费、不联网、不用 Key）。识别在 utilityProcess 里跑（localHost.cjs），
 // 对方和我两路共用一个进程、一份模型；进程开一次常驻，下一场会直接用。不在 Electron 里（单测）时在进程内跑。
@@ -31,9 +32,9 @@ export function localAsrAvailable() {
 
 function initMessage() {
   const native = voiceprintPaths().native
-  if (!native) throw Object.assign(new Error('本地识别组件缺失：找不到 sherpa-onnx，请重新安装'), { code: 'no-native' })
+  if (!native) throw Object.assign(new Error(t('本地识别组件缺失：找不到 sherpa-onnx，请重新安装')), { code: 'no-native' })
   const modelDir = localModelDir()
-  if (!modelDir) throw Object.assign(new Error('本地识别模型缺失，请重新安装'), { code: 'no-model' })
+  if (!modelDir) throw Object.assign(new Error(t('本地识别模型缺失，请重新安装')), { code: 'no-model' })
   return { type: 'init', native, modelDir, numThreads: 1 }
 }
 
@@ -58,7 +59,7 @@ class UtilityHost {
           else if (m?.type === 'error' && !m.ch) reject(Object.assign(new Error(m.message), { code: m.code }))
         }
         child.on('message', onMessage)
-        child.once('exit', (code) => reject(new Error(`本地识别模型加载失败，文件可能损坏，请重新安装（进程退出码 ${code}）`)))
+        child.once('exit', (code) => reject(new Error(t(`本地识别模型加载失败，文件可能损坏，请重新安装（进程退出码 {0}）`, code))))
         child.on('message', (m) => this.#route(m))
         child.postMessage(init)
       })
@@ -243,7 +244,7 @@ export class LocalStreamASR extends EventEmitter {
     const now = Date.now()
     this.crashes = [...this.crashes.filter((t) => now - t < 60_000), now]
     if (this.crashes.length >= 3) {
-      this.emit('fatal', new Error(`本地识别一分钟里意外退出了 ${this.crashes.length} 次（退出码 ${code}），先停下了。可以在「设置 → 语音识别」里换成豆包或 OpenAI`))
+      this.emit('fatal', new Error(t(`本地识别一分钟里意外退出了 {0} 次（退出码 {1}），先停下了。可以在「设置 → 语音识别」里换成豆包或 OpenAI`, this.crashes.length, code)))
       return
     }
     this.emit('status', 'reconnecting')
@@ -255,7 +256,7 @@ export class LocalStreamASR extends EventEmitter {
       this.host.open(this.ch, this.#handlers())
       this.emit('status', 'ready')
     } catch (e) {
-      this.emit('fatal', new Error(`本地识别停止了（进程退出码 ${code}）：${e.message}`))
+      this.emit('fatal', new Error(t(`本地识别停止了（进程退出码 {0}）：{1}`, code, e.message)))
     }
   }
 

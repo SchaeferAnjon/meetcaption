@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { clock, ymd } from '../prompts.js'
 import { safeFolderName, uniqueName } from '../projects.js'
+import { t } from '../i18n.js'
 
 // 课堂的文件：截取的画面存在会议文件夹的 slides/ 里；课堂笔记导出到笔记库（比如 Obsidian 的课程目录）。
 // 不引 electron，单测直接用临时目录。
@@ -46,7 +47,7 @@ export function notesBaseName(session) {
  */
 export function exportNotesTo({ session, sessionDir, dir, projectName = '' }) {
   const md = session.summary?.markdown
-  if (!md) throw new Error(session.mode === 'class' ? '还没生成课堂笔记，先点「生成课堂笔记」' : '还没生成纪要')
+  if (!md) throw new Error(session.mode === 'class' ? t('还没生成课堂笔记，先点「生成课堂笔记」') : t('还没生成纪要'))
   const d = new Date(session.startedAt)
   const kind = session.mode === 'class' ? '课堂笔记' : '会议纪要'
   const title = String(session.title ?? '').trim() || `${pad(d.getHours())}.${pad(d.getMinutes())}`

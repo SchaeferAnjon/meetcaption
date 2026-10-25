@@ -43,6 +43,9 @@ const EVENTS = new Set([
   'slides:added', // 截取了一张画面 { sessionId, file: 'slides/时.分.秒.jpg', at（截图时刻，毫秒时间戳，同 seg.startedAt）, url（file:// 地址）}
 ])
 
+// 界面语言的表：页面脚本加载前就要有（shared/i18n.js 用它定义 t）
+contextBridge.exposeInMainWorld('I18N', ipcRenderer.sendSync('i18n:get'))
+
 contextBridge.exposeInMainWorld('app', {
   init: invoke('app:init'),
   updateSettings: invoke('settings:update'),

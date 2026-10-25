@@ -4,6 +4,7 @@ import { PRESET_IDS, PROVIDER_IDS, presetByUrl, providerOf } from './llm/provide
 export const DEFAULTS = {
   // 会员（member：识别和 AI 都经 MeetCaption 服务器，不用填 Key，按场扣）| 自带 Key（own：下面的识别和 AI 设置）
   plan: 'member',
+  uiLang: 'auto', // 界面语言：auto（跟系统）| zh | zh-Hant | en | ja | ko | de | fr | es | it（i18n.js 的 UI_LANGS）
   memberAsr: 'cloud', // 会员用哪种识别：cloud（豆包 2.0，经我们服务器）| local（本地识别，只用会员 AI）
   engine: 'local', // local（本地 X-ASR，免费、不联网、不用 Key）| soniox | volc（豆包）| openai
   // v3：对方语言、会议背景、术语、我的资料（assist.profile）挪到了项目里（project.json）。这里的四个值只在第一次升级时迁成「未归类」的默认值。

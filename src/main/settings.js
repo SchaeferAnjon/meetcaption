@@ -9,7 +9,7 @@ export { DEFAULTS, keywordList } from './defaults.js'
 
 // Windows 上密钥类字段用 DPAPI 加密落盘。macOS 不用钥匙串：没有正式签名的应用每次更新都会弹钥匙串密码框，
 // 设置文件在用户自己的 Application Support 里，权限 0600。
-const SECRET_FIELDS = ['openaiKey', 'volcAccessToken', 'llmKey', ...PRESET_IDS.map((id) => `llmKeys.${id}`)]
+const SECRET_FIELDS = ['openaiKey', 'sonioxKey', 'volcAccessToken', 'llmKey', ...PRESET_IDS.map((id) => `llmKeys.${id}`)]
 const getPath = (o, key) => key.split('.').reduce((x, k) => x?.[k], o)
 const setPath = (o, key, v) => {
   const ks = key.split('.')
@@ -23,6 +23,7 @@ export class SettingsStore extends EventEmitter {
   constructor() {
     super()
     this.file = path.join(app.getPath('userData'), 'settings.json')
+    this.isNew = !fs.existsSync(this.file) // 新装：第一次打开时语言按系统定（main.js）
     this.data = this.#load()
   }
 

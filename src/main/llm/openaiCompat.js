@@ -2,6 +2,7 @@
 // 消息 content 可以是字符串，也可以是 [{ type:'text', text } | { type:'image', dataUrl, detail? }]。
 import { readSse } from './sse.js'
 import { LlmError, requestControl, networkError } from './errors.js'
+import { t } from '../i18n.js'
 
 const JSON_HINT = 'Respond with a single JSON object only. No code fences, no extra text.'
 
@@ -75,19 +76,19 @@ export async function httpError(res) {
   } catch {}
   msg = String(msg).slice(0, 300)
   const opt = { status: res.status, detail: msg }
-  if (res.status === 401) return new LlmError('auth-expired', `AI 服务的 Key 无效（401）：${msg}`, opt)
-  if (res.status === 403) return new LlmError('forbidden', `AI 服务拒绝访问（403）：${msg}`, opt)
-  if (res.status === 404) return new LlmError('bad-model', `AI 服务找不到这个模型或地址（404）：${msg}`, opt)
+  if (res.status === 401) return new LlmError('auth-expired', t(`AI 服务的 Key 无效（401）：{0}`, msg), opt)
+  if (res.status === 403) return new LlmError('forbidden', t(`AI 服务拒绝访问（403）：{0}`, msg), opt)
+  if (res.status === 404) return new LlmError('bad-model', t(`AI 服务找不到这个模型或地址（404）：{0}`, msg), opt)
   if (res.status === 429) {
-    if (code === 'insufficient_quota' || type === 'insufficient_quota') return new LlmError('usage-limit', `AI 服务的额度用完了（429）：${msg}`, opt)
-    return new LlmError('rate-limit', `AI 服务额度用完或太频繁（429）：${msg}`, { ...opt, retryable: true })
+    if (code === 'insufficient_quota' || type === 'insufficient_quota') return new LlmError('usage-limit', t(`AI 服务的额度用完了（429）：{0}`, msg), opt)
+    return new LlmError('rate-limit', t(`AI 服务额度用完或太频繁（429）：{0}`, msg), { ...opt, retryable: true })
   }
   if (res.status === 400) {
-    if (code === 'context_length_exceeded') return new LlmError('context-too-long', '内容太长，超过了模型能读的长度', opt)
-    return new LlmError('bad-request', `AI 服务拒绝了请求（400）：${msg}`, opt)
+    if (code === 'context_length_exceeded') return new LlmError('context-too-long', t('内容太长，超过了模型能读的长度'), opt)
+    return new LlmError('bad-request', t(`AI 服务拒绝了请求（400）：{0}`, msg), opt)
   }
-  if (res.status >= 500) return new LlmError('server', `AI 服务出错（HTTP ${res.status}），稍后再试`, { ...opt, retryable: true })
-  return new LlmError('http', `AI 服务出错（HTTP ${res.status}）：${msg}`, opt)
+  if (res.status >= 500) return new LlmError('server', t(`AI 服务出错（HTTP {0}），稍后再试`, res.status), { ...opt, retryable: true })
+  return new LlmError('http', t(`AI 服务出错（HTTP {0}）：{1}`, res.status, msg), opt)
 }
 
 async function post({ baseUrl, key, signal }, body) {
@@ -132,7 +133,7 @@ async function withParamFallback(body, run) {
 
 // 只有思考、没有正文：多半是思考把输出上限用光了
 function thinkingOnly() {
-  return new LlmError('incomplete', 'AI 只在思考、没写出回答：换一个不思考的模型（比如 deepseek-flash），或者调大输出上限')
+  return new LlmError('incomplete', t('AI 只在思考、没写出回答：换一个不思考的模型（比如 deepseek-flash），或者调大输出上限'))
 }
 
 export async function chat({ baseUrl, key, openai, model, messages, effort, signal, timeoutMs = 30_000, maxOutputTokens, json }) {
@@ -173,7 +174,7 @@ export async function chatStream({ baseUrl, key, openai, model, messages, effort
         } catch {
           continue
         }
-        if (j.error) throw new LlmError('stream', `AI 服务返回错误：${j.error.message ?? JSON.stringify(j.error)}`, { detail: j.error.message })
+        if (j.error) throw new LlmError('stream', t(`AI 服务返回错误：{0}`, j.error.message ?? JSON.stringify(j.error)), { detail: j.error.message })
         const d = j.choices?.[0]?.delta
         if (d?.reasoning_content) thought = true
         if (d?.content) {
@@ -194,7 +195,7 @@ export async function chatStream({ baseUrl, key, openai, model, messages, effort
 
 /** 门面用：cfg = { baseUrl, key, openai }，给了 onDelta 就流式。 */
 export async function compatComplete(cfg, { model, system, messages = [], effort, maxOutputTokens, json, signal, timeoutMs, onDelta }) {
-  if (!cfg.key) throw new LlmError('not-logged-in', '还没配置 AI 服务的 Key（设置 → AI 服务）')
+  if (!cfg.key) throw new LlmError('not-logged-in', t('还没配置 AI 服务的 Key（设置 → AI 服务）'))
   const msgs = system ? [{ role: 'system', content: system }, ...messages] : messages
   const args = { ...cfg, model, messages: msgs, effort, signal, maxOutputTokens, json }
   if (onDelta) return (await chatStream({ ...args, timeoutMs, onDelta })).trim()

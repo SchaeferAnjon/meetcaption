@@ -117,7 +117,7 @@ test('界面的语言清单（renderer/shared/langs.js）和主进程同一份�
   const vm = await import('node:vm')
   const { LANG_CODES, TARGET_CODES, promptLang } = await import('../src/main/languages.js')
   const window = {}
-  vm.runInNewContext(fs.readFileSync(new URL('../src/renderer/shared/langs.js', import.meta.url), 'utf8'), { window, Intl })
+  vm.runInNewContext(fs.readFileSync(new URL('../src/renderer/shared/langs.js', import.meta.url), 'utf8'), { window, Intl, t: (x) => x })
   assert.deepEqual([...window.LANG_CODES], LANG_CODES)
   assert.equal(LANG_CODES.length, 60)
   assert.deepEqual([...window.TARGET_LANGS.map((l) => l.value)], TARGET_CODES)
@@ -125,7 +125,7 @@ test('界面的语言清单（renderer/shared/langs.js）和主进程同一份�
   assert.equal(window.langLabel('zh-Hant'), '繁体中文')
   assert.equal(promptLang('ja'), '日语（日本語）')
   const en = {}
-  vm.runInNewContext(fs.readFileSync(new URL('../src/renderer/shared/langs.js', import.meta.url), 'utf8'), { window: Object.assign(en, { UI_LANG: 'en' }), Intl })
+  vm.runInNewContext(fs.readFileSync(new URL('../src/renderer/shared/langs.js', import.meta.url), 'utf8'), { window: Object.assign(en, { UI_LANG: 'en' }), Intl, t: (x) => x })
   assert.equal(en.langLabel('de'), 'German')
 })
 

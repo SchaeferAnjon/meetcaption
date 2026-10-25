@@ -8,6 +8,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { LlmError } from './errors.js'
+import { t } from '../i18n.js'
 
 export const OAUTH = {
   issuer: 'https://auth.openai.com',
@@ -132,7 +133,7 @@ export function accountInfo({ idToken, accessToken }) {
 /** 校验浏览器回调的参数：先比 state，再看有没有 error，最后要 code。 */
 export function checkCallback(params, expectedState) {
   if (!params.state || params.state !== expectedState) {
-    return { kind: 'state-mismatch', message: '回调里的 state 对不上，可能是旧的登录页面，请回到应用重新点登录' }
+    return { kind: 'state-mismatch', message: t('回调里的 state 对不上，可能是旧的登录页面，请回到应用重新点登录') }
   }
   if (params.error) {
     const desc = params.error_description ? `：${params.error_description}` : ''
@@ -140,7 +141,7 @@ export function checkCallback(params, expectedState) {
       params.error === 'access_denied' ? `你取消了授权，或者这个账号不能用于 Codex${desc}` : `OpenAI 返回错误 ${params.error}${desc}`
     return { kind: 'provider', message }
   }
-  if (!params.code) return { kind: 'missing-code', message: '回调里没有授权码，登录没能完成' }
+  if (!params.code) return { kind: 'missing-code', message: t('回调里没有授权码，登录没能完成') }
   return { kind: 'ok', code: params.code }
 }
 
@@ -160,9 +161,9 @@ export function classifyRefreshFailure(status, bodyText) {
   }
   if (reasons[code]) return { permanent: true, message: reasons[code] }
   if (status === 401 || (status === 400 && code === 'invalid_grant')) {
-    return { permanent: true, message: 'ChatGPT 登录已失效，请重新登录' }
+    return { permanent: true, message: t('ChatGPT 登录已失效，请重新登录') }
   }
-  return { permanent: false, message: `刷新 ChatGPT 登录失败（HTTP ${status}），稍后会再试` }
+  return { permanent: false, message: t(`刷新 ChatGPT 登录失败（HTTP {0}），稍后会再试`, status) }
 }
 
 function escapeHtml(s) {
@@ -204,7 +205,7 @@ async function listenFirst(ports) {
   }
   throw new LlmError(
     'port-in-use',
-    `登录要用本机 ${ports.join(' 或 ')} 端口接收浏览器回调，但端口被占用了。常见原因是 Codex CLI 或 OpenCode 正在登录，关掉它们再试。`,
+    t(`登录要用本机 {0} 端口接收浏览器回调，但端口被占用了。常见原因是 Codex CLI 或 OpenCode 正在登录，关掉它们再试。`, ports.join(t(' 或 '))),
   )
 }
 
@@ -274,7 +275,7 @@ export class ChatGPTAuth extends EventEmitter {
       planLabel: info.planLabel,
       accountId: d.accountId ?? info.accountId,
       expiresAt,
-      error: loggedIn ? base.error : base.error ?? 'Codex CLI 的登录已过期，在终端运行一次 codex 让它刷新',
+      error: loggedIn ? base.error : base.error ?? t('Codex CLI 的登录已过期，在终端运行一次 codex 让它刷新'),
     }
   }
 
@@ -290,7 +291,7 @@ export class ChatGPTAuth extends EventEmitter {
    */
   async login({ openExternal, timeoutMs = LOGIN_TIMEOUT_MS, signal } = {}) {
     if (this.mode === 'codex') {
-      throw new LlmError('codex-mode', '现在用的是 Codex CLI 的登录（MEETCAPTION_CHATGPT_AUTH=codex），不能在应用里登录')
+      throw new LlmError('codex-mode', t('现在用的是 Codex CLI 的登录（MEETCAPTION_CHATGPT_AUTH=codex），不能在应用里登录'))
     }
     // 先占位：登录还在绑端口时调用 cancelLogin() 也能取消。
     const attempt = { url: null, cancelled: false, closed: Promise.resolve() }
@@ -302,7 +303,7 @@ export class ChatGPTAuth extends EventEmitter {
     const cancelled = () => {
       if (this.login_ === attempt) this.login_ = null
       this.#emit()
-      return new LlmError('login-cancelled', '登录已取消')
+      return new LlmError('login-cancelled', t('登录已取消'))
     }
     if (prev) {
       prev.cancel()
@@ -350,8 +351,8 @@ export class ChatGPTAuth extends EventEmitter {
         else resolve(value)
       }
       const limit = timeoutMs >= 60_000 ? `${Math.round(timeoutMs / 60_000)} 分钟` : `${Math.ceil(timeoutMs / 1000)} 秒`
-      const timer = setTimeout(() => finish(new LlmError('login-timeout', `登录超时：${limit}内没有在浏览器里完成登录`)), timeoutMs)
-      attempt.cancel = () => finish(new LlmError('login-cancelled', '登录已取消'))
+      const timer = setTimeout(() => finish(new LlmError('login-timeout', t(`登录超时：{0}内没有在浏览器里完成登录`, limit))), timeoutMs)
+      attempt.cancel = () => finish(new LlmError('login-cancelled', t('登录已取消')))
       signal?.addEventListener('abort', attempt.cancel, { once: true })
 
       const send = (res, status, ok, message) => {
@@ -376,7 +377,7 @@ export class ChatGPTAuth extends EventEmitter {
         if (check.kind === 'state-mismatch') return send(res, 400, false, check.message)
         if (check.kind !== 'ok') {
           send(res, 400, false, check.message)
-          return finish(new LlmError('login-failed', `登录失败：${check.message}`))
+          return finish(new LlmError('login-failed', t(`登录失败：{0}`, check.message)))
         }
         if (exchanging || settled) return send(res, 409, false, '这个登录已经在处理了，请回到应用查看')
         exchanging = true
@@ -391,7 +392,7 @@ export class ChatGPTAuth extends EventEmitter {
           finish(null, who)
         } catch (e) {
           send(res, 500, false, e.message)
-          finish(e instanceof LlmError ? e : new LlmError('login-failed', `登录失败：${e.message}`))
+          finish(e instanceof LlmError ? e : new LlmError('login-failed', t(`登录失败：{0}`, e.message)))
         }
       })
 
@@ -426,7 +427,7 @@ export class ChatGPTAuth extends EventEmitter {
         signal: AbortSignal.timeout(30_000),
       })
     } catch (e) {
-      throw new LlmError('login-failed', `换取 token 时连不上 auth.openai.com：${e.cause?.code ?? e.message}`)
+      throw new LlmError('login-failed', t(`换取 token 时连不上 auth.openai.com：{0}`, e.cause?.code ?? e.message))
     }
     const text = await res.text()
     if (!res.ok) {
@@ -435,10 +436,10 @@ export class ChatGPTAuth extends EventEmitter {
         const j = JSON.parse(text)
         why = j.error_description ?? j.error?.message ?? j.error ?? why
       } catch {}
-      throw new LlmError('login-failed', `换取 token 失败（HTTP ${res.status}）：${why}`)
+      throw new LlmError('login-failed', t(`换取 token 失败（HTTP {0}）：{1}`, res.status, why))
     }
     const j = JSON.parse(text)
-    if (!j.access_token || !j.refresh_token) throw new LlmError('login-failed', '换取 token 失败：返回里缺少 access_token 或 refresh_token')
+    if (!j.access_token || !j.refresh_token) throw new LlmError('login-failed', t('换取 token 失败：返回里缺少 access_token 或 refresh_token'))
     return j
   }
 
@@ -446,7 +447,7 @@ export class ChatGPTAuth extends EventEmitter {
 
   async logout() {
     if (this.mode === 'codex') {
-      throw new LlmError('codex-mode', '现在用的是 Codex CLI 的登录（MEETCAPTION_CHATGPT_AUTH=codex），不能在应用里退出')
+      throw new LlmError('codex-mode', t('现在用的是 Codex CLI 的登录（MEETCAPTION_CHATGPT_AUTH=codex），不能在应用里退出'))
     }
     this.cancelLogin()
     const rt = this.#current()?.tokens.refresh_token
@@ -478,14 +479,14 @@ export class ChatGPTAuth extends EventEmitter {
   async credentials() {
     if (this.mode === 'codex') {
       const d = this.#readCodex()
-      if (!d) throw new LlmError('not-logged-in', '没读到 ~/.codex/auth.json 里的 ChatGPT 登录（先在终端运行 codex login）')
+      if (!d) throw new LlmError('not-logged-in', t('没读到 ~/.codex/auth.json 里的 ChatGPT 登录（先在终端运行 codex login）'))
       if (isExpired(d.tokens.access_token)) {
-        throw new LlmError('auth-expired', 'Codex CLI 的登录已过期，在终端运行一次 codex 让它刷新')
+        throw new LlmError('auth-expired', t('Codex CLI 的登录已过期，在终端运行一次 codex 让它刷新'))
       }
       return this.#creds(d)
     }
     let d = this.#current()
-    if (!d) throw new LlmError('not-logged-in', this.lastError ?? '还没用 ChatGPT 账号登录（设置 → AI 服务）')
+    if (!d) throw new LlmError('not-logged-in', this.lastError ?? t('还没用 ChatGPT 账号登录（设置 → AI 服务）'))
     if (needsRefresh({ accessToken: d.tokens.access_token, lastRefresh: d.lastRefresh })) {
       try {
         await this.#refresh()
@@ -494,7 +495,7 @@ export class ChatGPTAuth extends EventEmitter {
         if (e.code === 'auth-expired' || !this.#current() || isExpired(this.#current().tokens.access_token)) throw e
       }
       d = this.#current()
-      if (!d) throw new LlmError('not-logged-in', this.lastError ?? '已退出 ChatGPT 账号')
+      if (!d) throw new LlmError('not-logged-in', this.lastError ?? t('已退出 ChatGPT 账号'))
     }
     return this.#creds(d)
   }
@@ -537,7 +538,7 @@ export class ChatGPTAuth extends EventEmitter {
           signal: AbortSignal.timeout(30_000),
         })
       } catch (e) {
-        throw new LlmError('refresh-failed', `刷新 ChatGPT 登录时连不上 auth.openai.com：${e.cause?.code ?? e.message}`, { retryable: true })
+        throw new LlmError('refresh-failed', t(`刷新 ChatGPT 登录时连不上 auth.openai.com：{0}`, e.cause?.code ?? e.message), { retryable: true })
       }
       const text = await res.text()
       if (!res.ok) {
@@ -549,7 +550,7 @@ export class ChatGPTAuth extends EventEmitter {
       try {
         j = JSON.parse(text)
       } catch {
-        throw new LlmError('refresh-failed', '刷新 ChatGPT 登录失败：返回的不是 JSON', { retryable: true })
+        throw new LlmError('refresh-failed', t('刷新 ChatGPT 登录失败：返回的不是 JSON'), { retryable: true })
       }
       if (gen !== this.gen || !this.data) return // 刷新途中退出或重新登录了
       const tokens = { ...this.data.tokens }

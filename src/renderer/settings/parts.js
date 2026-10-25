@@ -23,14 +23,12 @@
   const getPath = (o, key) => key.split('.').reduce((x, k) => x?.[k], o)
   const patchFor = (key, v) => key.split('.').reduceRight((acc, k) => ({ [k]: acc }), v)
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-  const pad = (n) => String(n).padStart(2, '0')
   function dateText(ms) {
-    const d = new Date(ms)
-    return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    return fmtDate(ms, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
   }
 
   // 主进程没接好的接口：缺方法或没注册 handler 都返回 { ok: false, missing }，界面照常显示
-  const NOT_READY = '这个功能在当前版本里还没接好'
+  const NOT_READY = t('这个功能在当前版本里还没接好')
   async function call(name, ...args) {
     if (typeof api[name] !== 'function') return { ok: false, missing: true, error: NOT_READY }
     try {
@@ -115,7 +113,7 @@
       for (const f of savedListeners) f(patch)
     } catch (e) {
       sending.splice(sending.indexOf(patch), 1)
-      ui.toast({ type: 'error', title: '没能保存设置', message: String(e?.message ?? e) })
+      ui.toast({ type: 'error', title: t('没能保存设置'), message: String(e?.message ?? e) })
     }
   }
 
@@ -180,11 +178,11 @@
       if (document.activeElement !== input) input.value = v ?? ''
     })
     if (!opts.secret) return input
-    const eye = el('button.btn.btn-ghost.btn-icon.btn-sm.secret-eye', { type: 'button', 'aria-label': '显示' }, icon('eye', 14))
+    const eye = el('button.btn.btn-ghost.btn-icon.btn-sm.secret-eye', { type: 'button', 'aria-label': t('显示') }, icon('eye', 14))
     eye.addEventListener('click', () => {
       const show = input.type === 'password'
       input.type = show ? 'text' : 'password'
-      eye.setAttribute('aria-label', show ? '隐藏' : '显示')
+      eye.setAttribute('aria-label', show ? t('隐藏') : t('显示'))
       clear(eye).append(icon(show ? 'eye-off' : 'eye', 14))
     })
     const wrap = el('div.secret', {}, input, eye)
@@ -286,13 +284,13 @@
     btn.addEventListener('click', async () => {
       btn.classList.add('is-loading')
       btn.disabled = true
-      show('busy', '正在连接…')
+      show('busy', t('正在连接…'))
       await flush()
       const r = await run()
       btn.classList.remove('is-loading')
       btn.disabled = false
       if (r?.ok) show('ok', okText(r))
-      else show('err', r?.error || '没有连上')
+      else show('err', r?.error || t('没有连上'))
     })
     const node = el('div.test', {}, btn, out)
     node.reset = () => {
@@ -340,9 +338,9 @@
     const key = keyName(e)
     if (!key) return null
     const mods = modsOf(e)
-    if (!mods.length && !/^F\d+$/.test(key)) return { error: isMac ? '至少要带一个 ⌘、⌥、⌃ 或 ⇧（F1 到 F12 可以单独用）' : '至少要带一个 Ctrl、Alt 或 Shift（F1 到 F12 可以单独用）' }
+    if (!mods.length && !/^F\d+$/.test(key)) return { error: isMac ? t('至少要带一个 ⌘、⌥、⌃ 或 ⇧（F1 到 F12 可以单独用）') : t('至少要带一个 Ctrl、Alt 或 Shift（F1 到 F12 可以单独用）') }
     const accel = [...mods, key].join('+')
-    if (RESERVED.has(accel)) return { error: `${ui.accelText(accel)} 是复制、粘贴这类系统操作，换一个` }
+    if (RESERVED.has(accel)) return { error: t(`{0} 是复制、粘贴这类系统操作，换一个`, ui.accelText(accel)) }
     return { accel }
   }
 
@@ -355,8 +353,8 @@
   }
 
   function hotkeyRecorder(key, { def, label }) {
-    const btn = el('button.hotkey', { type: 'button', 'aria-label': `${label}的快捷键，点一下录制新的` })
-    const reset = el('button.btn.btn-ghost.btn-sm', { type: 'button' }, icon('refresh-cw', 13), el('span', { text: '恢复默认' }))
+    const btn = el('button.hotkey', { type: 'button', 'aria-label': t(`{0}的快捷键，点一下录制新的`, label) })
+    const reset = el('button.btn.btn-ghost.btn-sm', { type: 'button' }, icon('refresh-cw', 13), el('span', { text: t('恢复默认') }))
     const err = el('div.form-hint.is-error')
     let recording = false
     let held = []
@@ -367,11 +365,11 @@
       clear(btn)
       btn.classList.toggle('is-recording', recording)
       if (recording) {
-        if (held.length) btn.append(ui.kbd(held.join('+')), el('span.hotkey-wait', { text: '再按一个键' }))
-        else btn.append(el('span.hotkey-wait', { text: '按下新的组合键，Esc 取消，Delete 不用这个快捷键' }))
+        if (held.length) btn.append(ui.kbd(held.join('+')), el('span.hotkey-wait', { text: t('再按一个键') }))
+        else btn.append(el('span.hotkey-wait', { text: t('按下新的组合键，Esc 取消，Delete 不用这个快捷键') }))
       } else {
         const v = get(key)
-        btn.append(v ? ui.kbd(v) : el('span.text-3', { text: '未设置' }))
+        btn.append(v ? ui.kbd(v) : el('span.text-3', { text: t('未设置') }))
         btn.append(el('span.hotkey-edit', {}, icon('pencil', 12)))
       }
       reset.hidden = recording || get(key) === def
@@ -428,7 +426,7 @@
       held = []
       if (clash) {
         // 还在录制：直接按别的组合就行，Esc 取消（提示一起清掉）
-        localError = `和「${clash.label}」的快捷键重复了，换一个，或者按 Esc 取消`
+        localError = t(`和「{0}」的快捷键重复了，换一个，或者按 Esc 取消`, clash.label)
         render()
         return
       }
@@ -482,10 +480,10 @@
     if (seq !== loginSeq) return // 又点了一次登录，这次的结果不用管
     loginBusy = false
     if (r?.missing) return setChatgpt(r)
-    if (r?.ok === false && r.code !== 'login-cancelled') loginError = r.error || '登录没有完成'
+    if (r?.ok === false && r.code !== 'login-cancelled') loginError = r.error || t('登录没有完成')
     if (r?.status) setChatgpt(r.status)
     else setChatgpt(await call('chatgptStatus'))
-    if (chatgpt?.loggedIn) ui.toast({ type: 'success', title: 'ChatGPT 已登录' })
+    if (chatgpt?.loggedIn) ui.toast({ type: 'success', title: t('ChatGPT 已登录') })
   }
 
   async function chatgptLogout() {
@@ -495,10 +493,10 @@
     setChatgpt(r && r.ok !== false && !r.error ? r : await call('chatgptStatus'))
   }
 
-  function copyText(text, done = '已复制') {
+  function copyText(text, done = t('已复制')) {
     navigator.clipboard.writeText(text).then(
       () => ui.toast({ type: 'success', title: done }),
-      () => ui.toast({ type: 'error', title: '没能复制，请手动选中文字复制' }),
+      () => ui.toast({ type: 'error', title: t('没能复制，请手动选中文字复制') }),
     )
   }
 
@@ -532,14 +530,14 @@
               'button.choice.provider-choice',
               { type: 'button', role: 'radio', dataset: { id: p.id }, onClick: () => (set('llmProvider', p.id, 0), onPick?.(p.id)) },
               providerLogo(p),
-              el('span.choice-main', {}, el('span.choice-title', {}, el('span', { text: p.name }), p.id === recommend ? el('span.tag.tag-accent', { text: '推荐' }) : null), el('span.choice-desc', { text: p.blurb })),
+              el('span.choice-main', {}, el('span.choice-title', {}, el('span', { text: p.name }), p.id === recommend ? el('span.tag.tag-accent', { text: t('推荐') }) : null), el('span.choice-desc', { text: p.blurb })),
             )
             cards.push(b)
             return b
           }),
         ),
       )
-    const root = el('div.provider-picker', {}, group('国内直连', providers.filter((p) => p.region === 'cn')), group('海外和其他', providers.filter((p) => p.region !== 'cn')))
+    const root = el('div.provider-picker', {}, group(t('国内直连'), providers.filter((p) => p.region === 'cn')), group(t('海外和其他'), providers.filter((p) => p.region !== 'cn')))
     watch((st) => cards.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.id === st.llmProvider))))
     return root
   }
@@ -549,22 +547,22 @@
    * row(label, control, hint)：设置窗口用 row，引导用它自己的 field。
    */
   function providerSetup({ row: line = row } = {}) {
-    const keyLink = (p) => el('button.link-btn', { type: 'button', onClick: () => api.openExternal(p.keyPage) }, el('span', { text: `去 ${p.name} 创建 Key` }), icon('external-link', 12))
+    const keyLink = (p) => el('button.link-btn', { type: 'button', onClick: () => api.openExternal(p.keyPage) }, el('span', { text: t(`去 {0} 创建 Key`, p.name) }), icon('external-link', 12))
     const parts = []
     const chat = el('div.provider-setup', {}, chatgptPanel())
     showWhen(chat, (st) => st.llmProvider === 'chatgpt')
     parts.push(chat)
     for (const p of providers.filter((x) => x.keyPage)) {
       const key = p.id === 'openai' ? 'openaiKey' : `llmKeys.${p.id}`
-      const hint = el('div.form-hint', {}, p.id === 'openai' ? el('span', { text: '按用量付费。语音识别选 OpenAI 时也用这个 Key。' }) : null, keyLink(p))
-      const node = el('div.provider-setup', {}, line(`${p.name} Key`, textInput(key, { secret: true, trim: true, placeholder: '粘贴 API Key', label: `${p.name} API Key` }), hint))
+      const hint = el('div.form-hint', {}, p.id === 'openai' ? el('span', { text: t('按用量付费。语音识别选 OpenAI 时也用这个 Key。') }) : null, keyLink(p))
+      const node = el('div.provider-setup', {}, line(`${p.name} Key`, textInput(key, { secret: true, trim: true, placeholder: t('粘贴 API Key'), label: `${p.name} API Key` }), hint))
       showWhen(node, (st) => st.llmProvider === p.id)
       parts.push(node)
     }
     const custom = el(
       'div.provider-setup',
       {},
-      line('接口地址', textInput('llmBaseUrl', { trim: true, placeholder: 'https://…/v1', label: '接口地址' }), '任何 OpenAI 兼容接口，填到 /v1 这一级。智谱 Coding Plan：https://open.bigmodel.cn/api/coding/paas/v4'),
+      line(t('接口地址'), textInput('llmBaseUrl', { trim: true, placeholder: 'https://…/v1', label: t('接口地址') }), t('任何 OpenAI 兼容接口，填到 /v1 这一级。智谱 Coding Plan：https://open.bigmodel.cn/api/coding/paas/v4')),
       line('API Key', textInput('llmKey', { secret: true, trim: true, label: 'API Key' })),
     )
     showWhen(custom, (st) => st.llmProvider === 'custom')
@@ -580,11 +578,11 @@
       const err = loginError || st?.error
       const errNode = err ? el('div.form-hint.is-error.selectable', { text: err }) : null
       if (!st) {
-        box.replaceChildren(ui.spinner(14), el('span.text-2', { text: '正在读取登录状态…' }))
+        box.replaceChildren(ui.spinner(14), el('span.text-2', { text: t('正在读取登录状态…') }))
         return
       }
       if (st.unsupported) {
-        box.replaceChildren(el('span.account-icon', {}, icon('circle-alert', 16)), el('div.account-main', {}, el('div.account-title', { text: '还不能用 ChatGPT 账号登录' }), el('div.account-sub', { text: `${NOT_READY}，先用 OpenAI API Key。` })))
+        box.replaceChildren(el('span.account-icon', {}, icon('circle-alert', 16)), el('div.account-main', {}, el('div.account-title', { text: t('还不能用 ChatGPT 账号登录') }), el('div.account-sub', { text: t(`{0}，先用 OpenAI API Key。`, NOT_READY) })))
         return
       }
       if (st.loggedIn) {
@@ -594,11 +592,11 @@
           el(
             'div.account-main',
             {},
-            el('div.account-title', {}, el('span.truncate.selectable', { text: st.email || '已登录' }), plan ? el('span.tag.tag-accent', { text: plan }) : null),
-            el('div.account-sub', { text: st.source === 'codex' ? '开发模式：只读借用本机 Codex 的登录，不会刷新。' : '翻译、纪要和答题都走这个账号的订阅额度。' }),
+            el('div.account-title', {}, el('span.truncate.selectable', { text: st.email || t('已登录') }), plan ? el('span.tag.tag-accent', { text: plan }) : null),
+            el('div.account-sub', { text: st.source === 'codex' ? t('开发模式：只读借用本机 Codex 的登录，不会刷新。') : t('翻译、纪要和答题都走这个账号的订阅额度。') }),
             errNode,
           ),
-          el('button.btn.btn-sm', { type: 'button', onClick: chatgptLogout, disabled: st.source === 'codex' }, icon('log-out', 14), el('span', { text: '退出登录' })),
+          el('button.btn.btn-sm', { type: 'button', onClick: chatgptLogout, disabled: st.source === 'codex' }, icon('log-out', 14), el('span', { text: t('退出登录') })),
         )
         return
       }
@@ -608,14 +606,14 @@
           el(
             'div.account-main',
             {},
-            el('div.account-title', { text: '正在浏览器里登录…' }),
-            el('div.account-sub', { text: '在打开的网页里登录 ChatGPT 并同意授权，完成后会自动回到这里。浏览器没弹出来就复制链接自己打开。' }),
+            el('div.account-title', { text: t('正在浏览器里登录…') }),
+            el('div.account-sub', { text: t('在打开的网页里登录 ChatGPT 并同意授权，完成后会自动回到这里。浏览器没弹出来就复制链接自己打开。') }),
             el(
               'div.form-inline.account-actions',
               {},
-              st.loginUrl ? el('button.btn.btn-sm', { type: 'button', onClick: () => copyText(st.loginUrl, '登录链接已复制') }, icon('copy', 13), el('span', { text: '复制登录链接' })) : null,
-              el('button.btn.btn-sm', { type: 'button', onClick: chatgptLogin }, icon('external-link', 13), el('span', { text: '重新打开' })),
-              typeof api.chatgptCancelLogin === 'function' ? el('button.btn.btn-ghost.btn-sm', { type: 'button', onClick: () => call('chatgptCancelLogin') }, '取消') : null,
+              st.loginUrl ? el('button.btn.btn-sm', { type: 'button', onClick: () => copyText(st.loginUrl, t('登录链接已复制')) }, icon('copy', 13), el('span', { text: t('复制登录链接') })) : null,
+              el('button.btn.btn-sm', { type: 'button', onClick: chatgptLogin }, icon('external-link', 13), el('span', { text: t('重新打开') })),
+              typeof api.chatgptCancelLogin === 'function' ? el('button.btn.btn-ghost.btn-sm', { type: 'button', onClick: () => call('chatgptCancelLogin') }, t('取消')) : null,
             ),
             errNode,
           ),
@@ -624,8 +622,8 @@
       }
       box.replaceChildren(
         el('span.account-icon', {}, icon('user', 16)),
-        el('div.account-main', {}, el('div.account-title', { text: '还没登录' }), el('div.account-sub', { text: '在浏览器里登录，本应用看不到你的密码。' }), errNode),
-        el('button.btn.btn-primary', { type: 'button', onClick: chatgptLogin }, icon('log-in', 14), el('span', { text: '用 ChatGPT 账号登录' })),
+        el('div.account-main', {}, el('div.account-title', { text: t('还没登录') }), el('div.account-sub', { text: t('在浏览器里登录，本应用看不到你的密码。') }), errNode),
+        el('button.btn.btn-primary', { type: 'button', onClick: chatgptLogin }, icon('log-in', 14), el('span', { text: t('用 ChatGPT 账号登录') })),
       )
     }
     chatgptViews.add(render)
@@ -671,7 +669,7 @@
     if (!vpRec) return
     stopVpTimers()
     vpRec = null
-    vpError = phase === 'error' ? error || '没录好，请再试一次' : ''
+    vpError = phase === 'error' ? error || t('没录好，请再试一次') : ''
     vpJustDone = phase !== 'error'
     setVoiceprint(await call('voiceprintStatus'))
   }
@@ -694,7 +692,7 @@
   async function startEnroll() {
     if (vpRec) return
     if (typeof api.voiceprintEnroll !== 'function') {
-      vpError = `${NOT_READY}。`
+      vpError = t(`{0}。`, NOT_READY)
       return renderVp()
     }
     vpError = ''
@@ -709,7 +707,7 @@
       if (local <= 0 && !vpRec.gotEvent) vpRec.phase = 'processing'
       renderVp()
     }, 100)
-    vpWatchdog = setTimeout(() => finishEnroll('error', '录制一直没有结束，请再试一次'), (VP_SECONDS + 30) * 1000)
+    vpWatchdog = setTimeout(() => finishEnroll('error', t('录制一直没有结束，请再试一次')), (VP_SECONDS + 30) * 1000)
     renderVp()
     const r = await call('voiceprintEnroll', VP_SECONDS)
     if (!vpRec) return // 事件已经给了结果
@@ -717,7 +715,7 @@
     const st = await call('voiceprintStatus')
     if (!vpRec) return
     if (st?.enrolled && (!st.createdAt || st.createdAt >= vpRec.startedAt - 1000)) return finishEnroll('done')
-    if (!vpRec.gotEvent) finishEnroll('error', '没录好，请再试一次')
+    if (!vpRec.gotEvent) finishEnroll('error', t('没录好，请再试一次'))
   }
 
   async function clearVoiceprint() {
@@ -725,23 +723,23 @@
     if (r?.ok === false) vpError = r.error
     vpJustDone = false
     setVoiceprint(r && r.ok !== false && 'enrolled' in r ? r : await call('voiceprintStatus'))
-    if (!vp?.enrolled) ui.toast({ title: '声纹已删除' })
+    if (!vp?.enrolled) ui.toast({ title: t('声纹已删除') })
   }
 
   const VP_SCRIPT = [
-    { lang: 'zh-CN', text: '我现在在录声纹。今天想简单介绍一下我最近做的项目，还有接下来几周的计划。' },
+    { lang: 'zh-CN', text: t('我现在在录声纹。今天想简单介绍一下我最近做的项目，还有接下来几周的计划。') },
     { lang: 'en', text: 'Hi, this is a short voice sample. I usually talk about my research, the experiments I am running, and the project I am building.' },
   ]
 
   function vpStatusNode() {
     const st = vp
-    if (!st) return el('div.vp-state', {}, ui.spinner(12), el('span.text-2', { text: '正在读取声纹状态…' }))
-    if (st.unsupported) return el('div.vp-state', {}, el('span.tag', { text: '暂不可用' }), el('span.text-2', { text: NOT_READY }))
+    if (!st) return el('div.vp-state', {}, ui.spinner(12), el('span.text-2', { text: t('正在读取声纹状态…') }))
+    if (st.unsupported) return el('div.vp-state', {}, el('span.tag', { text: t('暂不可用') }), el('span.text-2', { text: NOT_READY }))
     if (st.enrolled) {
-      const when = st.createdAt ? `，${dateText(st.createdAt)} 录制` : ''
-      return el('div.vp-state', {}, el('span.tag.tag-ok', {}, icon('check', 12), '已录制'), el('span.text-2', { text: `有效语音 ${Number(st.seconds || 0).toFixed(1)} 秒${when}` }))
+      const when = st.createdAt ? t(`，{0} 录制`, dateText(st.createdAt)) : ''
+      return el('div.vp-state', {}, el('span.tag.tag-ok', {}, icon('check', 12), t('已录制')), el('span.text-2', { text: t(`有效语音 {0} 秒{1}`, Number(st.seconds || 0).toFixed(1), when) }))
     }
-    return el('div.vp-state', {}, el('span.tag.tag-warn', { text: '还没录' }), el('span.text-2', { text: '没有声纹时，麦克风里的声音都算你说的。' }))
+    return el('div.vp-state', {}, el('span.tag.tag-warn', { text: t('还没录') }), el('span.text-2', { text: t('没有声纹时，麦克风里的声音都算你说的。') }))
   }
 
   /** 声纹录制块：状态、朗读文字、倒计时和音量条、开始 / 重新录制 / 删除。 */
@@ -750,15 +748,15 @@
     const script = el(
       'div.vp-script',
       {},
-      el('div.vp-script-head', { text: '点「开始录制」后，用平常开会的音量把下面两段连着读出来：' }),
+      el('div.vp-script-head', { text: t('点「开始录制」后，用平常开会的音量把下面两段连着读出来：') }),
       VP_SCRIPT.map((p) => el('p.vp-line.selectable', { lang: p.lang, text: p.text })),
-      el('div.vp-script-foot', { text: '读完还没到时间就接着随便说几句，中英文都行。离麦克风近一点，周围安静一些。' }),
+      el('div.vp-script-foot', { text: t('读完还没到时间就接着随便说几句，中英文都行。离麦克风近一点，周围安静一些。') }),
     )
     const count = el('span.vp-count-num.num')
     const label = el('span.vp-live-label')
     const meter = el('div.meter.meter-me', {}, el('i'))
     const progress = el('div.progress', {}, el('i'))
-    const live = el('div.vp-live', {}, el('div.vp-count', {}, count, el('small', { text: '秒' })), el('div.vp-live-main', {}, label, meter, progress))
+    const live = el('div.vp-live', {}, el('div.vp-count', {}, count, el('small', { text: t('秒') })), el('div.vp-live-main', {}, label, meter, progress))
     const done = el('div.vp-done')
     const err = el('div.callout.callout-error.vp-error', {}, icon('circle-alert', 16), el('div.callout-body', {}, el('div.callout-desc.selectable')))
     const start = el('button.btn', { type: 'button' })
@@ -799,24 +797,24 @@
         const left = Math.max(0, vpRec.secondsLeft ?? VP_SECONDS)
         count.textContent = processing ? '0' : String(Math.ceil(left))
         live.classList.toggle('is-processing', processing)
-        clear(label).append(processing ? ui.spinner(12) : el('span.dot.dot-live'), el('span', { text: processing ? '录好了，正在分析声音…' : '正在录音，请开始读' }))
+        clear(label).append(processing ? ui.spinner(12) : el('span.dot.dot-live'), el('span', { text: processing ? t('录好了，正在分析声音…') : t('正在录音，请开始读') }))
         meter.style.setProperty('--value', `${processing ? 0 : levelPct(vpRec.level)}%`)
         const elapsed = vpRec.eventSeconds ? VP_SECONDS - left : (vpRec.elapsed ?? 0)
         progress.style.setProperty('--value', `${processing ? 100 : Math.min(100, (elapsed / VP_SECONDS) * 100)}%`)
       }
       done.hidden = !(vpJustDone && st?.enrolled && !busy)
-      if (!done.hidden) done.replaceChildren(icon('circle-check', 16), el('span', { text: `已录好，有效语音 ${Number(st.seconds || 0).toFixed(1)} 秒。开会时会自动分清你和对方。` }))
+      if (!done.hidden) done.replaceChildren(icon('circle-check', 16), el('span', { text: t(`已录好，有效语音 {0} 秒。开会时会自动分清你和对方。`, Number(st.seconds || 0).toFixed(1)) }))
       err.hidden = !vpError
       err.querySelector('.callout-desc').textContent = vpError
       start.disabled = busy || Boolean(st?.unsupported) || meeting
       clear(start).append(
         icon(busy ? 'mic' : st?.enrolled && !vpError ? 'refresh-cw' : 'mic', 14),
-        el('span', { text: busy ? (vpRec.phase === 'processing' ? '正在分析…' : '录音中…') : vpError ? '再录一次' : st?.enrolled ? '重新录制' : '开始录制' }),
+        el('span', { text: busy ? (vpRec.phase === 'processing' ? t('正在分析…') : t('录音中…')) : vpError ? t('再录一次') : st?.enrolled ? t('重新录制') : t('开始录制') }),
       )
       start.classList.toggle('btn-primary', !st?.enrolled || Boolean(vpError))
       del.hidden = !st?.enrolled || busy || opts.allowDelete === false
-      clear(del).append(icon('trash', 14), el('span', { text: confirmDel ? '确定删除？' : '删除声纹' }))
-      note.textContent = meeting && !busy ? '正在记录会议，停止记录后才能录声纹。' : ''
+      clear(del).append(icon('trash', 14), el('span', { text: confirmDel ? t('确定删除？') : t('删除声纹') }))
+      note.textContent = meeting && !busy ? t('正在记录会议，停止记录后才能录声纹。') : ''
       note.hidden = !note.textContent
     }
 
@@ -835,13 +833,13 @@
   // 预览用的一句：三个意群，ablation 两边都标
   const PREVIEW_SENTENCE = {
     text: 'Could you walk me through why the ablation drops on the second dataset?',
-    tr: '你能讲讲，在第二个数据集上，为什么消融结果掉得这么多吗？',
+    tr: t('你能讲讲，在第二个数据集上，为什么消融结果掉得这么多吗？'),
     chunks: [
-      { en: 'Could you walk me through', zh: '你能讲讲' },
-      { en: 'why the ablation drops', zh: '为什么消融结果掉得这么多' },
-      { en: 'on the second dataset', zh: '在第二个数据集上' },
+      { en: 'Could you walk me through', zh: t('你能讲讲') },
+      { en: 'why the ablation drops', zh: t('为什么消融结果掉得这么多') },
+      { en: 'on the second dataset', zh: t('在第二个数据集上') },
     ],
-    terms: [{ term: 'ablation', zh: '消融', explain: '消融实验：去掉模型的某个部分，看效果掉多少。' }],
+    terms: [{ term: 'ablation', zh: t('消融'), explain: t('消融实验：去掉模型的某个部分，看效果掉多少。') }],
   }
   // AI 纠错开着时，预览里的 dataset 是从「data set」纠正过来的，看得到纠正词的点线
   const PREVIEW_ORIG = 'Could you walk me through why the ablation drops on the second data set?'
@@ -854,7 +852,7 @@
     const scale = opts.scale ?? 0.62
     const en = el('div.cap-en')
     const tr = el('div.cap-tr')
-    const tip = el('div.cap-tip', {}, el('b', { text: 'ablation · 消融' }), el('span', { text: '消融实验：去掉模型的某个部分，看效果掉多少。' }))
+    const tip = el('div.cap-tip', {}, el('b', { text: t('ablation · 消融') }), el('span', { text: t('消融实验：去掉模型的某个部分，看效果掉多少。') }))
     const hud = el('div.cap-hud', {}, en, tr)
     const stage = el('div.cap-stage', { 'aria-hidden': 'true', class: opts.compact ? 'is-compact' : '' }, tip, hud)
     let sig = ''

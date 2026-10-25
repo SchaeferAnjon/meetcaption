@@ -67,10 +67,10 @@ function onEngineState(st) {
       if (router.current?.name !== 'live' && st.lastSessionId) {
         const sid = st.lastSessionId
         const noun = modeInfo(state.live.mode).label
-        ui.toast({ title: `${noun}记录已保存`, message: `「${projectName(state.live.projectId)}」`, type: 'success', action: { label: '查看', onClick: () => go('meeting', { id: sid }) } })
+        ui.toast({ title: t(`{0}记录已保存`, noun), message: t(`「{0}」`, projectName(state.live.projectId)), type: 'success', action: { label: t('查看'), onClick: () => go('meeting', { id: sid }) } })
       }
     }
-    if (st.error) addNotice('error', `没能开始：${st.error}`, { code: 'start-error', actions: startErrorActions(st.error) })
+    if (st.error) addNotice('error', t(`没能开始：{0}`, st.error), { code: 'start-error', actions: startErrorActions(st.error) })
     state.pendingStart = null
   }
   emit('engine', st)
@@ -287,5 +287,5 @@ async function boot() {
 
 boot().catch((e) => {
   console.error(e)
-  document.getElementById('view').append(ui.emptyState({ icon: 'circle-alert', title: '界面没加载起来', description: String(e?.message ?? e) }))
+  document.getElementById('view').append(ui.emptyState({ icon: 'circle-alert', title: t('界面没加载起来'), description: String(e?.message ?? e) }))
 })

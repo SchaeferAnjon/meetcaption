@@ -34,17 +34,17 @@ function syncKeyed(container, items, { key, create, update, fresh }) {
   }
 }
 
-const normKey = (t) => String(t ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
-const setText = (n, t) => {
-  const v = String(t ?? '')
+const normKey = (tv) => String(tv ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+const setText = (n, tv) => {
+  const v = String(tv ?? '')
   if (n.textContent !== v) n.textContent = v
 }
 
 // 同一份 JSON 在三种模式下的含义：课堂是大纲、老师强调、作业；会议是议题、结论、待办；面试是问过的问题、面试官在意的点、后续要做的事
 const NOTES_LABELS = {
-  class: { outline: '大纲', emph: '老师强调和可能考的点', hw: '作业和要做的事', empty: '老师讲一会儿后，AI 会把要点整理在这里。' },
-  meeting: { outline: '议题', emph: '结论和决定', hw: '待办', empty: '开会一会儿后，AI 会把议题、结论和待办整理在这里。' },
-  interview: { outline: '问过的问题', emph: '面试官在意的点', hw: '面试后要做的事', empty: '面试一会儿后，AI 会把问过的问题和你答的要点整理在这里。' },
+  class: { outline: t('大纲'), emph: t('老师强调和可能考的点'), hw: t('作业和要做的事'), empty: t('老师讲一会儿后，AI 会把要点整理在这里。') },
+  meeting: { outline: t('议题'), emph: t('结论和决定'), hw: t('待办'), empty: t('开会一会儿后，AI 会把议题、结论和待办整理在这里。') },
+  interview: { outline: t('问过的问题'), emph: t('面试官在意的点'), hw: t('面试后要做的事'), empty: t('面试一会儿后，AI 会把问过的问题和你答的要点整理在这里。') },
 }
 
 function notesList(v) {
@@ -52,8 +52,8 @@ function notesList(v) {
 }
 
 /** 一句笔记文字：$…$ 和没包 $ 的 \lambda、\hat{\theta} 用 KaTeX 画成行内公式（core.js 的 renderTex），其余是纯文字。 */
-function setMathText(n, t) {
-  const v = String(t ?? '')
+function setMathText(n, tv) {
+  const v = String(tv ?? '')
   if (n.dataset.src === v) return
   n.dataset.src = v
   const parts = window.texfix ? window.texfix.split(v) : [{ text: v }]
@@ -89,10 +89,10 @@ function notesView(opts = {}) {
   const hwList = el('ul.notes-items')
   const hw = el('section.notes-block.notes-hw', {}, el('div.notes-head', {}, icon('clipboard-list', 14), el('span.notes-title'), el('span.count.num')), hwList)
   const termList = el('div.notes-terms')
-  const terms = el('section.notes-block.notes-termblock', { 'aria-label': '术语' }, el('div.notes-head', {}, icon('book-open', 14), el('span', { text: '术语' }), el('span.count.num')), termList)
+  const terms = el('section.notes-block.notes-termblock', { 'aria-label': t('术语') }, el('div.notes-head', {}, icon('book-open', 14), el('span', { text: t('术语') }), el('span.count.num')), termList)
   const empty = el('div.notes-empty')
   const root = el('div.notes', {}, empty, emph, hw, outline, terms)
-  const stopTips = ui.tipDelegate(termList, '.notes-term', (t) => ({ title: t.dataset.title, text: t.dataset.explain }), { placement: 'top' })
+  const stopTips = ui.tipDelegate(termList, '.notes-term', (tv) => ({ title: tv.dataset.title, text: tv.dataset.explain }), { placement: 'top' })
 
   toggleAll.addEventListener('click', () => {
     const secs = [...outlineList.children]
@@ -104,7 +104,7 @@ function notesView(opts = {}) {
   function renderToggleAll() {
     const secs = [...outlineList.children]
     const anyOpen = secs.some((n) => !n.classList.contains('is-collapsed'))
-    fill(toggleAll, icon(anyOpen ? 'chevrons-down-up' : 'chevrons-up-down', 13), anyOpen ? '全部收起' : '全部展开')
+    fill(toggleAll, icon(anyOpen ? 'chevrons-down-up' : 'chevrons-up-down', 13), anyOpen ? t('全部收起') : t('全部展开'))
     toggleAll.hidden = secs.length < 2
   }
 
@@ -132,11 +132,11 @@ function notesView(opts = {}) {
   }
 
   function fillSection(n, sec, fresh) {
-    setMathText(n.querySelector('.notes-sec-title'), sec.title || '（没有标题）')
+    setMathText(n.querySelector('.notes-sec-title'), sec.title || t('（没有标题）'))
     setText(n.querySelector('.notes-sec-time'), sec.start || '')
-    const li = (cls) => (t) => {
+    const li = (cls) => (tv) => {
       const node = el(cls, { class: 'selectable' })
-      setMathText(node, t)
+      setMathText(node, tv)
       return node
     }
     syncKeyed(n.querySelector('.notes-points'), notesList(sec.points).map(String), { key: normKey, create: li('li.notes-point'), update: setMathText, fresh })
@@ -152,10 +152,10 @@ function notesView(opts = {}) {
       return node
     }
     syncKeyed(n.querySelector('.notes-formulas'), notesList(sec.formulas).map(String), { key: normKey, create: newFormula, update: formula, fresh })
-    const example = (node, t) => setMathText(node.querySelector('.notes-ex-text'), t)
-    const newExample = (t) => {
-      const node = el('li.notes-example.selectable', {}, el('span.notes-ex-mark', { text: '例' }), el('span.notes-ex-text'))
-      example(node, t)
+    const example = (node, tv) => setMathText(node.querySelector('.notes-ex-text'), tv)
+    const newExample = (tv) => {
+      const node = el('li.notes-example.selectable', {}, el('span.notes-ex-mark', { text: t('例') }), el('span.notes-ex-text'))
+      example(node, tv)
       return node
     }
     syncKeyed(n.querySelector('.notes-examples'), notesList(sec.examples).map(String), { key: normKey, create: newExample, update: example, fresh })
@@ -188,19 +188,19 @@ function notesView(opts = {}) {
     ui.clear(meta)
     const due = dueInfo(h.due)
     if (due) meta.append(el('span.tag', { dataset: due.tint ? { tint: due.tint } : undefined, text: due.label, title: due.title }))
-    if (h.dueText) meta.append(el('span.notes-quote', { text: `原话：${h.dueText}` }))
+    if (h.dueText) meta.append(el('span.notes-quote', { text: t(`原话：{0}`, h.dueText) }))
     meta.hidden = !due && !h.dueText
   }
 
   function termNode() {
     return el('span.notes-term', { tabindex: '0' }, el('span.notes-term-en'), el('span.notes-term-zh'))
   }
-  function fillTerm(n, t) {
-    const zh = t.zh && String(t.zh).toLowerCase() !== String(t.term).toLowerCase() ? t.zh : ''
-    setText(n.querySelector('.notes-term-en'), t.term)
+  function fillTerm(n, tv) {
+    const zh = tv.zh && String(tv.zh).toLowerCase() !== String(tv.term).toLowerCase() ? tv.zh : ''
+    setText(n.querySelector('.notes-term-en'), tv.term)
     setText(n.querySelector('.notes-term-zh'), zh)
-    n.dataset.title = zh ? `${t.term} · ${zh}` : t.term
-    n.dataset.explain = t.explain || ''
+    n.dataset.title = zh ? `${tv.term} · ${zh}` : tv.term
+    n.dataset.explain = tv.explain || ''
   }
 
   const count = (block, n) => setText(block.querySelector('.notes-head .count'), n ? String(n) : '')
@@ -265,10 +265,10 @@ function notesView(opts = {}) {
       fresh,
     })
     syncKeyed(termList, termItems, {
-      key: (t) => normKey(t.term),
-      create: (t) => {
+      key: (tv) => normKey(tv.term),
+      create: (tv) => {
         const n = termNode()
-        fillTerm(n, t)
+        fillTerm(n, tv)
         return n
       },
       update: fillTerm,
@@ -286,7 +286,7 @@ function notesView(opts = {}) {
     empty.hidden = Boolean(has)
     if (!has) {
       const text = typeof opts.emptyText === 'function' ? opts.emptyText() : opts.emptyText
-      ui.clear(empty).append(ui.emptyState({ icon: 'notebook-pen', title: '还没有笔记', description: text || labels().empty }))
+      ui.clear(empty).append(ui.emptyState({ icon: 'notebook-pen', title: t('还没有笔记'), description: text || labels().empty }))
     }
     if (notes) first = false
   }

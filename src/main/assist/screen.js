@@ -1,9 +1,10 @@
 import { desktopCapturer, screen, systemPreferences } from 'electron'
+import { t } from '../i18n.js'
 
 // 答题时带上的屏幕截图：鼠标所在的那块显示器，缩到 maxWidth，JPEG。
 
 function noPermission(detail) {
-  const e = new Error('没有屏幕录制权限，截不到屏幕。去「系统设置 → 隐私与安全性 → 录屏与系统录音」里打开「会议字幕」，然后重启应用。')
+  const e = new Error(t('没有屏幕录制权限，截不到屏幕。去「系统设置 → 隐私与安全性 → 录屏与系统录音」里打开「会议字幕」，然后重启应用。'))
   e.code = 'no-permission'
   e.detail = detail
   return e
@@ -32,14 +33,14 @@ export async function captureScreen({ maxWidth = 1600, quality = 0.8 } = {}) {
     sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width, height }, fetchWindowIcons: false })
   } catch (e) {
     if (process.platform === 'darwin') throw noPermission(e.message)
-    throw new Error(`截屏失败：${e.message}`)
+    throw new Error(t(`截屏失败：{0}`, e.message))
   }
   // Mac 没授权时 getSources 仍会返回只有桌面壁纸的图，只能靠系统给的授权状态判断
   if (process.platform === 'darwin' && permission !== 'granted') throw noPermission(permission)
   const source = sources.find((s) => s.display_id === String(display.id)) ?? sources[0]
   if (!source || source.thumbnail.isEmpty()) {
     if (process.platform === 'darwin') throw noPermission('empty')
-    throw new Error('截屏失败：没拿到屏幕画面')
+    throw new Error(t('截屏失败：没拿到屏幕画面'))
   }
   let img = source.thumbnail
   if (img.getSize().width > maxWidth) img = img.resize({ width: maxWidth, quality: 'good' })

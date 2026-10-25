@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
 import WebSocket from 'ws'
+import { t } from '../i18n.js'
 
 // OpenAI 实时转写（gpt-live-transcribe）：音频边说边出词；本地门限在停顿处 commit，一次 commit 是一段（turn）。
 // endTurn(span) 带上门限给的这一段在音频里的起止，partial / final 都带着它（声纹要用）。
@@ -175,10 +176,10 @@ export class OpenAIRealtimeASR extends EventEmitter {
       ws.on('ping', () => (conn.lastRecv = Date.now()))
       ws.on('pong', () => (conn.lastRecv = Date.now()))
       ws.on('error', (e) => fail(e))
-      ws.on('close', (code, reason) => this.#onConnLost(conn, new Error(`连接断开（${code} ${reason}）`)))
+      ws.on('close', (code, reason) => this.#onConnLost(conn, new Error(t(`连接断开（{0} {1}）`, code, reason))))
       conn.timers.connect = setTimeout(() => {
         if (conn.isReady) return
-        fail(new Error('连接 OpenAI 超时，检查网络或代理'))
+        fail(new Error(t('连接 OpenAI 超时，检查网络或代理')))
         ws.terminate()
       }, 20_000)
       conn.timers.connect.unref?.()
@@ -239,7 +240,7 @@ export class OpenAIRealtimeASR extends EventEmitter {
           if (t) this.#complete(conn, t, bestText(t))
         }
         if (IGNORED_ERRORS.has(code)) break
-        const err = new Error(`OpenAI：${e.error?.message ?? '未知错误'}`)
+        const err = new Error(t(`OpenAI：{0}`, e.error?.message ?? t('未知错误')))
         if (!conn.isReady) fail(new FatalError(err.message))
         else this.emit('warn', err.message)
         break

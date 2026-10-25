@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import '../src/renderer/shared/bilingual.js'
+// 界面脚本里的文字都过 t()（shared/i18n.js 在页面里定义）；这里按简体中文原文
+globalThis.t = (s, ...a) => a.reduce((o, v, i) => o.split(`{${i}}`).join(String(v)), s)
+await import('../src/renderer/shared/bilingual.js')
 
 const { layout, prefs, signature, diffFixes, tipContent, TIP_SELECTOR } = globalThis.bilingual
 

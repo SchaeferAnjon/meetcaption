@@ -1,5 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
+// 界面语言的表：页面脚本加载前就要有（shared/i18n.js 用它定义 t）
+contextBridge.exposeInMainWorld('I18N', ipcRenderer.sendSync('i18n:get'))
+
 contextBridge.exposeInMainWorld('answerApi', {
   ready: () => ipcRenderer.send('answer:ready'),
   onUpdate: (cb) => ipcRenderer.on('answer:update', (_e, a) => cb(a)),

@@ -20,17 +20,17 @@ const SAMPLE = [
     id: 'a',
     source: 'system',
     who: 'other',
-    speaker: '对方',
+    speaker: t('对方'),
     startedAt: 1,
     final: true,
     text: 'Okay, so about the second section of the paper.',
     sentences: [
       {
         text: 'Okay, so about the second section of the paper.',
-        tr: '好，关于论文的第二部分。',
+        tr: t('好，关于论文的第二部分。'),
         chunks: [
-          { en: 'Okay, so', zh: '好' },
-          { en: 'about the second section of the paper', zh: '关于论文的第二部分' },
+          { en: 'Okay, so', zh: t('好') },
+          { en: 'about the second section of the paper', zh: t('关于论文的第二部分') },
         ],
       },
     ],
@@ -39,20 +39,20 @@ const SAMPLE = [
     id: 'b',
     source: 'system',
     who: 'other',
-    speaker: '对方',
+    speaker: t('对方'),
     startedAt: 2,
     final: false,
     text: 'Please send me the revised ablation table by next Friday.',
     sentences: [
       {
         text: 'Please send me the revised ablation table by next Friday.',
-        tr: '下周五之前把改好的消融实验表发给我。',
+        tr: t('下周五之前把改好的消融实验表发给我。'),
         chunks: [
-          { en: 'Please send me', zh: '发给我' },
-          { en: 'the revised ablation table', zh: '改好的消融实验表' },
-          { en: 'by next Friday', zh: '下周五之前' },
+          { en: 'Please send me', zh: t('发给我') },
+          { en: 'the revised ablation table', zh: t('改好的消融实验表') },
+          { en: 'by next Friday', zh: t('下周五之前') },
         ],
-        terms: [{ term: 'ablation', zh: '消融实验', explain: '去掉模型的某个部分，看效果掉多少' }],
+        terms: [{ term: 'ablation', zh: t('消融实验'), explain: t('去掉模型的某个部分，看效果掉多少') }],
       },
     ],
   },
@@ -134,9 +134,9 @@ function sentenceItems(list) {
 }
 
 function speakerLabel(seg, mine) {
-  if (mine) return '我'
-  if (config.mode === 'class') return '老师'
-  return seg.speaker && seg.speaker !== '我' ? seg.speaker : '对方'
+  if (mine) return t('我')
+  if (config.mode === 'class') return t('老师')
+  return seg.speaker && seg.speaker !== '我' ? seg.speaker : t('对方')
 }
 
 // 一句原文加它的译文：意群同色、术语两边都画虚线（shared/bilingual.js），内容没变就不重画

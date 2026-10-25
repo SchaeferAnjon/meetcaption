@@ -8,6 +8,7 @@ import { classNotesMessages, classTodoMessages, slideMapMessages } from './class
 import { ensureLayouts, materialsForMap, materialsForNotes } from './class/materials.js'
 import { outlineSections, parseSlideMap } from './class/slideMap.js'
 import { renderNotesHtml } from './class/notesHtml.js'
+import { t } from './i18n.js'
 
 // 会后纪要：先流式生成纪要（知道这场会属于哪个项目，也知道其他项目），存盘；
 // 再做一次结构化提取，把待办和 DDL 标到各自的项目，存进 session.summary.items。
@@ -54,7 +55,7 @@ export class Summarizer extends EventEmitter {
 
   #ready() {
     const st = this.aiStatus()
-    if (!st.ready) throw new Error(`${st.reason}（设置 → 账号与 AI）`)
+    if (!st.ready) throw new Error(t(`{0}（设置 → 账号与 AI）`, st.reason))
   }
 
   #begin(id) {
@@ -97,7 +98,7 @@ export class Summarizer extends EventEmitter {
     this.#ready()
     const session = this.store.load(id)
     const isClass = session.mode === 'class'
-    if (!session.segments.some((x) => x.text)) throw new Error(isClass ? '这节课没有识别到内容' : '这场会议没有识别到内容')
+    if (!session.segments.some((x) => x.text)) throw new Error(isClass ? t('这节课没有识别到内容') : t('这场会议没有识别到内容'))
     const ctrl = this.#begin(id)
     try {
       const { project, projects } = this.#context(session)
@@ -150,7 +151,7 @@ export class Summarizer extends EventEmitter {
   async extract(id) {
     this.#ready()
     const s = this.store.load(id)
-    if (!s.summary?.markdown && !s.segments.some((x) => x.text)) throw new Error('这场会议没有识别到内容')
+    if (!s.summary?.markdown && !s.segments.some((x) => x.text)) throw new Error(t('这场会议没有识别到内容'))
     const ctrl = this.#begin(id)
     try {
       return await this.#extract(id, s.summary?.markdown ?? '', ctrl.signal)
@@ -163,7 +164,7 @@ export class Summarizer extends EventEmitter {
   async buildHtml(id) {
     this.#ready()
     const s = this.store.load(id)
-    if (!s.summary?.markdown) throw new Error('还没生成课堂笔记')
+    if (!s.summary?.markdown) throw new Error(t('还没生成课堂笔记'))
     const ctrl = this.#begin(id)
     try {
       this.emit('progress', { id, phase: 'html', text: s.summary.markdown })
@@ -187,7 +188,7 @@ export class Summarizer extends EventEmitter {
       return { slideMap: parseSlideMap(raw, { pages, sections }), pages, error: null }
     } catch (e) {
       if (signal.aborted) throw e
-      return { slideMap: [], pages, error: `图文笔记里的课件没对上老师讲的：${e.message}` }
+      return { slideMap: [], pages, error: t(`图文笔记里的课件没对上老师讲的：{0}`, e.message) }
     }
   }
 

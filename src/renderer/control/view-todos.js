@@ -14,7 +14,7 @@ VIEWS.todos = {
       options: filterOptions(),
       value: projectId,
       width: 170,
-      ariaLabel: '按项目筛选',
+      ariaLabel: t('按项目筛选'),
       onChange: (v) => {
         projectId = v
         store(TODO_FILTER, v || null)
@@ -24,7 +24,7 @@ VIEWS.todos = {
     const doneToggle = ui.toggle({
       size: 'sm',
       checked: includeDone,
-      label: '显示已完成',
+      label: t('显示已完成'),
       onChange: (v) => {
         includeDone = v
         store(TODO_DONE, v ? '1' : null)
@@ -32,12 +32,12 @@ VIEWS.todos = {
       },
     })
     doneToggle.classList.add('header-toggle')
-    doneToggle.title = '显示已完成'
+    doneToggle.title = t('显示已完成')
     const count = el('span.count.num')
-    ctx.header({ crumbs: [el('span.crumb.crumb-title', {}, '待办', count)], actions: [filter, doneToggle] })
+    ctx.header({ crumbs: [el('span.crumb.crumb-title', {}, t('待办'), count)], actions: [filter, doneToggle] })
 
-    const list = el('div.list', { role: 'listbox', 'aria-label': '待办' })
-    const hint = el('div.panel-toolbar.todos-hint', {}, el('span.text-2.text-sm', { text: '回车打开来源会议，空格勾选。点项目标签可以改归属。' }))
+    const list = el('div.list', { role: 'listbox', 'aria-label': t('待办') })
+    const hint = el('div.panel-toolbar.todos-hint', {}, el('span.text-2.text-sm', { text: t('回车打开来源会议，空格勾选。点项目标签可以改归属。') }))
     const page = el('div.page.todos-page', {}, hint, list)
     ctx.body.append(el('div.pane-body', {}, page))
     const nav = navList(list, { onSelect: (item) => ctx.setParam('sel', item.dataset.id) })
@@ -45,7 +45,7 @@ VIEWS.todos = {
     ctx.dispose(() => nav.destroy())
 
     function filterOptions() {
-      return [{ value: '', label: '全部项目', icon: 'list-todo' }, ...state.projects.map((p) => ({ value: p.id, label: p.archived ? `${p.name}（已归档）` : p.name, icon: projectIconName(p), tint: projectTint(p) }))]
+      return [{ value: '', label: t('全部项目'), icon: 'list-todo' }, ...state.projects.map((p) => ({ value: p.id, label: p.archived ? t(`{0}（已归档）`, p.name) : p.name, icon: projectIconName(p), tint: projectTint(p) }))]
     }
 
     async function load() {
@@ -54,7 +54,7 @@ VIEWS.todos = {
       const keep = nav.selected()?.dataset.id ?? ctx.params.sel
       ui.clear(list)
       if (!Array.isArray(items)) {
-        list.append(ui.emptyState({ icon: 'circle-alert', title: '读不到待办', description: items?.error }))
+        list.append(ui.emptyState({ icon: 'circle-alert', title: t('读不到待办'), description: items?.error }))
         return
       }
       const open = items.filter((t) => !t.done).length
@@ -64,8 +64,8 @@ VIEWS.todos = {
         list.append(
           ui.emptyState({
             icon: 'circle-check',
-            title: projectId ? `「${projectName(projectId)}」没有要做的事` : '没有要做的事',
-            description: '会后生成纪要时，AI 会把待办和 DDL 提取出来，每条归到对应的项目。',
+            title: projectId ? t(`「{0}」没有要做的事`, projectName(projectId)) : t('没有要做的事'),
+            description: t('会后生成纪要时，AI 会把待办和 DDL 提取出来，每条归到对应的项目。'),
           }),
         )
         return

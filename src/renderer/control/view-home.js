@@ -3,14 +3,14 @@
 
 VIEWS.home = {
   mount(ctx) {
-    ctx.header({ crumbs: [el('span.crumb.crumb-title', { text: '首页' })] })
+    ctx.header({ crumbs: [el('span.crumb.crumb-title', { text: t('首页') })] })
 
     const hero = el('section.home-hero')
     const guide = el('div.home-guide')
-    const recentList = el('div.list', { role: 'listbox', 'aria-label': '最近的会议' })
-    const todoList = el('div.list', { role: 'listbox', 'aria-label': '快到期的待办' })
-    const recentTitle = sectionTitle('最近 3 天')
-    const todoTitle = sectionTitle('快到期的待办')
+    const recentList = el('div.list', { role: 'listbox', 'aria-label': t('最近的会议') })
+    const todoList = el('div.list', { role: 'listbox', 'aria-label': t('快到期的待办') })
+    const recentTitle = sectionTitle(t('最近 3 天'))
+    const todoTitle = sectionTitle(t('快到期的待办'))
     const page = el('div.page.home', {}, hero, guide, el('section.home-section', {}, recentTitle, recentList), el('section.home-section', {}, todoTitle, todoList))
     ctx.body.append(el('div.pane-body', {}, page))
 
@@ -28,7 +28,7 @@ VIEWS.home = {
       const st = state.engine.state
       if (st === 'running' || st === 'stopping') {
         const live = state.live
-        const doing = { meeting: '开会', interview: '面试', class: '上课' }[liveMode()]
+        const doing = { meeting: t('开会'), interview: t('面试'), class: t('上课') }[liveMode()]
         hero.append(
           el(
             'div.callout.callout-accent.home-live',
@@ -37,12 +37,12 @@ VIEWS.home = {
             el(
               'div.callout-body',
               {},
-              el('div.callout-title', { text: state.engine.paused ? `「${projectName(live?.projectId)}」里的${doing}已暂停` : `正在「${projectName(live?.projectId)}」里${doing}` }),
-              el('div.callout-desc.num', {}, '已经开了 ', el('span', { dataset: { elapsed: '' }, text: live?.startedAt ? fmtOffset(now - live.startedAt) : '' })),
+              el('div.callout-title', { text: state.engine.paused ? t(`「{0}」里的{1}已暂停`, projectName(live?.projectId), doing) : t(`正在「{0}」里{1}`, projectName(live?.projectId), doing) }),
+              el('div.callout-desc.num', {}, t('已经开了 '), el('span', { dataset: { elapsed: '' }, text: live?.startedAt ? fmtOffset(now - live.startedAt) : '' })),
             ),
-            el('button.btn', { type: 'button', onClick: togglePause, disabled: st === 'stopping' }, icon(state.engine.paused ? 'play' : 'pause', 14), state.engine.paused ? '继续' : '暂停'),
-            el('button.btn', { type: 'button', onClick: stopMeeting, disabled: st === 'stopping' }, icon('square', 14), '停止'),
-            (startBtn = el('button.btn.btn-primary', { type: 'button', onClick: () => go('live') }, liveMode() === 'class' ? '回到课堂' : '回到会议', keyHint('live'))),
+            el('button.btn', { type: 'button', onClick: togglePause, disabled: st === 'stopping' }, icon(state.engine.paused ? 'play' : 'pause', 14), state.engine.paused ? t('继续') : t('暂停')),
+            el('button.btn', { type: 'button', onClick: stopMeeting, disabled: st === 'stopping' }, icon('square', 14), t('停止')),
+            (startBtn = el('button.btn.btn-primary', { type: 'button', onClick: () => go('live') }, liveMode() === 'class' ? t('回到课堂') : t('回到会议'), keyHint('live'))),
           ),
         )
         return
@@ -55,27 +55,27 @@ VIEWS.home = {
         'button.btn.btn-primary.btn-lg.home-start',
         { type: 'button', class: loading ? 'is-loading' : '', onClick: () => startMeeting(state.currentProjectId, choice) },
         icon(choice.mode === 'meeting' ? 'mic' : m.icon, 18),
-        el('span.truncate', { text: `在「${cur?.name ?? '未归类'}」里${startLabel(choice)}` }),
+        el('span.truncate', { text: t(`在「{0}」里{1}`, cur?.name ?? t('未归类'), startLabel(choice)) }),
         keyHint('start'),
       )
       const pick = el('button.btn.btn-primary.btn-lg.btn-icon', {
         type: 'button',
-        'aria-label': '换项目或模式',
-        title: '换项目或模式',
+        'aria-label': t('换项目或模式'),
+        title: t('换项目或模式'),
         disabled: loading,
         onClick: () => startMenu(pick),
       }, icon('chevron-down', 16))
       const s = state.settings ?? {}
       const hints = []
-      if (s.hotkeyToggle) hints.push(el('span', {}, '字幕和答题框会出现在屏幕上，', kbd(s.hotkeyToggle, { size: 'sm' }), ' 显示或隐藏'))
-      if (s.hotkeyRecord) hints.push(el('span', {}, '在会议软件里按 ', kbd(s.hotkeyRecord, { size: 'sm' }), ' 直接开始或停止记录'))
+      if (s.hotkeyToggle) hints.push(el('span', {}, t('字幕和答题框会出现在屏幕上，'), kbd(s.hotkeyToggle, { size: 'sm' }), t(' 显示或隐藏')))
+      if (s.hotkeyRecord) hints.push(el('span', {}, t('在会议软件里按 '), kbd(s.hotkeyRecord, { size: 'sm' }), t(' 直接开始或停止记录')))
       if (choice.mode === 'class') {
-        if (s.class?.hotkeySlide) hints.push(el('span', {}, kbd(s.class.hotkeySlide, { size: 'sm' }), ' 截取画面（网课课件）'))
-      } else if (s.assist?.enabled && s.assist.hotkeyAsk) hints.push(el('span', {}, kbd(s.assist.hotkeyAsk, { size: 'sm' }), ' 让 AI 回答刚才的问题'))
+        if (s.class?.hotkeySlide) hints.push(el('span', {}, kbd(s.class.hotkeySlide, { size: 'sm' }), t(' 截取画面（网课课件）')))
+      } else if (s.assist?.enabled && s.assist.hotkeyAsk) hints.push(el('span', {}, kbd(s.assist.hotkeyAsk, { size: 'sm' }), t(' 让 AI 回答刚才的问题')))
       // 只有「未归类」的时候提一句项目是干什么的
       const onlyInbox = !activeProjects().some((p) => p.id !== INBOX)
       const projectHint = onlyInbox
-        ? el('div.home-hints.text-2.text-sm', {}, el('span', { text: '会议放在项目里，每个项目有自己的会议背景、术语和我的资料。' }), el('button.list-more', { type: 'button', onClick: () => newProjectModal() }, '建第一个项目', icon('arrow-right', 14)))
+        ? el('div.home-hints.text-2.text-sm', {}, el('span', { text: t('会议放在项目里，每个项目有自己的会议背景、术语和我的资料。') }), el('button.list-more', { type: 'button', onClick: () => newProjectModal() }, t('建第一个项目'), icon('arrow-right', 14)))
         : null
       hero.append(...[el('div.home-start-row', {}, el('div.btn-group', {}, startBtn, pick)), hints.length ? el('div.home-hints.text-2.text-sm', {}, ...hints) : null, projectHint].filter(Boolean))
     }
@@ -85,16 +85,16 @@ VIEWS.home = {
       const ob = state.onboarding ?? {}
       const s = state.settings ?? {}
       const steps = []
-      if (!ob.asr) steps.push({ title: '语音识别还没配好', desc: '选本地识别，或填上 Soniox、豆包、OpenAI 的密钥，才能出字幕。', label: '去设置', run: () => openSettings('asr') })
+      if (!ob.asr) steps.push({ title: t('语音识别还没配好'), desc: t('选本地识别，或填上 Soniox、豆包、OpenAI 的密钥，才能出字幕。'), label: t('去设置'), run: () => openSettings('asr') })
       if (!ob.ai)
         steps.push({
-          title: 'AI 服务还没连上',
-          desc: state.llm?.reason ? `${state.llm.reason}。翻译、会后纪要和 AI 答题都要用。` : '用 ChatGPT 账号登录或填 API Key，翻译、会后纪要和 AI 答题才能用。',
-          label: s.llmProvider === 'chatgpt' ? '去登录' : '去设置',
+          title: t('AI 服务还没连上'),
+          desc: state.llm?.reason ? t(`{0}。翻译、会后纪要和 AI 答题都要用。`, state.llm.reason) : t('用 ChatGPT 账号登录或填 API Key，翻译、会后纪要和 AI 答题才能用。'),
+          label: s.llmProvider === 'chatgpt' ? t('去登录') : t('去设置'),
           run: () => openSettings('ai'),
         })
       if (!ob.voiceprint && s.captureMic !== false)
-        steps.push({ title: '还没录声纹', desc: '录 12 秒，软件就能分清哪句是你说的，外放时串进麦克风的对方声音也能滤掉。', label: '去录声纹', run: () => openSettings('voiceprint') })
+        steps.push({ title: t('还没录声纹'), desc: t('录 12 秒，软件就能分清哪句是你说的，外放时串进麦克风的对方声音也能滤掉。'), label: t('去录声纹'), run: () => openSettings('voiceprint') })
       if (steps.length) {
         const first = steps[0]
         guide.append(
@@ -105,10 +105,10 @@ VIEWS.home = {
             el(
               'div.callout-body',
               {},
-              el('div.callout-title', { text: steps.length > 1 ? `还差 ${steps.length} 步就能用全了：${first.title}` : first.title }),
+              el('div.callout-title', { text: steps.length > 1 ? t(`还差 {0} 步就能用全了：{1}`, steps.length, first.title) : first.title }),
               el('div.callout-desc', { text: first.desc }),
             ),
-            !ob.done ? el('button.btn.btn-sm.btn-ghost', { type: 'button', onClick: () => call('openOnboarding') }, '打开引导') : null,
+            !ob.done ? el('button.btn.btn-sm.btn-ghost', { type: 'button', onClick: () => call('openOnboarding') }, t('打开引导')) : null,
             el('button.btn.btn-sm', { type: 'button', onClick: first.run }, first.label),
           ),
         )
@@ -122,8 +122,8 @@ VIEWS.home = {
             'div.callout.callout-warn',
             {},
             icon('triangle-alert', 16),
-            el('div.callout-body', {}, el('div.callout-title', { text: '有快捷键没注册上' }), el('div.callout-desc', { text: errs.join('；') })),
-            el('button.btn.btn-sm', { type: 'button', onClick: () => openSettings('hotkeys') }, '换快捷键'),
+            el('div.callout-body', {}, el('div.callout-title', { text: t('有快捷键没注册上') }), el('div.callout-desc', { text: errs.join(t('；')) })),
+            el('button.btn.btn-sm', { type: 'button', onClick: () => openSettings('hotkeys') }, t('换快捷键')),
           ),
         )
       guide.hidden = !guide.children.length
@@ -136,8 +136,8 @@ VIEWS.home = {
       const recent = list.filter((s) => s.startedAt >= since)
       const keep = recentNav.selected()?.dataset.id
       ui.clear(recentList)
-      recentTitle.querySelector('span').textContent = recent.length ? `最近 3 天 · ${recent.length} 场` : '最近 3 天'
-      if (!recent.length) recentList.append(el('div.list-empty', { text: list.length ? '最近 3 天没有开会。' : '还没有会议记录。开完第一场会，这里就能看到。' }))
+      recentTitle.querySelector('span').textContent = recent.length ? t(`最近 3 天 · {0} 场`, recent.length) : t('最近 3 天')
+      if (!recent.length) recentList.append(el('div.list-empty', { text: list.length ? t('最近 3 天没有开会。') : t('还没有会议记录。开完第一场会，这里就能看到。') }))
       for (const s of recent) recentList.append(meetingRow(s, { showProject: true }))
       recentNav.refresh(keep)
       if (document.activeElement !== recentList) recentNav.select(-1)
@@ -152,11 +152,11 @@ VIEWS.home = {
       })
       const keep = todoNav.selected()?.dataset.id
       ui.clear(todoList)
-      todoTitle.querySelector('span').textContent = soon.length ? `快到期的待办 · ${soon.length}` : '快到期的待办'
-      if (!soon.length) todoList.append(el('div.list-empty', { text: list.length ? `7 天内没有到期的待办。一共还有 ${list.length} 条没做完。` : '没有待办。会后生成纪要时，AI 会把待办和 DDL 提取出来。' }))
+      todoTitle.querySelector('span').textContent = soon.length ? t(`快到期的待办 · {0}`, soon.length) : t('快到期的待办')
+      if (!soon.length) todoList.append(el('div.list-empty', { text: list.length ? t(`7 天内没有到期的待办。一共还有 {0} 条没做完。`, list.length) : t('没有待办。会后生成纪要时，AI 会把待办和 DDL 提取出来。') }))
       for (const t of soon) todoList.append(todoRow(t, { showProject: true, showSource: true, onOpen: (x) => go('meeting', { id: x.sessionId, tab: 'todos' }) }))
       if (list.length > soon.length && soon.length)
-        todoList.append(el('button.list-more', { type: 'button', onClick: () => go('todos') }, `查看全部 ${list.length} 条待办`, icon('arrow-right', 14)))
+        todoList.append(el('button.list-more', { type: 'button', onClick: () => go('todos') }, t(`查看全部 {0} 条待办`, list.length), icon('arrow-right', 14)))
       todoNav.refresh(keep)
       if (document.activeElement !== todoList) todoNav.select(-1)
     }
@@ -186,21 +186,21 @@ function meetingRow(s, { showProject = false, onOpen } = {}) {
   const sub = []
   if (showProject) sub.push(projectName(s.projectId))
   sub.push(showProject ? fmtWhen(s.startedAt) : s.title ? fmtWhen(s.startedAt) : WEEK[new Date(s.startedAt).getDay()])
-  if (s.count) sub.push(`${s.count} 段`)
+  if (s.count) sub.push(t(`{0} 段`, s.count))
   const acc = []
-  if (s.live) acc.push(el('span.tag.tag-error', {}, el('span.dot.dot-live'), '进行中'))
+  if (s.live) acc.push(el('span.tag.tag-error', {}, el('span.dot.dot-live'), t('进行中')))
   if (s.mode === 'class' || s.mode === 'interview') acc.push(el('span.tag.mode-tag', { dataset: { tint: modeInfo(s.mode).tint } }, icon(modeInfo(s.mode).icon, 12), modeInfo(s.mode).label))
-  if (s.todos) acc.push({ icon: 'circle-check', text: String(s.todos), title: `${s.todos} 条待办没做完` })
-  if (s.answers) acc.push({ icon: 'sparkles', text: String(s.answers), title: `${s.answers} 条 AI 回答` })
+  if (s.todos) acc.push({ icon: 'circle-check', text: String(s.todos), title: t(`{0} 条待办没做完`, s.todos) })
+  if (s.answers) acc.push({ icon: 'sparkles', text: String(s.answers), title: t(`{0} 条 AI 回答`, s.answers) })
   if (!s.live) acc.push(el('span.num.meeting-duration', { text: s.durationMs != null ? fmtDuration(s.durationMs) : '' }))
   acc.push(
-    el('span.summary-mark', { class: s.hasSummary ? 'has-summary' : '', title: s.hasSummary ? '有纪要' : '还没有纪要' }, icon('file-text', 14)),
+    el('span.summary-mark', { class: s.hasSummary ? 'has-summary' : '', title: s.hasSummary ? t('有纪要') : t('还没有纪要') }, icon('file-text', 14)),
   )
   const row = ui.listItem({
     id: s.id,
     icon: showProject ? projectIconName(projectOf(s.projectId)) : 'message-square-text',
     tint: showProject ? projectTint(projectOf(s.projectId)) : undefined,
-    title: s.title || `${fmtDateTime(s.startedAt)} 的${modeInfo(s.mode).label}`,
+    title: s.title || t(`{0} 的{1}`, fmtDateTime(s.startedAt), modeInfo(s.mode).label),
     subtitle: sub.join(' · '),
     twoLine: true,
     accessories: acc,
@@ -217,38 +217,38 @@ function meetingRow(s, { showProject = false, onOpen } = {}) {
 /** 会议行的右键菜单：打开、改标题、生成纪要、移到别的项目、打开文件夹、删除。正在记录的不能移动和删除。 */
 function meetingContextMenu(anchor, s) {
   const cls = s.mode === 'class'
-  const noun = cls ? '这节课' : '这场会议'
+  const noun = cls ? t('这节课') : t('这场会议')
   const items = [
-    { label: '打开', icon: 'arrow-right', onSelect: () => go('meeting', { id: s.id }) },
-    { label: '改标题', icon: 'pencil', onSelect: () => go('meeting', { id: s.id, rename: true }) },
-    !s.live && !s.hasSummary && { label: cls ? '生成课堂笔记' : '生成纪要', icon: cls ? 'notebook-pen' : 'sparkles', onSelect: () => go('meeting', { id: s.id, tab: 'summary', summarize: true }) },
+    { label: t('打开'), icon: 'arrow-right', onSelect: () => go('meeting', { id: s.id }) },
+    { label: t('改标题'), icon: 'pencil', onSelect: () => go('meeting', { id: s.id, rename: true }) },
+    !s.live && !s.hasSummary && { label: cls ? t('生成课堂笔记') : t('生成纪要'), icon: cls ? 'notebook-pen' : 'sparkles', onSelect: () => go('meeting', { id: s.id, tab: 'summary', summarize: true }) },
     {
-      label: '移到别的项目…',
+      label: t('移到别的项目…'),
       icon: 'folder',
       disabled: Boolean(s.live),
       onSelect: () =>
         projectMenu(anchor, {
           current: s.projectId,
-          title: '移到哪个项目',
+          title: t('移到哪个项目'),
           onPick: async (pid) => {
             if (pid === s.projectId) return
             const r = await call('moveSession', s.id, pid)
-            if (failed(r) || !r?.id) return ui.toast({ title: '没能移动', message: r?.error, type: 'error' })
-            ui.toast({ title: `已移到「${projectName(pid)}」`, type: 'success' })
+            if (failed(r) || !r?.id) return ui.toast({ title: t('没能移动'), message: r?.error, type: 'error' })
+            ui.toast({ title: t(`已移到「{0}」`, projectName(pid)), type: 'success' })
           },
         }),
     },
-    { label: '打开文件夹', icon: 'external-link', onSelect: () => call('openFolder', s.id) },
+    { label: t('打开文件夹'), icon: 'external-link', onSelect: () => call('openFolder', s.id) },
     'sep',
     {
-      label: `删除${noun}…`,
+      label: t(`删除{0}…`, noun),
       icon: 'trash',
       danger: true,
       disabled: Boolean(s.live),
       onSelect: async () => {
         const r = await call('removeSession', s.id)
-        if (r === true) ui.toast({ title: '已删除', message: '文件夹移到了废纸篓', type: 'success' })
-        else if (failed(r) && r?.error) ui.toast({ title: '没能删除', message: r.error, type: 'error' })
+        if (r === true) ui.toast({ title: t('已删除'), message: t('文件夹移到了废纸篓'), type: 'success' })
+        else if (failed(r) && r?.error) ui.toast({ title: t('没能删除'), message: r.error, type: 'error' })
       },
     },
   ].filter(Boolean)

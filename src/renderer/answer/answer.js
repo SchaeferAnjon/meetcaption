@@ -13,13 +13,13 @@ let config = { editMode: false, fontSize: 16, bgOpacity: 0.9, hotkeyAsk: '' }
 let collapsed = false
 let ignoring = true // 窗口创建时是穿透的
 
-const REASON = { auto: '自动', hotkey: '快捷键', manual: '手动', regenerate: '重答' }
+const REASON = { auto: t('自动'), hotkey: t('快捷键'), manual: t('手动'), regenerate: t('重答') }
 const now = Date.now()
 const SAMPLE = [
   {
     id: 'sample-1',
     question: 'Can you tell me about a project where you had to deal with conflicting requirements?',
-    text: '要点：讲清冲突、取舍依据和结果\nIn my last project, the product team wanted real time results, but the research side needed accuracy. I set up a quick benchmark so we could see the trade-off in numbers. We shipped a fast mode first, and kept the accurate path for the final report.',
+    text: t('要点：讲清冲突、取舍依据和结果\nIn my last project, the product team wanted real time results, but the research side needed accuracy. I set up a quick benchmark so we could see the trade-off in numbers. We shipped a fast mode first, and kept the accurate path for the final report.'),
     done: true,
     reason: 'auto',
     withScreen: false,
@@ -28,8 +28,8 @@ const SAMPLE = [
   },
   {
     id: 'sample-2',
-    question: '为什么选这个 baseline 而不是新的那个？',
-    text: '要点：可比性和复现成本\n我们选它主要是因为之前的工作都用它，结果能直接比。新的那个我们也试了，但代码没公开，复现不出论文里的数。',
+    question: t('为什么选这个 baseline 而不是新的那个？'),
+    text: t('要点：可比性和复现成本\n我们选它主要是因为之前的工作都用它，结果能直接比。新的那个我们也试了，但代码没公开，复现不出论文里的数。'),
     done: true,
     reason: 'hotkey',
     withScreen: true,
@@ -41,35 +41,35 @@ const SAMPLE = [
 /* ---------------- 文本 ---------------- */
 
 function split(text) {
-  const t = String(text ?? '')
+  const tv = String(text ?? '')
     .replace(/\*\*|__/g, '')
     .replace(/^\s+/, '')
-  const m = t.match(/^要点[:：]\s*(.*)(?:\n+|$)/)
-  if (!m) return { gist: '', body: t.trim() }
-  return { gist: m[1].trim(), body: t.slice(m[0].length).trim() }
+  const m = tv.match(/^要点[:：]\s*(.*)(?:\n+|$)/)
+  if (!m) return { gist: '', body: tv.trim() }
+  return { gist: m[1].trim(), body: tv.slice(m[0].length).trim() }
 }
 
 const sec = (ms) => `${(ms / 1000).toFixed(1)}s`
 
 function timingText(a) {
-  const t = a.timing ?? {}
-  if (a.cancelled) return '已停止（有新问题）'
+  const tv = a.timing ?? {}
+  if (a.cancelled) return t('已停止（有新问题）')
   // 三段分开显示：截图、等首字（请求发出去到第一个字）、生成（第一个字到答完）
-  const shot = t.screen != null ? `截图 ${sec(t.screen)}` : null
-  const sent = t.sent ?? t.screen ?? 0
+  const shot = tv.screen != null ? t(`截图 {0}`, sec(tv.screen)) : null
+  const sent = tv.sent ?? tv.screen ?? 0
   if (!a.done) {
     const now = Date.now() - a.startedAt
-    if (t.firstToken == null) {
-      if (a.withScreen && t.screen == null && t.sent == null) return `截图中 ${sec(now)}`
-      return [shot, `等首字 ${sec(Math.max(0, now - sent))}`].filter(Boolean).join(' · ')
+    if (tv.firstToken == null) {
+      if (a.withScreen && tv.screen == null && tv.sent == null) return t(`截图中 {0}`, sec(now))
+      return [shot, t(`等首字 {0}`, sec(Math.max(0, now - sent)))].filter(Boolean).join(' · ')
     }
-    return [shot, `等首字 ${sec(Math.max(0, t.firstToken - sent))}`, '生成中'].filter(Boolean).join(' · ')
+    return [shot, t(`等首字 {0}`, sec(Math.max(0, tv.firstToken - sent))), t('生成中')].filter(Boolean).join(' · ')
   }
   const parts = [shot]
-  if (t.firstToken != null && !a.error) {
-    parts.push(`等首字 ${sec(Math.max(0, t.firstToken - sent))}`)
-    if (t.total != null) parts.push(`生成 ${sec(Math.max(0, t.total - t.firstToken))}`)
-  } else if (t.total != null) parts.push(`共 ${sec(t.total)}`)
+  if (tv.firstToken != null && !a.error) {
+    parts.push(t(`等首字 {0}`, sec(Math.max(0, tv.firstToken - sent))))
+    if (tv.total != null) parts.push(t(`生成 {0}`, sec(Math.max(0, tv.total - tv.firstToken))))
+  } else if (tv.total != null) parts.push(t(`共 {0}`, sec(tv.total)))
   return parts.filter(Boolean).join(' · ')
 }
 
@@ -103,8 +103,8 @@ function createCard(id) {
   const error = el('div', 'note error')
   const meta = el('div', 'meta')
   const timing = el('span', 'timing')
-  const regen = el('button', 'ghost', '重新回答')
-  const copy = el('button', 'ghost', '复制')
+  const regen = el('button', 'ghost', t('重新回答'))
+  const copy = el('button', 'ghost', t('复制'))
   regen.type = copy.type = 'button'
   meta.append(timing, regen, copy)
   root.append(q, gist, body, warn, error, meta)
@@ -116,8 +116,8 @@ function createCard(id) {
     if (!a) return
     const { body: b, gist: g } = split(a.text)
     api.copy(b || g)
-    copy.textContent = '已复制'
-    setTimeout(() => (copy.textContent = '复制'), 1200)
+    copy.textContent = t('已复制')
+    setTimeout(() => (copy.textContent = t('复制')), 1200)
   })
   // 旧卡片默认只露两行，点一下展开
   root.addEventListener('click', (e) => {
@@ -154,7 +154,7 @@ function fillCard(c, a, latest) {
   c.root.classList.toggle('old', !latest)
   c.root.classList.toggle('open', opened.has(a.id))
   c.root.classList.toggle('live', !a.done)
-  c.tag.textContent = REASON[a.reason] ?? '提问'
+  c.tag.textContent = REASON[a.reason] ?? t('提问')
   c.gist.textContent = gist
   if (tr !== c.shownTrans || !tr) {
     c.shownTrans = tr
@@ -201,19 +201,19 @@ function render() {
   renderCount(items)
   panel.classList.toggle('hidden', !items.length)
   panel.classList.toggle('collapsed', collapsed && !config.editMode)
-  collapseBtn.textContent = collapsed ? '展开' : '收起'
+  collapseBtn.textContent = collapsed ? t('展开') : t('收起')
   collapseBtn.hidden = Boolean(config.editMode)
   reportHit()
 }
 
 // 标题条右边：收起时显示条数，平时用快捷键徽标提示「回答刚才的问题」
 function renderCount(items) {
-  if (collapsed && items.length) return count.replaceChildren(`${items.length} 条，点「展开」查看`)
+  if (collapsed && items.length) return count.replaceChildren(t(`{0} 条，点「展开」查看`, items.length))
   const keys = hotkeyKeys(config.hotkeyAsk)
   if (!keys.length || items.some((a) => !a.done)) return count.replaceChildren()
   const group = el('span', 'kbd-group')
   group.append(...keys.map((k) => el('span', 'kbd', k)))
-  count.replaceChildren(group, el('span', 'count-text', '回答刚才的问题'))
+  count.replaceChildren(group, el('span', 'count-text', t('回答刚才的问题')))
 }
 
 // 等首字时计时器每 100ms 走一次

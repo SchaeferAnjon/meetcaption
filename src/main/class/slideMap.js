@@ -1,6 +1,7 @@
 import { cleanText, extractJson } from '../prompts.js'
 import { parseAt } from '../todos.js'
 import '../../renderer/shared/texfix.js'
+import { t } from '../i18n.js'
 
 const { repair } = globalThis.texfix
 
@@ -27,7 +28,7 @@ export function outlineSections(markdown) {
 /** pages：materials.js 的 materialsForMap(...).pages；sections：outlineSections 的结果。 */
 export function parseSlideMap(raw, { pages, sections }) {
   const v = extractJson(raw)
-  if (!Array.isArray(v?.pages)) throw new Error('课件对照的回复不是 JSON')
+  if (!Array.isArray(v?.pages)) throw new Error(t('课件对照的回复不是 JSON'))
   const byKey = new Map()
   for (const x of v.pages) {
     const page = pages.get(`${x?.m}:${Number(x?.p)}`)

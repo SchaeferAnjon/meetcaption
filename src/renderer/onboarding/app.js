@@ -29,7 +29,7 @@ function autoNext() {
 
 // 欢迎页上写明支持的语言（偏好「写明支持的语言」）：一行概括，点开看全部
 function langsBlock() {
-  const names = LANGS.map((l) => l.label).join('、')
+  const names = LANGS.map((l) => l.label).join(t('、'))
   return el(
     'div.ob-langs',
     {},
@@ -37,16 +37,16 @@ function langsBlock() {
       'button.ob-langs-sum',
       { type: 'button', 'aria-expanded': String(langsOpen), onClick: () => ((langsOpen = !langsOpen), render()) },
       icon('languages', 14),
-      el('span', {}, '识别 ', el('b', { text: `${LANGS.length} 种语言` }), '，翻译成其中任意一种'),
+      el('span', { text: t('支持 {0} 种语言的识别和翻译', LANGS.length) }),
       icon('chevron-down', 13),
     ),
     langsOpen
       ? el(
           'div.ob-langs-list',
           {},
-          el('p', {}, el('b', { text: '识别和翻译：' }), names, '。'),
-          el('p', {}, el('b', { text: '只做翻译：' }), '繁体中文。'),
-          el('p.ob-langs-note', { text: '本地识别（免费、不联网）只认中文和英文；其他语言用云识别。' }),
+          el('p', {}, el('b', { text: t('识别和翻译：') }), names, t('。')),
+          el('p', {}, el('b', { text: t('只做翻译：') }), t('繁体中文。')),
+          el('p.ob-langs-note', { text: t('本地识别（免费、不联网）只认中文和英文；其他语言用云识别。') }),
         )
       : null,
   )
@@ -61,8 +61,8 @@ function nav(canNext) {
   return el(
     'div.ob-nav',
     {},
-    el('button', { type: 'button', onClick: () => ((step -= 1), render()) }, '← 上一步'),
-    canNext && steps()[step] !== 'done' ? el('button', { type: 'button', onClick: next }, '下一步 →') : null,
+    el('button', { type: 'button', onClick: () => ((step -= 1), render()) }, t('← 上一步')),
+    canNext && steps()[step] !== 'done' ? el('button', { type: 'button', onClick: next }, t('下一步 →')) : null,
   )
 }
 
@@ -99,10 +99,10 @@ async function askScreen() {
 
 function doneText() {
   const info = member?.info
-  if (init.settings?.plan !== 'member') return '字幕用本地识别，在你电脑上跑，一直免费。翻译和 AI 答题用你在设置里配好的服务。'
-  if (!info) return member?.error ? `会员服务器暂时连不上（${member.error}）。字幕照常能用（本地识别），连上以后自动送你 1 场。` : '正在领取免费试用…'
-  if (info.balance > 0) return `${info.kind === 'paid' ? '你的会员还剩' : '送你的'} ${info.balance} 场已经到账：每场最长 ${(info.sessionMs ?? 2 * 3600_000) / 3600_000} 小时，云识别和翻译、AI 答题、笔记都不用配 Key。用完以后字幕照常，AI 再买场次或换自带 Key。`
-  return '这台电脑的试用场次已经用过了。字幕照常能用（本地识别）；AI 在「设置 → 会员」里买场次或换自带 Key。'
+  if (init.settings?.plan !== 'member') return t('字幕用本地识别，在你电脑上跑，一直免费。翻译和 AI 答题用你在设置里配好的服务。')
+  if (!info) return member?.error ? t(`会员服务器暂时连不上（{0}）。字幕照常能用（本地识别），连上以后自动送你 1 场。`, member.error) : t('正在领取免费试用…')
+  if (info.balance > 0) return t(`{0} {1} 场已经到账：每场最长 {2} 小时，云识别和翻译、AI 答题、笔记都不用配 Key。用完以后字幕照常，AI 再买场次或换自带 Key。`, info.kind === 'paid' ? t('你的会员还剩') : t('送你的'), info.balance, (info.sessionMs ?? 2 * 3600_000) / 3600_000)
+  return t('这台电脑的试用场次已经用过了。字幕照常能用（本地识别）；AI 在「设置 → 会员」里买场次或换自带 Key。')
 }
 
 function render() {
@@ -111,45 +111,45 @@ function render() {
   if (key === 'welcome') {
     body = [
       el('img.ob-logo', { src: '../../assets/icon.png', alt: '' }),
-      el('h2', { text: '欢迎使用 MeetCaption' }),
-      el('p', { text: '开会、面试、上网课时，对方说的每一句都实时出字幕和译文；问题一来，答案就到。简单几步就能开始。' }),
+      el('h2', { text: t('欢迎使用 MeetCaption') }),
+      el('p', { text: t('开会、面试、上网课时，对方说的每一句都实时出字幕和译文；问题一来，答案就到。简单几步就能开始。') }),
       langsBlock(),
-      el('button.btn.btn-primary.ob-cta', { type: 'button', onClick: next }, '开始设置'),
+      el('button.btn.btn-primary.ob-cta', { type: 'button', onClick: next }, t('开始设置')),
     ]
   } else if (key === 'mic') {
     body = [
       badge('mic'),
-      el('h2', { text: '允许使用麦克风' }),
-      el('p', { text: '听你自己说的话，分清哪句是你说的；教室现场上课也靠它。' }),
+      el('h2', { text: t('允许使用麦克风') }),
+      el('p', { text: t('听你自己说的话，分清哪句是你说的；教室现场上课也靠它。') }),
       mic === 'granted'
-        ? el('span.ob-pill.is-ok', {}, icon('check', 13), '已允许')
+        ? el('span.ob-pill.is-ok', {}, icon('check', 13), t('已允许'))
         : [
-            el('button.btn.btn-primary.ob-cta', { type: 'button', onClick: askMic }, mic === 'denied' ? '去系统设置开启' : '允许麦克风'),
-            el('span.ob-pill', { text: mic === 'denied' ? '之前拒绝过 · 在系统设置里打开 MeetCaption 的开关' : '等待授权…' }),
+            el('button.btn.btn-primary.ob-cta', { type: 'button', onClick: askMic }, mic === 'denied' ? t('去系统设置开启') : t('允许麦克风')),
+            el('span.ob-pill', { text: mic === 'denied' ? t('之前拒绝过 · 在系统设置里打开 MeetCaption 的开关') : t('等待授权…') }),
           ],
       nav(mic === 'granted' || mic === 'denied'),
     ]
   } else if (key === 'sys') {
     body = [
       badge('volume-2'),
-      el('h2', { text: '允许录电脑的声音' }),
-      el('p', {}, '会议软件里对方的声音从这里来。', el('b', { text: '只录声音，不录画面。' })),
+      el('h2', { text: t('允许录电脑的声音') }),
+      el('p', {}, t('会议软件里对方的声音从这里来。'), el('b', { text: t('只录声音，不录画面。') })),
       sys === 'asked'
-        ? el('span.ob-pill.is-ok', {}, icon('check', 13), '弹框里点了「允许」就好了')
-        : el('button.btn.btn-primary.ob-cta', { type: 'button', onClick: askSys }, '允许录电脑的声音'),
+        ? el('span.ob-pill.is-ok', {}, icon('check', 13), t('弹框里点了「允许」就好了'))
+        : el('button.btn.btn-primary.ob-cta', { type: 'button', onClick: askSys }, t('允许录电脑的声音')),
       sys === 'asked'
-        ? dragIcon([el('b', { text: '没弹框？' }), '打开「系统设置 → 隐私与安全性 → 录屏与系统录音」，把左边的图标拖进「仅系统录音」列表。', ' ', el('a', { href: '#', onClick: (e) => (e.preventDefault(), api.openPrivacy('screen')) }, '打开系统设置')])
+        ? dragIcon([el('b', { text: t('没弹框？') }), t('打开「系统设置 → 隐私与安全性 → 录屏与系统录音」，把左边的图标拖进「仅系统录音」列表。'), ' ', el('a', { href: '#', onClick: (e) => (e.preventDefault(), api.openPrivacy('screen')) }, t('打开系统设置'))])
         : null,
       el(
         'div.ob-opt',
         {},
         icon('monitor', 18),
-        el('div', {}, el('div.t', { text: '屏幕截图（可选）' }), el('div.d', { text: 'AI 答题时带上屏幕，看得到 PPT 上的题；网课能截课件。' })),
+        el('div', {}, el('div.t', { text: t('屏幕截图（可选）') }), el('div.d', { text: t('AI 答题时带上屏幕，看得到 PPT 上的题；网课能截课件。') })),
         screen === 'granted'
-          ? el('span.ob-pill.is-ok', { text: '已允许' })
+          ? el('span.ob-pill.is-ok', { text: t('已允许') })
           : screen === 'skip'
-            ? el('span.ob-pill', { text: '先不用' })
-            : [el('button.btn.btn-sm', { type: 'button', onClick: askScreen }, '允许'), el('button.btn.btn-sm.btn-ghost', { type: 'button', onClick: () => ((screen = 'skip'), render()) }, '跳过')],
+            ? el('span.ob-pill', { text: t('先不用') })
+            : [el('button.btn.btn-sm', { type: 'button', onClick: askScreen }, t('允许')), el('button.btn.btn-sm.btn-ghost', { type: 'button', onClick: () => ((screen = 'skip'), render()) }, t('跳过'))],
       ),
       nav(true),
     ]
@@ -157,10 +157,10 @@ function render() {
     const accel = init.settings?.hotkeyRecord
     body = [
       badge('check', 'is-ok'),
-      el('h2', { text: '全部就绪' }),
+      el('h2', { text: t('全部就绪') }),
       el('p', { text: doneText() }),
-      accel ? el('div.ob-keys', {}, '开会时按', ui.kbd(accel, { size: 'sm' }), '开始记录') : null,
-      el('button.btn.btn-primary.ob-cta', { type: 'button', onClick: () => api.finishOnboarding() }, '看看怎么用'),
+      accel ? el('div.ob-keys', {}, t('开会时按'), ui.kbd(accel, { size: 'sm' }), t('开始记录')) : null,
+      el('button.btn.btn-primary.ob-cta', { type: 'button', onClick: () => api.finishOnboarding() }, t('看看怎么用')),
       nav(false),
     ]
   }

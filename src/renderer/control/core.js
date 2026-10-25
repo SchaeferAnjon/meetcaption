@@ -53,7 +53,7 @@ function emit(name, payload) {
 
 /** 调主进程：方法不存在或出错时返回 { ok: false, error }，不抛。 */
 async function call(name, ...args) {
-  if (typeof api?.[name] !== 'function') return { ok: false, missing: true, error: '这个功能在当前版本里还没接好' }
+  if (typeof api?.[name] !== 'function') return { ok: false, missing: true, error: t('这个功能在当前版本里还没接好') }
   try {
     return await api[name](...args)
   } catch (e) {
@@ -75,14 +75,16 @@ function subscribe(channel, cb) {
 
 const pad = (n) => String(n).padStart(2, '0')
 const DAY = 86_400_000
-const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+// 周日到周六（2024-01-07 是周日）
+// 日语、韩语的短写法只有一个字（日、일），用全称
+const WEEK = Array.from({ length: 7 }, (_, i) => fmtDate(new Date(2024, 0, 7 + i), { weekday: ['ja', 'ko'].includes(UI_LANG) ? 'long' : 'short' }))
 
-function startOfDay(t = Date.now()) {
-  const d = new Date(t)
+function startOfDay(tv = Date.now()) {
+  const d = new Date(tv)
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
 }
 
-const daysFromToday = (t) => Math.round((startOfDay(t) - startOfDay()) / DAY)
+const daysFromToday = (tv) => Math.round((startOfDay(tv) - startOfDay()) / DAY)
 
 function fmtTime(ms) {
   const d = new Date(ms)
@@ -103,15 +105,14 @@ function fmtOffset(ms) {
 
 function fmtMonthDay(ms) {
   const d = new Date(ms)
-  const y = d.getFullYear() !== new Date().getFullYear() ? `${d.getFullYear()}年` : ''
-  return `${y}${d.getMonth() + 1}月${d.getDate()}日`
+  return fmtDate(d, { ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}), month: 'short', day: 'numeric' })
 }
 
 /** 今天、昨天、周二（一周内）、9月15日。 */
 function fmtDay(ms) {
   const n = daysFromToday(ms)
-  if (n === 0) return '今天'
-  if (n === -1) return '昨天'
+  if (n === 0) return t('今天')
+  if (n === -1) return t('昨天')
   if (n < 0 && n > -7) return WEEK[new Date(ms).getDay()]
   return fmtMonthDay(ms)
 }
@@ -122,13 +123,13 @@ const fmtWhen = (ms) => `${fmtDay(ms)} ${fmtTime(ms)}`
 function fmtDuration(ms) {
   if (ms == null || !Number.isFinite(ms)) return ''
   const m = Math.round(ms / 60000)
-  if (m < 1) return '不到 1 分钟'
-  if (m < 60) return `${m} 分钟`
+  if (m < 1) return t('不到 1 分钟')
+  if (m < 60) return t(`{0} 分钟`, m)
   const h = Math.floor(m / 60)
-  return m % 60 ? `${h} 小时 ${m % 60} 分钟` : `${h} 小时`
+  return m % 60 ? t(`{0} 小时 {1} 分钟`, h, m % 60) : t(`{0} 小时`, h)
 }
 
-const sec = (ms) => `${(ms / 1000).toFixed(1)} 秒`
+const sec = (ms) => t(`{0} 秒`, (ms / 1000).toFixed(1))
 
 function parseDue(due) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(due ?? ''))
@@ -137,52 +138,53 @@ function parseDue(due) {
 
 /** 截止日期的显示：{ label, tint, days }；没有截止返回 null。 */
 function dueInfo(due, done = false) {
-  const t = parseDue(due)
-  if (t == null) return null
-  const days = daysFromToday(t)
+  const tv = parseDue(due)
+  if (tv == null) return null
+  const days = daysFromToday(tv)
   let label
   let tint = null
   if (days < 0) {
-    label = days === -1 ? '昨天到期' : `逾期 ${-days} 天`
+    label = days === -1 ? t('昨天到期') : t(`逾期 {0} 天`, -days)
     tint = 'red'
   } else if (days === 0) {
-    label = '今天到期'
+    label = t('今天到期')
     tint = 'red'
   } else if (days === 1) {
-    label = '明天'
+    label = t('明天')
     tint = 'orange'
   } else if (days < 7) {
     // 过了这周日就是「下周几」
     const toSunday = (7 - new Date().getDay()) % 7
-    label = `${days > toSunday ? '下' : ''}${WEEK[new Date(t).getDay()]}`
+    const wd = WEEK[new Date(tv).getDay()]
+    label = days > toSunday ? t(`下{0}`, wd) : wd
     tint = 'yellow'
-  } else label = fmtMonthDay(t)
-  return { label, tint: done ? null : tint, days, title: fmtMonthDay(t) }
+  } else label = fmtMonthDay(tv)
+  return { label, tint: done ? null : tint, days, title: fmtMonthDay(tv) }
 }
 
 /** 待办页的分组：已逾期、今天、本周（到周日）、以后、没有截止。 */
 function dueBucket(due) {
-  const t = parseDue(due)
-  if (t == null) return 'none'
+  const tv = parseDue(due)
+  if (tv == null) return 'none'
   const today = startOfDay()
-  if (t < today) return 'overdue'
-  if (t === today) return 'today'
+  if (tv < today) return 'overdue'
+  if (tv === today) return 'today'
   const endOfWeek = today + ((7 - new Date(today).getDay()) % 7) * DAY
-  return t <= endOfWeek ? 'week' : 'later'
+  return tv <= endOfWeek ? 'week' : 'later'
 }
 
 const DUE_GROUPS = [
-  ['overdue', '已逾期'],
-  ['today', '今天'],
-  ['week', '本周'],
-  ['later', '以后'],
-  ['none', '没有截止'],
+  ['overdue', t('已逾期')],
+  ['today', t('今天')],
+  ['week', t('本周')],
+  ['later', t('以后')],
+  ['none', t('没有截止')],
 ]
 
 /* ---------------- 项目、会议 ---------------- */
 
 const projectOf = (id) => state.projects.find((p) => p.id === id) ?? null
-const projectName = (id) => projectOf(id)?.name ?? '未归类'
+const projectName = (id) => projectOf(id)?.name ?? t('未归类')
 const activeProjects = () => state.projects.filter((p) => !p.archived)
 const projectIconName = (p) => (p?.icon && ui.hasIcon(p.icon) ? p.icon : p?.id === INBOX ? 'inbox' : 'folder')
 const projectTint = (p) => (p?.color && ui.tints.includes(p.color) ? p.color : 'gray')
@@ -193,21 +195,21 @@ function projectBox(p, size) {
 
 function projectTag(id, props = {}) {
   const p = projectOf(id)
-  return el('span.tag.tag-dot', { ...props, dataset: { tint: projectTint(p) }, text: p?.name ?? '未归类' })
+  return el('span.tag.tag-dot', { ...props, dataset: { tint: projectTint(p) }, text: p?.name ?? t('未归类') })
 }
 
-const sessionTitle = (s) => s?.title || `${fmtDateTime(s?.startedAt ?? Date.now())} 的${MODES[s?.mode]?.label ?? '会议'}`
+const sessionTitle = (s) => s?.title || t(`{0} 的{1}`, fmtDateTime(s?.startedAt ?? Date.now()), MODES[s?.mode]?.label ?? t('会议'))
 
 /* ---------------- 模式：会议、面试、课堂 ---------------- */
 
 const MODES = {
-  meeting: { label: '会议', icon: 'users', tint: 'blue', verb: '开始会议', live: '会议进行中', ended: '会议已结束', desc: '字幕和翻译，对方提问时 AI 答题' },
-  interview: { label: '面试', icon: 'briefcase', tint: 'orange', verb: '开始面试', live: '面试进行中', ended: '面试已结束', desc: '对方问完自动回答，答题框更显眼' },
-  class: { label: '课堂', icon: 'graduation-cap', tint: 'purple', verb: '开始上课', live: '正在上课', ended: '课堂已结束', desc: 'AI 边听边记笔记，下课出课堂笔记' },
+  meeting: { label: t('会议'), icon: 'users', tint: 'blue', verb: t('开始会议'), live: t('会议进行中'), ended: t('会议已结束'), desc: t('字幕和翻译，对方提问时 AI 答题') },
+  interview: { label: t('面试'), icon: 'briefcase', tint: 'orange', verb: t('开始面试'), live: t('面试进行中'), ended: t('面试已结束'), desc: t('对方问完自动回答，答题框更显眼') },
+  class: { label: t('课堂'), icon: 'graduation-cap', tint: 'purple', verb: t('开始上课'), live: t('正在上课'), ended: t('课堂已结束'), desc: t('AI 边听边记笔记，下课出课堂笔记') },
 }
 const CLASS_SOURCES = {
-  mic: { label: '教室现场', hint: '麦克风', icon: 'mic', desc: '老师在前面讲，用麦克风听' },
-  system: { label: '网课', hint: '电脑声音', icon: 'monitor', desc: '听电脑里播放的网课' },
+  mic: { label: t('教室现场'), hint: t('麦克风'), icon: 'mic', desc: t('老师在前面讲，用麦克风听') },
+  system: { label: t('网课'), hint: t('电脑声音'), icon: 'monitor', desc: t('听电脑里播放的网课') },
 }
 const modeOf = (m) => (MODES[m] ? m : 'meeting')
 const sourceOf = (v) => (CLASS_SOURCES[v] ? v : 'mic')
@@ -245,12 +247,12 @@ function startChoice(pid = state.currentProjectId) {
 
 function startLabel(choice) {
   const m = modeInfo(choice.mode)
-  if (choice.mode === 'class') return `${m.verb}（${CLASS_SOURCES[sourceOf(choice.classSource)].label}）`
+  if (choice.mode === 'class') return t(`{0}（{1}）`, m.verb, CLASS_SOURCES[sourceOf(choice.classSource)].label)
   return m.verb
 }
 
 const liveMode = () => modeOf(state.live?.mode)
-const whoLabel = (who, mode) => (who === 'me' ? '我' : mode === 'class' ? '老师' : '对方')
+const whoLabel = (who, mode) => (who === 'me' ? t('我') : mode === 'class' ? t('老师') : t('对方'))
 
 /* ---------------- 主窗口快捷键（设置里能改，空字符串表示不用） ---------------- */
 
@@ -269,12 +271,12 @@ function fill(node, ...kids) {
   return node
 }
 
-async function copyText(text, label = '已复制') {
+async function copyText(text, label = t('已复制')) {
   try {
     await navigator.clipboard.writeText(text)
     ui.toast({ title: label, type: 'success' })
   } catch {
-    ui.toast({ title: '没能复制，请手动选中文字复制', type: 'error' })
+    ui.toast({ title: t('没能复制，请手动选中文字复制'), type: 'error' })
   }
 }
 
@@ -288,16 +290,16 @@ function store(key, value) {
 }
 
 function debounce(fn, ms) {
-  let t
+  let tv
   const d = (...a) => {
-    clearTimeout(t)
-    t = setTimeout(() => fn(...a), ms)
+    clearTimeout(tv)
+    tv = setTimeout(() => fn(...a), ms)
   }
   d.flush = (...a) => {
-    clearTimeout(t)
+    clearTimeout(tv)
     fn(...a)
   }
-  d.cancel = () => clearTimeout(t)
+  d.cancel = () => clearTimeout(tv)
   return d
 }
 
@@ -353,16 +355,16 @@ function extractMath(md) {
   const parts = String(md).split(/(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`)/)
   const out = parts.map((part, i) => {
     if (i % 2 === 1) return part // 代码
-    let t = part
+    let tv = part
     for (const { re, display } of TEX_PATTERNS) {
-      t = t.replace(re, (all, tex) => {
+      tv = tv.replace(re, (all, tex) => {
         if (!tex.trim()) return all
         math.push({ tex: tex.trim(), display })
         const ph = `${MATH_OPEN}${math.length - 1}${MATH_CLOSE}`
         return display ? `\n\n${ph}\n\n` : ph
       })
     }
-    return t
+    return tv
   })
   return { text: out.join(''), math }
 }
@@ -410,7 +412,7 @@ function fillMath(root, math) {
 
 /** 实时笔记里的一条公式：模型给的是 LaTeX，可能还带着 $ 或 \[ \]。 */
 function renderFormula(node, tex) {
-  const t = String(tex ?? '')
+  const tv = String(tex ?? '')
     .trim()
     .replace(/^\$\$([\s\S]*)\$\$$/, '$1')
     .replace(/^\\\[([\s\S]*)\\\]$/, '$1')
@@ -418,7 +420,7 @@ function renderFormula(node, tex) {
     .trim()
   node.replaceChildren()
   node.classList.remove('math', 'math-display', 'math-inline', 'math-raw')
-  renderTex(node, t, true)
+  renderTex(node, tv, true)
 }
 
 // 纪要里的链接用系统浏览器打开，不在窗口里跳走
@@ -436,7 +438,7 @@ const chunkPrefs = () => window.bilingual.prefs(state.settings)
 
 // 术语悬停出解释，AI 纠正过的词悬停出识别原文；中英两边的同一个术语一起高亮
 function wireTerms(root) {
-  const stopTip = ui.tipDelegate(root, window.bilingual.TIP_SELECTOR, (t) => window.bilingual.tipContent(t), { placement: 'top' })
+  const stopTip = ui.tipDelegate(root, window.bilingual.TIP_SELECTOR, (tv) => window.bilingual.tipContent(tv), { placement: 'top' })
   const stopLink = window.bilingual.linkHover(root)
   return () => (stopTip(), stopLink())
 }
@@ -444,11 +446,11 @@ function wireTerms(root) {
 // 键盘聚焦到术语或纠正过的词上也显示
 document.addEventListener('focusin', (e) => {
   if (e.target.matches?.(window.bilingual.TIP_SELECTOR)) {
-    const t = e.target
+    const tv = e.target
     ui.hideTip()
-    const stop = ui.tip(t, window.bilingual.tipContent(t), { delay: 0 })
-    t.dispatchEvent(new Event('focus'))
-    t.addEventListener('blur', () => stop(), { once: true })
+    const stop = ui.tip(tv, window.bilingual.tipContent(tv), { delay: 0 })
+    tv.dispatchEvent(new Event('focus'))
+    tv.addEventListener('blur', () => stop(), { once: true })
   }
 })
 
@@ -510,7 +512,7 @@ function renderNotices() {
         icon(NOTICE_ICON[n.level] ?? 'info', 16),
         el('div.callout-body', {}, n.title ? el('div.callout-title', { text: n.title }) : null, el('div.callout-desc.selectable', { text: n.text })),
         ...n.actions.map((a) => el('button.btn.btn-sm', { type: 'button', onClick: () => a.run() }, a.label)),
-        el('button.btn.btn-ghost.btn-icon.btn-sm', { type: 'button', 'aria-label': '关闭', onClick: () => dismissNotice(n.id) }, icon('x', 14)),
+        el('button.btn.btn-ghost.btn-icon.btn-sm', { type: 'button', 'aria-label': t('关闭'), onClick: () => dismissNotice(n.id) }, icon('x', 14)),
       ),
     )
   }
@@ -521,7 +523,7 @@ let askQuietUntil = 0 // 界面自己调 askLast 时，主进程发的同一句�
 function onEngineNotice(n) {
   if (n.level === 'clear') return removeNotice(n.code)
   if (n.code === 'assist-ask' && Date.now() < askQuietUntil) return
-  const privacy = { label: '打开系统设置', run: () => call('openPrivacy', 'screen') }
+  const privacy = { label: t('打开系统设置'), run: () => call('openPrivacy', 'screen') }
   switch (n.code) {
     case 'reconnected':
       removeNotice('reconnecting', false)
@@ -531,21 +533,21 @@ function onEngineNotice(n) {
     case 'capture-restored':
       return addNotice('info', n.text, { code: n.code, timeout: 5000 })
     case 'mac-no-audio':
-      return addNotice('warn', `${n.text}如果对方明明在说话却没有字幕：打开「系统设置 → 隐私与安全性 → 录屏与系统录音」，在「仅系统录音」里打开「会议字幕」，然后重新开始。`, { code: n.code, actions: [privacy] })
+      return addNotice('warn', t(`{0}如果对方明明在说话却没有字幕：打开「系统设置 → 隐私与安全性 → 录屏与系统录音」，在「仅系统录音」里打开「会议字幕」，然后重新开始。`, n.text), { code: n.code, actions: [privacy] })
     case 'no-audio':
-      return addNotice('warn', `${n.text}检查一下会议声音是不是从这台电脑的默认扬声器或耳机里放出来的。`, { code: n.code, actions: [{ label: '声音设置', run: () => call('openPrivacy', 'screen') }] })
+      return addNotice('warn', t(`{0}检查一下会议声音是不是从这台电脑的默认扬声器或耳机里放出来的。`, n.text), { code: n.code, actions: [{ label: t('声音设置'), run: () => call('openPrivacy', 'screen') }] })
     case 'screen-permission':
-      return addNotice('warn', n.text, { code: n.code, actions: [privacy, { label: '重启', run: relaunchApp }] })
+      return addNotice('warn', n.text, { code: n.code, actions: [privacy, { label: t('重启'), run: relaunchApp }] })
     case 'mic-permission':
-      return addNotice('warn', n.text, { code: n.code, actions: [{ label: '打开系统设置', run: () => call('openPrivacy', 'microphone') }] })
+      return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('打开系统设置'), run: () => call('openPrivacy', 'microphone') }] })
     case 'assist-llm':
-      return addNotice('warn', n.text, { code: n.code, actions: [{ label: '去设置', run: () => openSettings('ai') }] })
+      return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('去设置'), run: () => openSettings('ai') }] })
     case 'asr-language':
-      return addNotice('warn', n.text, { code: n.code, actions: [{ label: '去换识别服务', run: () => openSettings('asr') }] })
+      return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('去换识别服务'), run: () => openSettings('asr') }] })
     case 'voiceprint':
-      return addNotice('warn', n.text, { code: n.code, actions: [{ label: '声纹设置', run: () => openSettings('voiceprint') }] })
+      return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('声纹设置'), run: () => openSettings('voiceprint') }] })
     case 'save-dir':
-      return addNotice(n.level, n.text, { code: n.code, actions: [{ label: '去设置', run: () => openSettings('general') }] })
+      return addNotice(n.level, n.text, { code: n.code, actions: [{ label: t('去设置'), run: () => openSettings('general') }] })
     default:
       return addNotice(n.level === 'error' ? 'error' : n.level === 'info' ? 'info' : 'warn', n.text, { code: n.code })
   }
@@ -555,7 +557,7 @@ function onEngineNotice(n) {
 
 async function relaunchApp() {
   const r = await call('relaunch')
-  if (failed(r)) ui.toast({ title: '没有重启', message: r?.error, type: 'error' })
+  if (failed(r)) ui.toast({ title: t('没有重启'), message: r?.error, type: 'error' })
 }
 
 function openSettings(section) {
@@ -578,11 +580,11 @@ async function startMeeting(projectId, choice) {
   state.starting = false
   emit('engine', state.engine)
   // 「正在连接」时自己点了停止的不算失败
-  if (failed(r) && !r?.cancelled) addNotice('error', `没能开始：${r?.error ?? '未知错误'}`, { code: 'start-error', actions: startErrorActions(r?.error) })
+  if (failed(r) && !r?.cancelled) addNotice('error', t(`没能开始：{0}`, r?.error ?? t('未知错误')), { code: 'start-error', actions: startErrorActions(r?.error) })
 }
 
 function startErrorActions(error = '') {
-  if (/key|token|app ?id|密钥|识别/i.test(error)) return [{ label: '语音识别设置', run: () => openSettings('asr') }]
+  if (/key|token|app ?id|密钥|识别/i.test(error)) return [{ label: t('语音识别设置'), run: () => openSettings('asr') }]
   return []
 }
 
@@ -590,10 +592,10 @@ function startErrorActions(error = '') {
 async function captureSlide() {
   const r = await call('captureSlide')
   if (failed(r) || r?.error) {
-    ui.toast({ title: '没能截取画面', message: r?.error, type: 'error' })
+    ui.toast({ title: t('没能截取画面'), message: r?.error, type: 'error' })
     return null
   }
-  ui.toast({ title: '已截取画面', message: '存进这节课的文件夹，课堂笔记会用上', type: 'success' })
+  ui.toast({ title: t('已截取画面'), message: t('存进这节课的文件夹，课堂笔记会用上'), type: 'success' })
   return r
 }
 
@@ -606,7 +608,7 @@ async function stopMeeting() {
 async function togglePause() {
   if (!running()) return
   const r = await call(state.engine.paused ? 'resume' : 'pause')
-  if (failed(r)) ui.toast({ title: state.engine.paused ? '没能继续记录' : '没能暂停', message: r?.error, type: 'error' })
+  if (failed(r)) ui.toast({ title: state.engine.paused ? t('没能继续记录') : t('没能暂停'), message: r?.error, type: 'error' })
 }
 
 /** 会上换麦克风：列出电脑上的麦克风，选了马上换（同时存进设置）。 */
@@ -620,9 +622,9 @@ async function pickMic(anchor) {
   ui.menu(
     anchor,
     [
-      { section: '麦克风' },
-      { label: '系统默认', description: !cur && using ? `现在是 ${using}` : '戴上 / 摘下耳机时自动跟着换', checked: !cur, onSelect: () => call('setMic', '') },
-      ...devices.map((d, i) => ({ label: d.label || `麦克风 ${i + 1}`, checked: d.deviceId === cur, onSelect: () => call('setMic', d.deviceId) })),
+      { section: t('麦克风') },
+      { label: t('系统默认'), description: !cur && using ? t(`现在是 {0}`, using) : t('戴上 / 摘下耳机时自动跟着换'), checked: !cur, onSelect: () => call('setMic', '') },
+      ...devices.map((d, i) => ({ label: d.label || t(`麦克风 {0}`, i + 1), checked: d.deviceId === cur, onSelect: () => call('setMic', d.deviceId) })),
     ],
     { align: 'start', minWidth: 260 },
   )
@@ -645,7 +647,7 @@ async function setCurrentProject(id) {
   ensureProjectMode(id)
   emit('projects', state.projects)
   const r = await call('setCurrentProject', id)
-  if (failed(r)) ui.toast({ title: '没能切换项目', message: r?.error, type: 'error' })
+  if (failed(r)) ui.toast({ title: t('没能切换项目'), message: r?.error, type: 'error' })
 }
 
 /* ---------------- 路由 ---------------- */
@@ -715,8 +717,8 @@ function mount(view, opts = {}) {
     on: (name, fn) => disposers.push(on(name, fn)),
     dispose: (fn) => disposers.push(fn),
     every: (fn, ms) => {
-      const t = setInterval(fn, ms)
-      disposers.push(() => clearInterval(t))
+      const tv = setInterval(fn, ms)
+      disposers.push(() => clearInterval(tv))
     },
     setParam: (k, v) => {
       if (router.seq === seq) view[k] = v
@@ -732,8 +734,8 @@ function renderHeader(header, { crumbs = [], actions = [] } = {}) {
   ui.clear(header)
   if (sidebarCollapsed()) header.append(sidebarToggle())
   if (router.stack.length && !TOP_LEVEL.has(router.current?.name)) {
-    const b = el('button.btn.btn-ghost.btn-icon.btn-sm.header-back', { type: 'button', 'aria-label': '返回', onClick: back }, icon('chevron-left', 16))
-    ui.tip(b, { title: '返回', text: `Esc 或 ${ui.accelText('CommandOrControl+[')}` }, { delay: 400, placement: 'bottom' })
+    const b = el('button.btn.btn-ghost.btn-icon.btn-sm.header-back', { type: 'button', 'aria-label': t('返回'), onClick: back }, icon('chevron-left', 16))
+    ui.tip(b, { title: t('返回'), text: t(`Esc 或 {0}`, ui.accelText('CommandOrControl+[')) }, { delay: 400, placement: 'bottom' })
     header.append(b)
   }
   const list = el('div.crumbs')
@@ -765,7 +767,7 @@ function lineNode(seg, base, { mode = 'meeting' } = {}) {
     return el(
       'div.tline-pair',
       { dataset: { bi: '' } },
-      el('div.tline-text.selectable', {}, r.en, last && seg.question ? el('span.tag.tag-question.tline-q', { text: '提问' }) : null),
+      el('div.tline-text.selectable', {}, r.en, last && seg.question ? el('span.tag.tag-question.tline-q', { text: t('提问') }) : null),
       r.zh && sen.tr ? el('div.tline-tr.selectable', {}, r.zh) : null,
     )
   })
@@ -809,56 +811,56 @@ function slideTime(slide, startedAt) {
 
 function openSlide(src, label) {
   if (!src) return
-  ui.modal({ title: label || '截图', body: el('div.slide-full', {}, el('img', { src, alt: label || '截图' })), width: 920, actions: [{ label: '关闭', kind: 'primary' }] })
+  ui.modal({ title: label || t('截图'), body: el('div.slide-full', {}, el('img', { src, alt: label || t('截图') })), width: 920, actions: [{ label: t('关闭'), kind: 'primary' }] })
 }
 
 /** 实时记录里的一张截图缩略图（按时间插在字幕中间）。 */
 function slideNode(slide, { base, dir, startedAt } = {}) {
-  const t = slideTime(slide, startedAt ?? base)
+  const tv = slideTime(slide, startedAt ?? base)
   const src = slideSrc(slide, dir)
-  const label = `截图 ${base ? fmtOffset(t - base) : fmtTime(t)}`
+  const label = t(`截图 {0}`, base ? fmtOffset(tv - base) : fmtTime(tv))
   const thumb = src
-    ? el('button.slide-thumb', { type: 'button', 'aria-label': `放大${label}`, onClick: () => openSlide(src, label) }, el('img', { src, alt: label, loading: 'lazy' }))
-    : el('div.slide-thumb.is-missing', {}, icon('image', 18), el('span', { text: '截图已存进会议文件夹' }))
+    ? el('button.slide-thumb', { type: 'button', 'aria-label': t(`放大{0}`, label), onClick: () => openSlide(src, label) }, el('img', { src, alt: label, loading: 'lazy' }))
+    : el('div.slide-thumb.is-missing', {}, icon('image', 18), el('span', { text: t('截图已存进会议文件夹') }))
   return el(
     'div.tline.tline-slide',
-    { dataset: { t: String(t), slide: String(slide.file ?? slide.at ?? '') } },
-    el('span.tline-time.num', { text: base ? fmtOffset(t - base) : fmtTime(t), title: fmtClock(t) }),
+    { dataset: { t: String(tv), slide: String(slide.file ?? slide.at ?? '') } },
+    el('span.tline-time.num', { text: base ? fmtOffset(tv - base) : fmtTime(tv), title: fmtClock(tv) }),
     el('span.tline-who', {}, el('span.slide-mark', {}, icon('camera', 14))),
     el('div.tline-main', {}, thumb),
   )
 }
 
-const REASON = { auto: '自动', hotkey: '快捷键', click: '点选', manual: '手动', regenerate: '重答' }
+const REASON = { auto: t('自动'), hotkey: t('快捷键'), click: t('点选'), manual: t('手动'), regenerate: t('重答') }
 
 function splitAnswer(text) {
-  const t = String(text ?? '')
+  const tv = String(text ?? '')
     .replace(/\*\*|__/g, '')
     .replace(/^\s+/, '')
-  const m = t.match(/^要点[:：]\s*(.*)(?:\n+|$)/)
-  if (!m) return { gist: '', body: t.trim() }
-  return { gist: m[1].trim(), body: t.slice(m[0].length).trim() }
+  const m = tv.match(/^要点[:：]\s*(.*)(?:\n+|$)/)
+  if (!m) return { gist: '', body: tv.trim() }
+  return { gist: m[1].trim(), body: tv.slice(m[0].length).trim() }
 }
 
 function answerTiming(a) {
-  const t = a.timing ?? {}
-  if (a.cancelled) return '已停止（有新问题）'
+  const tv = a.timing ?? {}
+  if (a.cancelled) return t('已停止（有新问题）')
   // 三段分开显示：截图、等首字（请求发出去到第一个字）、生成（第一个字到答完）
-  const shot = t.screen != null ? `截图 ${sec(t.screen)}` : null
-  const sent = t.sent ?? t.screen ?? 0
+  const shot = tv.screen != null ? t(`截图 {0}`, sec(tv.screen)) : null
+  const sent = tv.sent ?? tv.screen ?? 0
   if (!a.done) {
     const now = Date.now() - (a.startedAt ?? Date.now())
-    if (t.firstToken == null) {
-      if (a.withScreen && t.screen == null && t.sent == null) return `截图中 ${sec(now)}`
-      return [shot, `等首字 ${sec(Math.max(0, now - sent))}`].filter(Boolean).join(' · ')
+    if (tv.firstToken == null) {
+      if (a.withScreen && tv.screen == null && tv.sent == null) return t(`截图中 {0}`, sec(now))
+      return [shot, t(`等首字 {0}`, sec(Math.max(0, now - sent)))].filter(Boolean).join(' · ')
     }
-    return [shot, `等首字 ${sec(Math.max(0, t.firstToken - sent))}`, '生成中'].filter(Boolean).join(' · ')
+    return [shot, t(`等首字 {0}`, sec(Math.max(0, tv.firstToken - sent))), t('生成中')].filter(Boolean).join(' · ')
   }
   const parts = [shot]
-  if (t.firstToken != null && !a.error) {
-    parts.push(`等首字 ${sec(Math.max(0, t.firstToken - sent))}`)
-    if (t.total != null) parts.push(`生成 ${sec(Math.max(0, t.total - t.firstToken))}`)
-  } else if (t.total != null) parts.push(`共 ${sec(t.total)}`)
+  if (tv.firstToken != null && !a.error) {
+    parts.push(t(`等首字 {0}`, sec(Math.max(0, tv.firstToken - sent))))
+    if (tv.total != null) parts.push(t(`生成 {0}`, sec(Math.max(0, tv.total - tv.firstToken))))
+  } else if (tv.total != null) parts.push(t(`共 {0}`, sec(tv.total)))
   return parts.filter(Boolean).join(' · ')
 }
 
@@ -883,16 +885,16 @@ function answerCard(a0, { live = false } = {}) {
   const warn = el('div.answer-note.is-warn')
   const err = el('div.answer-note.is-error')
   const timing = el('span.answer-timing.num')
-  const copyBtn = iconButton('copy', '复制回答', () => {
+  const copyBtn = iconButton('copy', t('复制回答'), () => {
     const { gist: g, body: b } = splitAnswer(a.text)
-    if (b || g) copyText(b || g, '回答已复制')
+    if (b || g) copyText(b || g, t('回答已复制'))
   })
   copyBtn.classList.add('btn-sm')
   const regen =
     live && typeof api.answerRegenerate === 'function'
-      ? iconButton('refresh-cw', '重新回答', async () => {
+      ? iconButton('refresh-cw', t('重新回答'), async () => {
           const r = await call('answerRegenerate', a.id)
-          if (failed(r) && r?.error) ui.toast({ title: '没能重新回答', message: r.error, type: 'error' })
+          if (failed(r) && r?.error) ui.toast({ title: t('没能重新回答'), message: r.error, type: 'error' })
         })
       : null
   regen?.classList.add('btn-sm')
@@ -914,7 +916,7 @@ function answerCard(a0, { live = false } = {}) {
     root.classList.toggle('is-streaming', streaming)
     root.classList.toggle('is-error', Boolean(a.error))
     root.classList.toggle('is-stopped', Boolean(a.cancelled))
-    reason.textContent = REASON[a.reason] ?? '回答'
+    reason.textContent = REASON[a.reason] ?? t('回答')
     q.textContent = a.question ?? ''
     q.title = a.question ?? ''
     gist.textContent = g
@@ -944,89 +946,89 @@ function answerCard(a0, { live = false } = {}) {
 }
 
 /** 一条待办的列表行。opts：showProject（跨项目列表）、showSource（显示来源会议）、onOpen、onProject(anchor) */
-function todoRow(t, opts = {}) {
-  const check = el('input.check', { type: 'checkbox', checked: Boolean(t.done), 'aria-label': t.done ? '标记为没完成' : '标记为完成', tabindex: '-1' })
+function todoRow(tv, opts = {}) {
+  const check = el('input.check', { type: 'checkbox', checked: Boolean(tv.done), 'aria-label': tv.done ? t('标记为没完成') : t('标记为完成'), tabindex: '-1' })
   check.addEventListener('click', (e) => e.stopPropagation())
-  check.addEventListener('change', () => toggleTodo(t, check.checked, check))
-  const due = dueInfo(t.due, t.done)
+  check.addEventListener('change', () => toggleTodo(tv, check.checked, check))
+  const due = dueInfo(tv.due, tv.done)
   const sub = []
-  if (opts.showSource && t.sessionId) sub.push(`来自「${t.sessionTitle || fmtDateTime(t.sessionStartedAt)}」`)
-  if (t.quote && opts.showQuote) sub.push(`“${t.quote}”${t.at != null ? ` ${fmtOffset(t.at)}` : ''}`)
+  if (opts.showSource && tv.sessionId) sub.push(t(`来自「{0}」`, tv.sessionTitle || fmtDateTime(tv.sessionStartedAt)))
+  if (tv.quote && opts.showQuote) sub.push(`“${tv.quote}”${tv.at != null ? ` ${fmtOffset(tv.at)}` : ''}`)
   const acc = []
-  if (t.owner === 'me') acc.push(el('span.tag.tag-me', { text: '我' }))
-  if (t.owner === 'other') acc.push(el('span.tag.tag-other', { text: '对方' }))
+  if (tv.owner === 'me') acc.push(el('span.tag.tag-me', { text: t('我') }))
+  if (tv.owner === 'other') acc.push(el('span.tag.tag-other', { text: t('对方') }))
   // dueUncertain：纪要标了待确认，或者原话里星期几和日期对不上
-  const unsure = t.dueUncertain && !t.done ? '，日期待确认' : ''
-  if (due) acc.push(el('span.tag', { dataset: due.tint ? { tint: due.tint } : undefined, text: unsure ? `${due.label} 待确认` : due.label, title: t.dueText ? `${due.title}${unsure}（原话：${t.dueText}）` : `${due.title}${unsure}` }))
-  else if (t.dueText) acc.push(el('span.tag', { text: unsure ? `${t.dueText}（待确认）` : t.dueText, title: '原话里的时间' }))
-  else if (unsure) acc.push(el('span.tag', { text: '日期待确认' }))
+  const unsure = tv.dueUncertain && !tv.done ? t('，日期待确认') : ''
+  if (due) acc.push(el('span.tag', { dataset: due.tint ? { tint: due.tint } : undefined, text: unsure ? t(`{0} 待确认`, due.label) : due.label, title: tv.dueText ? t(`{0}{1}（原话：{2}）`, due.title, unsure, tv.dueText) : `${due.title}${unsure}` }))
+  else if (tv.dueText) acc.push(el('span.tag', { text: unsure ? t(`{0}（待确认）`, tv.dueText) : tv.dueText, title: t('原话里的时间') }))
+  else if (unsure) acc.push(el('span.tag', { text: t('日期待确认') }))
   if (opts.showProject) {
-    const tag = projectTag(t.projectId)
+    const tag = projectTag(tv.projectId)
     if (opts.onProject) {
-      const b = el('button.tag-button', { type: 'button', 'aria-label': '换归属项目', onClick: (e) => (e.stopPropagation(), opts.onProject(b, t)) }, tag)
+      const b = el('button.tag-button', { type: 'button', 'aria-label': t('换归属项目'), onClick: (e) => (e.stopPropagation(), opts.onProject(b, tv)) }, tag)
       acc.push(b)
     } else acc.push(tag)
   }
   const row = ui.listItem({
-    id: t.id,
+    id: tv.id,
     lead: check,
-    title: t.text,
+    title: tv.text,
     subtitle: sub.join(' · ') || null,
     twoLine: sub.length > 0,
     accessories: acc,
     className: 'todo-row',
-    onClick: () => opts.onOpen?.(t),
+    onClick: () => opts.onOpen?.(tv),
   })
-  if (t.done) row.classList.add('is-done')
+  if (tv.done) row.classList.add('is-done')
   row.addEventListener('contextmenu', (e) => {
     e.preventDefault()
-    todoContextMenu({ x: e.clientX, y: e.clientY }, t, check, opts, row)
+    todoContextMenu({ x: e.clientX, y: e.clientY }, tv, check, opts, row)
   })
-  row.title = t.quote ? `原话：${t.quote}` : ''
-  row._todo = t
+  row.title = tv.quote ? t(`原话：{0}`, tv.quote) : ''
+  row._todo = tv
   row._check = check
   return row
 }
 
 /** 待办行的右键菜单：完成 / 没完成、打开来源会议、换项目、删除。 */
-function todoContextMenu(anchor, t, check, opts, row) {
+function todoContextMenu(anchor, tv, check, opts, row) {
   const items = [
-    { label: t.done ? '标记为没完成' : '标记为完成', icon: t.done ? 'circle' : 'circle-check', onSelect: () => ((check.checked = !t.done), toggleTodo(t, !t.done, check)) },
-    t.sessionId && { label: '打开来源会议', icon: 'arrow-right', onSelect: () => go('meeting', { id: t.sessionId, tab: 'todos' }) },
-    opts.onProject && { label: '换归属项目…', icon: 'folder', onSelect: () => opts.onProject(row, t) },
-    { label: '复制', icon: 'copy', onSelect: () => copyText(t.text, '待办已复制') },
+    { label: tv.done ? t('标记为没完成') : t('标记为完成'), icon: tv.done ? 'circle' : 'circle-check', onSelect: () => ((check.checked = !tv.done), toggleTodo(tv, !tv.done, check)) },
+    tv.sessionId && { label: t('打开来源会议'), icon: 'arrow-right', onSelect: () => go('meeting', { id: tv.sessionId, tab: 'todos' }) },
+    opts.onProject && { label: t('换归属项目…'), icon: 'folder', onSelect: () => opts.onProject(row, tv) },
+    { label: t('复制'), icon: 'copy', onSelect: () => copyText(tv.text, t('待办已复制')) },
     'sep',
     {
-      label: '删除',
+      label: t('删除'),
       icon: 'trash',
       danger: true,
       onSelect: async () => {
-        const ok = await ui.confirm({ title: '删除这条待办？', message: t.text, okLabel: '删除', danger: true })
+        const ok = await ui.confirm({ title: t('删除这条待办？'), message: tv.text, okLabel: t('删除'), danger: true })
         if (!ok) return
-        const r = await call('removeTodo', t.sessionId, t.id)
-        if (failed(r)) return ui.toast({ title: '没能删除', message: r?.error, type: 'error' })
-        ui.toast({ title: '待办已删除', type: 'success' })
+        const r = await call('removeTodo', tv.sessionId, tv.id)
+        if (failed(r)) return ui.toast({ title: t('没能删除'), message: r?.error, type: 'error' })
+        ui.toast({ title: t('待办已删除'), type: 'success' })
       },
     },
   ].filter(Boolean)
   ui.menu(anchor, items, { minWidth: 200 })
 }
 
-async function toggleTodo(t, done, check) {
-  const sessionId = t.sessionId
-  const r = await call('updateTodo', sessionId, t.id, { done })
+async function toggleTodo(tv, done, check) {
+  const sessionId = tv.sessionId
+  const r = await call('updateTodo', sessionId, tv.id, { done })
   if (failed(r) || !r) {
     if (check) check.checked = !done
-    ui.toast({ title: '没能更新待办', message: r?.error, type: 'error' })
+    ui.toast({ title: t('没能更新待办'), message: r?.error, type: 'error' })
     return
   }
-  t.done = done
+  tv.done = done
   if (done)
     ui.toast({
-      title: '已完成',
-      message: t.text,
+      title: t('已完成'),
+      message: tv.text,
       type: 'success',
-      action: { label: '撤销', onClick: () => call('updateTodo', sessionId, t.id, { done: false }) },
+      action: { label: t('撤销'), onClick: () => call('updateTodo', sessionId, tv.id, { done: false }) },
     })
 }
 
@@ -1052,7 +1054,7 @@ function startMenu(anchor, { projectId = state.currentProjectId, showProjects = 
   const def = { mode: projectMode(pid), classSource: projectClassSource(pid) }
   const items = []
   if (showProjects) {
-    items.push({ section: '在哪个项目里' })
+    items.push({ section: t('在哪个项目里') })
     for (const p of activeProjects())
       items.push({
         label: p.name,
@@ -1064,37 +1066,37 @@ function startMenu(anchor, { projectId = state.currentProjectId, showProjects = 
           setCurrentProject(p.id)
         },
       })
-    items.push({ label: '新建项目…', icon: 'plus', onSelect: () => newProjectModal() }, 'sep')
+    items.push({ label: t('新建项目…'), icon: 'plus', onSelect: () => newProjectModal() }, 'sep')
   }
   const pick = (mode, classSource) => {
     state.modeChoice = { projectId: pid, mode, classSource: classSource ?? projectClassSource(pid) }
     emit('mode', state.modeChoice)
   }
-  items.push({ section: '模式' })
-  items.push({ label: '会议', icon: MODES.meeting.icon, description: MODES.meeting.desc, checked: c.mode === 'meeting', onSelect: () => pick('meeting') })
-  items.push({ label: '面试', icon: MODES.interview.icon, description: MODES.interview.desc, checked: c.mode === 'interview', onSelect: () => pick('interview') })
+  items.push({ section: t('模式') })
+  items.push({ label: t('会议'), icon: MODES.meeting.icon, description: MODES.meeting.desc, checked: c.mode === 'meeting', onSelect: () => pick('meeting') })
+  items.push({ label: t('面试'), icon: MODES.interview.icon, description: MODES.interview.desc, checked: c.mode === 'interview', onSelect: () => pick('interview') })
   for (const [src, info] of Object.entries(CLASS_SOURCES))
-    items.push({ label: `课堂：${info.label}`, icon: info.icon, description: info.desc, checked: c.mode === 'class' && sourceOf(c.classSource) === src, onSelect: () => pick('class', src) })
+    items.push({ label: t(`课堂：{0}`, info.label), icon: info.icon, description: info.desc, checked: c.mode === 'class' && sourceOf(c.classSource) === src, onSelect: () => pick('class', src) })
   const differs = c.mode !== def.mode || (c.mode === 'class' && sourceOf(c.classSource) !== def.classSource)
   const p = projectOf(pid)
   if (differs && p) {
     items.push('sep', {
-      label: `把这个设成「${p.name}」的默认`,
+      label: t(`把这个设成「{0}」的默认`, p.name),
       icon: 'check',
       onSelect: async () => {
         const patch = { mode: c.mode, ...(c.mode === 'class' ? { classSource: sourceOf(c.classSource) } : {}) }
         const r = await call('updateProject', pid, patch)
-        if (failed(r)) return ui.toast({ title: '没能保存', message: r?.error, type: 'error' })
+        if (failed(r)) return ui.toast({ title: t('没能保存'), message: r?.error, type: 'error' })
         state.projectModes.set(pid, { ...state.projectModes.get(pid), ...patch })
         const row = projectOf(pid)
         if (row) Object.assign(row, patch)
         state.modeChoice = null
         emit('mode', null)
-        ui.toast({ title: `「${p.name}」默认${modeInfo(c.mode).label}模式`, type: 'success' })
+        ui.toast({ title: t(`「{0}」默认{1}模式`, p.name, modeInfo(c.mode).label), type: 'success' })
       },
     })
   }
-  return ui.menu(anchor, items, { searchable: showProjects && items.length > 16, placeholder: '找项目或模式', minWidth: 280 })
+  return ui.menu(anchor, items, { searchable: showProjects && items.length > 16, placeholder: t('找项目或模式'), minWidth: 280 })
 }
 
 /** 项目选择菜单（开会、移动会议、改待办归属）。 */
@@ -1105,6 +1107,6 @@ function projectMenu(anchor, { current, onPick, title, includeNew = false, exclu
     if (exclude && exclude === p.id) continue
     items.push({ label: p.name, icon: projectIconName(p), tint: projectTint(p), checked: p.id === current, onSelect: () => onPick(p.id) })
   }
-  if (includeNew) items.push('sep', { label: '新建项目…', icon: 'plus', onSelect: () => newProjectModal() })
-  return ui.menu(anchor, items, { searchable: items.length > 9, placeholder: '找项目', minWidth: 220 })
+  if (includeNew) items.push('sep', { label: t('新建项目…'), icon: 'plus', onSelect: () => newProjectModal() })
+  return ui.menu(anchor, items, { searchable: items.length > 9, placeholder: t('找项目'), minWidth: 220 })
 }

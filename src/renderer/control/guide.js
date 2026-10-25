@@ -3,9 +3,9 @@
 // 看完（或跳过）记在 settings.onboarding.demo；之后从「设置 → 关于 → 看演示」或命令面板再打开。动画在 shared/scenes.js。
 
 const GUIDE_FEATS = [
-  { title: '悬浮双语字幕', acts: ['talk', 'color', 'term'], tryable: true, note: '这些都已默认开启；字号、行数、颜色在「设置 → 字幕与答题框」里调。' },
-  { title: 'AI 答题', acts: ['ask', 'key', 'share'], note: '自动回答在面试模式默认开着；快捷键在「设置 → 快捷键」里改。' },
-  { title: '课堂笔记', acts: ['notes', 'shot'], note: '开始记录时在下拉里选「课堂」；下课点「生成课堂笔记」。' },
+  { title: t('悬浮双语字幕'), acts: ['talk', 'color', 'term'], tryable: true, note: t('这些都已默认开启；字号、行数、颜色在「设置 → 字幕与答题框」里调。') },
+  { title: t('AI 答题'), acts: ['ask', 'key', 'share'], note: t('自动回答在面试模式默认开着；快捷键在「设置 → 快捷键」里改。') },
+  { title: t('课堂笔记'), acts: ['notes', 'shot'], note: t('开始记录时在下拉里选「课堂」；下课点「生成课堂笔记」。') },
 ]
 const GUIDE_ALL = GUIDE_FEATS.flatMap((f, p) => f.acts.map((a, j) => ({ p, j, a })))
 
@@ -19,7 +19,7 @@ function openGuide() {
   let levels = { system: 0, mic: 0 }
   const stageHost = el('div.guide-stage')
   const player = Scenes.mount(stageHost)
-  const box = el('div.guide', { role: 'dialog', 'aria-modal': 'true', 'aria-label': '怎么用' })
+  const box = el('div.guide', { role: 'dialog', 'aria-modal': 'true', 'aria-label': t('怎么用') })
   document.body.append(box)
 
   const offLevel = subscribe('audio:level', ({ source, db }) => {
@@ -36,11 +36,11 @@ function openGuide() {
     const r = await call('testAudio', { seconds: 3, mic: true })
     listening = false
     levels = { system: 0, mic: 0 }
-    if (failed(r)) tryResult = { ok: false, text: r.error || '没听到声音' }
+    if (failed(r)) tryResult = { ok: false, text: r.error || t('没听到声音') }
     else {
       const sys = r.system?.heard
       const mic = r.mic?.heard
-      tryResult = sys && mic ? { ok: true, text: '电脑声音和麦克风都听到了，可以开会了' } : sys ? { ok: true, text: '听到了电脑声音；麦克风没声音，说句话再试一次' } : { ok: false, text: '没听到电脑声音：放一段视频或音乐再点一次；还是没有就去「设置 → 权限」看看' }
+      tryResult = sys && mic ? { ok: true, text: t('电脑声音和麦克风都听到了，可以开会了') } : sys ? { ok: true, text: t('听到了电脑声音；麦克风没声音，说句话再试一次') } : { ok: false, text: t('没听到电脑声音：放一段视频或音乐再点一次；还是没有就去「设置 → 权限」看看') }
     }
     render()
   }
@@ -102,20 +102,20 @@ function openGuide() {
       ? el(
           'div.guide-try',
           {},
-          el('div.guide-try-title', {}, el('b', { text: '试一试' }), ' · 放一段英文视频或音乐，点「听一下」'),
-          el('div.guide-meter', {}, el('span', { text: '电脑声音' }), el('span.bar', {}, el('i', { dataset: { meter: 'system' } }))),
-          el('div.guide-meter.is-me', {}, el('span', { text: '麦克风' }), el('span.bar', {}, el('i', { dataset: { meter: 'mic' } }))),
+          el('div.guide-try-title', {}, el('b', { text: t('试一试') }), t(' · 放一段英文视频或音乐，点「听一下」')),
+          el('div.guide-meter', {}, el('span', { text: t('电脑声音') }), el('span.bar', {}, el('i', { dataset: { meter: 'system' } }))),
+          el('div.guide-meter.is-me', {}, el('span', { text: t('麦克风') }), el('span.bar', {}, el('i', { dataset: { meter: 'mic' } }))),
           el(
             'div.guide-try-row',
             {},
-            el('button.btn.btn-sm', { type: 'button', disabled: listening, onClick: listen }, icon('play', 14), el('span', { text: listening ? '正在听…' : '听一下' })),
+            el('button.btn.btn-sm', { type: 'button', disabled: listening, onClick: listen }, icon('play', 14), el('span', { text: listening ? t('正在听…') : t('听一下') })),
             tryResult ? el('span.guide-try-res', { class: tryResult.ok ? 'is-ok' : 'is-bad' }, icon(tryResult.ok ? 'circle-check' : 'circle-alert', 14), el('span', { text: tryResult.text })) : null,
           ),
         )
       : null
     box.replaceChildren(
-      el('div.guide-top', { text: `怎么用 ${p + 1} / ${GUIDE_FEATS.length} · ${f.title}` }),
-      el('button.guide-skip', { type: 'button', onClick: close }, '跳过'),
+      el('div.guide-top', { text: t(`怎么用 {0} / {1} · {2}`, p + 1, GUIDE_FEATS.length, f.title) }),
+      el('button.guide-skip', { type: 'button', onClick: close }, t('跳过')),
       el(
         'div.guide-body',
         {},
@@ -141,8 +141,8 @@ function openGuide() {
           ),
         ),
         el('span.spacer'),
-        k > 0 ? el('button.btn', { type: 'button', onClick: () => step(-1) }, '上一个') : null,
-        el('button.btn.btn-primary', { type: 'button', onClick: () => step(1) }, k === GUIDE_ALL.length - 1 ? '开始使用' : '下一个'),
+        k > 0 ? el('button.btn', { type: 'button', onClick: () => step(-1) }, t('上一个')) : null,
+        el('button.btn.btn-primary', { type: 'button', onClick: () => step(1) }, k === GUIDE_ALL.length - 1 ? t('开始使用') : t('下一个')),
       ),
     )
     player.play(a)

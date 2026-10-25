@@ -1,11 +1,12 @@
 import fs from 'node:fs'
 import { pcm16ToFloat32, resample } from './voiceprint.js'
+import { t } from '../i18n.js'
 
 // 读 16 位 PCM 的 WAV（自测用的假音源、从文件注册声纹）。多声道混成单声道，按需重采样。
 
 export function readWav(file) {
   const b = fs.readFileSync(file)
-  if (b.toString('ascii', 0, 4) !== 'RIFF' || b.toString('ascii', 8, 12) !== 'WAVE') throw new Error(`${file} 不是 WAV 文件`)
+  if (b.toString('ascii', 0, 4) !== 'RIFF' || b.toString('ascii', 8, 12) !== 'WAVE') throw new Error(t(`{0} 不是 WAV 文件`, file))
   let fmt = null
   let o = 12
   while (o + 8 <= b.length) {
@@ -14,7 +15,7 @@ export function readWav(file) {
     const body = o + 8
     if (id === 'fmt ') fmt = { format: b.readUInt16LE(body), channels: b.readUInt16LE(body + 2), rate: b.readUInt32LE(body + 4), bits: b.readUInt16LE(body + 14) }
     else if (id === 'data') {
-      if (!fmt || fmt.format !== 1 || fmt.bits !== 16) throw new Error(`${file} 要是 16 位 PCM（say -o x.wav --data-format=LEI16@16000）`)
+      if (!fmt || fmt.format !== 1 || fmt.bits !== 16) throw new Error(t(`{0} 要是 16 位 PCM（say -o x.wav --data-format=LEI16@16000）`, file))
       const bytes = Math.min(size, b.length - body) & ~1
       const all = new Int16Array(b.buffer.slice(b.byteOffset + body, b.byteOffset + body + bytes))
       const ch = fmt.channels || 1
@@ -27,7 +28,7 @@ export function readWav(file) {
     }
     o = body + size + (size & 1)
   }
-  throw new Error(`${file} 里没有音频数据`)
+  throw new Error(t(`{0} 里没有音频数据`, file))
 }
 
 /** 读成指定采样率的 PCM16。 */

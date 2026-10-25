@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { t } from '../i18n.js'
 
 // 课件：一节课可以加几份老师的课件（PDF、图片）。原文件拷进会议文件夹 materials/<id>/，每页存成 pNNN.jpg，
 // 每页的文字存 text.json，每页的大小和每行文字的位置存 layout.json（[{ w, h, lines: [{ t, b: [x, y, w, h] }] }]）；session.materials 记 [{ id, name, kind, pages, addedAt }]。
@@ -27,7 +28,7 @@ export function materialKind(file) {
  */
 export async function importMaterial({ sessionDir, file, renderPdf, toJpeg, onProgress = () => {} }) {
   const kind = materialKind(file)
-  if (!kind) throw new Error(`不认识这种文件：${path.basename(file)}（课件要 PDF 或图片）`)
+  if (!kind) throw new Error(t(`不认识这种文件：{0}（课件要 PDF 或图片）`, path.basename(file)))
   const id = `m${crypto.randomBytes(3).toString('hex')}`
   const dir = path.join(sessionDir, 'materials', id)
   fs.mkdirSync(dir, { recursive: true })
@@ -44,7 +45,7 @@ export async function importMaterial({ sessionDir, file, renderPdf, toJpeg, onPr
         onProgress({ page: n, total: Math.min(total, MAX_PAGES) })
         return true
       })
-      if (!texts.length) throw new Error('这份 PDF 一页都没读出来')
+      if (!texts.length) throw new Error(t('这份 PDF 一页都没读出来'))
     } else {
       const jpeg = toJpeg(file)
       fs.writeFileSync(path.join(dir, pageFile(1)), jpeg)
@@ -62,7 +63,7 @@ export async function importMaterial({ sessionDir, file, renderPdf, toJpeg, onPr
 }
 
 export function removeMaterial(sessionDir, id) {
-  if (!/^m[0-9a-f]+$/.test(id)) throw new Error('课件 id 不对')
+  if (!/^m[0-9a-f]+$/.test(id)) throw new Error(t('课件 id 不对'))
   fs.rmSync(path.join(sessionDir, 'materials', id), { recursive: true, force: true })
 }
 
@@ -89,7 +90,7 @@ export function materialsForNotes(session, sessionDir, { maxImages = MAX_IMAGES,
   }
   const picked = pages.length <= maxImages ? pages : [...pages].sort((a, b) => a.text.length - b.text.length).slice(0, maxImages)
   const withImage = new Set(picked)
-  const images = pages.filter((p) => withImage.has(p)).map((p) => ({ ref: p.ref, file: p.file, label: `《${p.m.name}》第 ${p.n} 页` }))
+  const images = pages.filter((p) => withImage.has(p)).map((p) => ({ ref: p.ref, file: p.file, label: t(`《{0}》第 {1} 页`, p.m.name, p.n) }))
   let left = totalChars
   const blocks = list.map((m) => {
     const lines = pages
@@ -113,7 +114,7 @@ export function jpegSize(buf) {
     if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) return { w: buf.readUInt16BE(i + 7), h: buf.readUInt16BE(i + 5) }
     i += 2 + buf.readUInt16BE(i + 2)
   }
-  throw new Error('读不出图片大小')
+  throw new Error(t('读不出图片大小'))
 }
 
 /** 一份课件每页的大小和文字行：[{ w, h, lines }]。 */

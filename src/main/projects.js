@@ -3,6 +3,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { TARGET_CODES, SOURCE_LANGS } from './languages.js'
+import { t } from './i18n.js'
 
 // 项目：根目录下一个项目一个文件夹，文件夹里的 project.json 就是项目本身（拷走文件夹就是完整的项目），
 // 会议文件夹放在所属项目的文件夹里。「未归类」id 固定 'inbox'，不能删、不能改名、不能归档。
@@ -10,6 +11,8 @@ import { TARGET_CODES, SOURCE_LANGS } from './languages.js'
 
 export const INBOX_ID = 'inbox'
 export const INBOX_NAME = '未归类'
+// 「未归类」不能改名，存的名字一直是中文；给界面时换成当前界面语言
+const shown = (p) => (p.id === INBOX_ID ? { ...structuredClone(p), name: t(INBOX_NAME) } : structuredClone(p))
 export const PROJECT_FILE = 'project.json'
 export const PROJECT_COLORS = ['blue', 'purple', 'green', 'orange', 'pink', 'teal', 'yellow', 'red', 'gray']
 export const LANGUAGES = SOURCE_LANGS
@@ -174,7 +177,7 @@ export class ProjectStore extends EventEmitter {
   /** 全部项目（含归档），按创建时间；「未归类」排在没归档的最后，归档的再往后。 */
   list() {
     const rank = (p) => (p.archived ? 2 : p.id === INBOX_ID ? 1 : 0)
-    return [...this.items.values()].sort((a, b) => rank(a) - rank(b) || a.createdAt - b.createdAt).map((p) => structuredClone(p))
+    return [...this.items.values()].sort((a, b) => rank(a) - rank(b) || a.createdAt - b.createdAt).map(shown)
   }
 
   has(id) {
@@ -183,13 +186,13 @@ export class ProjectStore extends EventEmitter {
 
   get(id) {
     const p = this.items.get(id)
-    return p ? structuredClone(p) : null
+    return p ? shown(p) : null
   }
 
   /** 项目文件夹的绝对路径；项目不在了抛错。 */
   dir(id) {
     const p = this.items.get(id)
-    if (!p) throw Object.assign(new Error('找不到这个项目'), { code: 'no-project' })
+    if (!p) throw Object.assign(new Error(t('找不到这个项目')), { code: 'no-project' })
     return path.join(this.root(), p.folder)
   }
 
@@ -224,7 +227,7 @@ export class ProjectStore extends EventEmitter {
   /** 改字段；改名时文件夹一起改名（重名加后缀）。 */
   update(id, patch = {}) {
     const p = this.items.get(id)
-    if (!p) throw Object.assign(new Error('找不到这个项目'), { code: 'no-project' })
+    if (!p) throw Object.assign(new Error(t('找不到这个项目')), { code: 'no-project' })
     const fields = clean(patch, { inbox: id === INBOX_ID })
     const next = { ...p, ...fields }
     if (fields.name && fields.name !== p.name) {
@@ -234,7 +237,7 @@ export class ProjectStore extends EventEmitter {
         try {
           fs.renameSync(path.join(root, p.folder), path.join(root, folder))
         } catch (e) {
-          throw new Error(`项目文件夹改名失败（可能有文件正被别的程序打开）：${e.message}`)
+          throw new Error(t(`项目文件夹改名失败（可能有文件正被别的程序打开）：{0}`, e.message))
         }
         next.folder = folder
       }
@@ -247,7 +250,7 @@ export class ProjectStore extends EventEmitter {
 
   /** 删项目：调用方先把会议移走（SessionStore.moveAll），这里把剩下的文件夹移到废纸篓。 */
   async remove(id) {
-    if (id === INBOX_ID) throw new Error('「未归类」不能删除')
+    if (id === INBOX_ID) throw new Error(t('「未归类」不能删除'))
     const p = this.items.get(id)
     if (!p) return false
     const dir = path.join(this.root(), p.folder)
@@ -260,7 +263,7 @@ export class ProjectStore extends EventEmitter {
         fs.renameSync(path.join(dir, PROJECT_FILE), path.join(dir, `${PROJECT_FILE}.deleted`))
       } catch {}
       this.#changed('remove', id)
-      throw new Error(`项目已删除，但文件夹没能移到废纸篓：${e.message}`)
+      throw new Error(t(`项目已删除，但文件夹没能移到废纸篓：{0}`, e.message))
     }
     this.#changed('remove', id)
     return true

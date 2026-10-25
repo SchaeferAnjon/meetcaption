@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import WebSocket from 'ws'
+import { t } from '../i18n.js'
 
 // Soniox 实时识别（stt-rt-v5）：wss://stt-rt.soniox.com/transcribe-websocket，60 种语言，按连接时长计费。
 // 音频一直送（含静音，和豆包一样），Soniox 自己断句：<end> 之前的字是一句。每条回复里 is_final 的字是新定稿的，
@@ -94,11 +95,11 @@ export class SonioxStreamASR extends EventEmitter {
         conn.rotateAt = Date.now() + Math.max(k.maxMs - this.tm.rotateBeforeMs, k.maxMs * 0.75)
         conn.forceAt = Math.max(Date.now() + k.maxMs - this.tm.forceBeforeMs, conn.rotateAt)
       }
-      if (!key) throw new FatalError('还没填 Soniox 的 API Key，去「设置 → 语音识别」里填')
+      if (!key) throw new FatalError(t('还没填 Soniox 的 API Key，去「设置 → 语音识别」里填'))
       await new Promise((resolve, reject) => {
         const ws = new WebSocket(this.opts.url, { headers: { Authorization: `Bearer ${key}` }, handshakeTimeout: 15_000 })
         conn.ws = ws
-        ws.on('unexpected-response', (_req, res) => reject(new Error(`连接 Soniox 失败（HTTP ${res.statusCode}）`)))
+        ws.on('unexpected-response', (_req, res) => reject(new Error(t(`连接 Soniox 失败（HTTP {0}）`, res.statusCode))))
         ws.on('error', (e) => (conn.open ? this.#lost(conn, e) : reject(e)))
         ws.on('open', () => {
           ws.send(JSON.stringify(this.#config(conn)))
@@ -109,13 +110,13 @@ export class SonioxStreamASR extends EventEmitter {
         })
         ws.on('message', (m) => this.#onMessage(conn, m))
         ws.on('close', (code) => {
-          if (!conn.open) reject(new Error(`Soniox 断开了连接（${code}）`))
-          else this.#lost(conn, new Error(`连接断开（${code}）`))
+          if (!conn.open) reject(new Error(t(`Soniox 断开了连接（{0}）`, code)))
+          else this.#lost(conn, new Error(t(`连接断开（{0}）`, code)))
         })
       })
       conn.watch = setInterval(() => {
         if (conn.retired || !conn.open) return
-        if (Date.now() - conn.lastMsgAt > this.tm.deadAfterMs) this.#lost(conn, new Error('Soniox 好久没回音'))
+        if (Date.now() - conn.lastMsgAt > this.tm.deadAfterMs) this.#lost(conn, new Error(t('Soniox 好久没回音')))
       }, 2000)
       this.retries = 0
     })()

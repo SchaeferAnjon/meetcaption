@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { t } from '../i18n.js'
 
 export const API = (process.env.MEETCAPTION_API ?? 'https://api.us-cloud.uk').replace(/\/+$/, '')
 
@@ -79,7 +80,7 @@ export class Member extends EventEmitter {
         signal: AbortSignal.timeout(20_000),
       })
     } catch (e) {
-      throw new MemberError('network', `连不上会员服务器：${e.cause?.code ?? e.message}`)
+      throw new MemberError('network', t(`连不上会员服务器：{0}`, e.cause?.code ?? e.message))
     }
     const data = await res.json().catch(() => ({}))
     if (res.ok) return data
@@ -90,7 +91,7 @@ export class Member extends EventEmitter {
       await this.ensureDevice()
       return this.#call(method, p, { body, token: this.state.token, retry: false })
     }
-    throw new MemberError(err.code ?? 'http', err.message ?? `会员服务器出错（HTTP ${res.status}）`, res.status)
+    throw new MemberError(err.code ?? 'http', err.message ?? t(`会员服务器出错（HTTP {0}）`, res.status), res.status)
   }
 
   /** 第一次用：按设备领试用，存下设备令牌。之后直接返回。 */
@@ -201,7 +202,7 @@ export class Member extends EventEmitter {
   /** 识别要连 Soniox 时调：拿这一场的票换一把临时 Key（只能连一次，最长连 maxMs）。 */
   async asrKey() {
     const s = this.session
-    if (!s) throw new MemberError('ended', '这一场已经结束了')
+    if (!s) throw new MemberError('ended', t('这一场已经结束了'))
     return this.#call('POST', '/v1/session/asr-key', { token: s.token })
   }
 

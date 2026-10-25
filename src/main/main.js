@@ -34,6 +34,8 @@ import { exportNotesTo, notesBaseName, saveSlide } from './class/files.js'
 import { notesPdf } from './class/notesPdf.js'
 import { MATERIAL_TYPES, importMaterial, materialKind, removeMaterial } from './class/materials.js'
 import { renderPdf } from './class/pdfRender.js'
+import { setUiLang, systemUiLang, t, uiDict, uiLang } from './i18n.js'
+import { TARGET_CODES } from './languages.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.join(here, '..')
@@ -129,7 +131,7 @@ const trash = (dir) => shell.trashItem(dir)
 // 课堂笔记带给模型的截图：缩到 1280 宽再编码，请求小一点
 function slideDataUrl(file) {
   let img = nativeImage.createFromPath(file)
-  if (img.isEmpty()) throw new Error('截图读不出来')
+  if (img.isEmpty()) throw new Error(t('截图读不出来'))
   if (img.getSize().width > 1280) img = img.resize({ width: 1280, quality: 'good' })
   return `data:image/jpeg;base64,${img.toJPEG(80).toString('base64')}`
 }
@@ -153,7 +155,7 @@ function rootNotice() {
   if (!rootFallback) return
   toUi('engine:notice', {
     level: 'warn',
-    text: `保存位置「${settings.get().saveDir}」现在用不了（移动硬盘没插？），这次先存在「${libraryRoot}」。插上以后到设置里重新选一次保存位置。`,
+    text: t(`保存位置「{0}」现在用不了（移动硬盘没插？），这次先存在「{1}」。插上以后到设置里重新选一次保存位置。`, settings.get().saveDir, libraryRoot),
     code: 'save-dir',
   })
 }
@@ -207,16 +209,16 @@ const emitSessions = (p = {}) => toUi('sessions:changed', p)
 const emitTodos = (p = {}) => toUi('todos:changed', p)
 
 function setCurrentProject(id) {
-  if (!projects.has(id)) throw new Error('找不到这个项目')
+  if (!projects.has(id)) throw new Error(t('找不到这个项目'))
   if (settings.get().currentProjectId !== id) settings.update({ currentProjectId: id })
   emitProjects()
   return id
 }
 
 async function deleteProject(id) {
-  if (id === INBOX_ID) return { ok: false, error: '「未归类」不能删除' }
-  if (!projects.has(id)) return { ok: false, error: '找不到这个项目' }
-  if (engine.state !== 'idle' && engine.session?.projectId === id) return { ok: false, error: '这个项目里正在开会，先停止记录' }
+  if (id === INBOX_ID) return { ok: false, error: t('「未归类」不能删除') }
+  if (!projects.has(id)) return { ok: false, error: t('找不到这个项目') }
+  if (engine.state !== 'idle' && engine.session?.projectId === id) return { ok: false, error: t('这个项目里正在开会，先停止记录') }
   try {
     const moved = store.moveAll(id, INBOX_ID)
     await projects.remove(id).finally(() => {
@@ -240,7 +242,7 @@ function updateTodo(sessionId, itemId, patch) {
   const item = store.mutate(sessionId, (s) => {
     const items = s.summary?.items ?? []
     const i = items.findIndex((x) => x.id === itemId)
-    if (i < 0) throw new Error('找不到这条待办')
+    if (i < 0) throw new Error(t('找不到这条待办'))
     items[i] = patchTodo(items[i], patch, { projects: list })
     return todoView(s, items[i])
   })
@@ -253,7 +255,7 @@ function removeTodo(sessionId, itemId) {
   store.mutate(sessionId, (s) => {
     const items = s.summary?.items ?? []
     const i = items.findIndex((x) => x.id === itemId)
-    if (i < 0) throw new Error('找不到这条待办（课上实时笔记里的作业不能单独删）')
+    if (i < 0) throw new Error(t('找不到这条待办（课上实时笔记里的作业不能单独删）'))
     items.splice(i, 1)
   })
   emitTodos({ sessionId, itemId })
@@ -574,7 +576,7 @@ function registerHotkeys() {
     // 默认组合被别的程序占了：换成的备选存回设置（设置一变会再注册一遍、发状态），提示一次
     settings.update(Object.assign({}, ...moved.map((m) => patchFor(m.key, m.to))))
     const text = moved.map((m) => `${accelLabel(m.from)} 被别的程序占用了，「${HOTKEY_NAMES[m.key]}」改用 ${accelLabel(m.to)}`).join('；')
-    hotkeyNotice = { level: 'info', text: `${text}。想换别的，在「设置 → 快捷键」里改。`, code: 'hotkey-moved' }
+    hotkeyNotice = { level: 'info', text: t(`{0}。想换别的，在「设置 → 快捷键」里改。`, text), code: 'hotkey-moved' }
     toUi('engine:notice', hotkeyNotice)
     return
   }
@@ -591,12 +593,12 @@ async function toggleRecording() {
   const r = await startEngine()
   if (r.ok || r.cancelled) return
   showControl()
-  toUi('engine:notice', { level: 'error', text: `没能开始记录：${r.error}`, code: 'hotkey-start' })
+  toUi('engine:notice', { level: 'error', text: t(`没能开始记录：{0}`, r.error), code: 'hotkey-start' })
 }
 
 /** 暂停 / 继续记录（同一场会议）。pause 不给就是切换。会员被服务器自动暂停过的，继续前先告诉服务器放行。 */
 async function togglePause(pause = !engine.paused) {
-  if (engine.state !== 'running') return { ok: false, error: '没在记录' }
+  if (engine.state !== 'running') return { ok: false, error: t('没在记录') }
   if (!pause && member?.session?.idle) {
     try {
       await member.resumeIdle()
@@ -650,18 +652,18 @@ function updateTrayMenu() {
     .map((p) => ({ label: p.name, type: 'radio', checked: p.id === cur, click: () => setCurrentProject(p.id) }))
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: running ? `停止记录${liveName ? `（${liveName}）` : ''}` : `在「${curName}」里开始记录`, accelerator: s.hotkeyRecord || undefined, click: () => (running ? engine.stop() : startEngine()) },
-      ...(running ? [{ label: paused ? '继续记录' : '暂停记录', click: () => togglePause() }] : []),
-      { label: '当前项目', submenu: projectItems },
+      { label: running ? t(`停止记录{0}`, liveName ? t(`（{0}）`, liveName) : '') : t(`在「{0}」里开始记录`, curName), accelerator: s.hotkeyRecord || undefined, click: () => (running ? engine.stop() : startEngine()) },
+      ...(running ? [{ label: paused ? t('继续记录') : t('暂停记录'), click: () => togglePause() }] : []),
+      { label: t('当前项目'), submenu: projectItems },
       { type: 'separator' },
-      { label: overlayWanted ? '隐藏字幕' : '显示字幕', accelerator: s.hotkeyToggle || undefined, click: toggleOverlay },
-      ...(assistOn(s) ? [{ label: '回答刚才的问题', accelerator: s.assist.hotkeyAsk || undefined, click: () => askLast() }] : []),
-      ...(classRunning() ? [{ label: '截取画面', accelerator: s.class.hotkeySlide || undefined, click: () => slideFromHotkey() }] : []),
-      { label: assistOn(s) ? '调整字幕和答题框位置' : '调整字幕位置', click: () => setEditMode(true) },
+      { label: overlayWanted ? t('隐藏字幕') : t('显示字幕'), accelerator: s.hotkeyToggle || undefined, click: toggleOverlay },
+      ...(assistOn(s) ? [{ label: t('回答刚才的问题'), accelerator: s.assist.hotkeyAsk || undefined, click: () => askLast() }] : []),
+      ...(classRunning() ? [{ label: t('截取画面'), accelerator: s.class.hotkeySlide || undefined, click: () => slideFromHotkey() }] : []),
+      { label: assistOn(s) ? t('调整字幕和答题框位置') : t('调整字幕位置'), click: () => setEditMode(true) },
       { type: 'separator' },
-      { label: '打开主窗口', click: showControl },
-      { label: '设置…', click: () => openSettings() },
-      { label: '退出', click: () => app.quit() },
+      { label: t('打开主窗口'), click: showControl },
+      { label: t('设置…'), click: () => openSettings() },
+      { label: t('退出'), click: () => app.quit() },
     ]),
   )
 }
@@ -764,7 +766,7 @@ function showControl() {
 const CONTROL_SIZE = { width: 1100, height: 720 }
 
 function createControl() {
-  controlWin = uiWindow({ ...CONTROL_SIZE, minWidth: 820, minHeight: 560, title: '会议字幕' })
+  controlWin = uiWindow({ ...CONTROL_SIZE, minWidth: 820, minHeight: 560, title: t('会议字幕') })
   controlWin.loadFile(path.join(root, 'renderer/control/index.html'))
   controlWin.once('ready-to-show', () => bringToFront(controlWin))
   controlWin.webContents.once('did-finish-load', () =>
@@ -795,7 +797,7 @@ function openSettings(section) {
     bringToFront(settingsWin)
     return
   }
-  settingsWin = uiWindow({ width: 820, height: 600, minWidth: 700, minHeight: 480, title: '设置', fullscreenable: false })
+  settingsWin = uiWindow({ width: 820, height: 600, minWidth: 700, minHeight: 480, title: t('设置'), fullscreenable: false })
   settingsWin.loadFile(path.join(root, 'renderer/settings/index.html'), sec ? { query: { section: sec } } : {})
   settingsWin.once('ready-to-show', () => bringToFront(settingsWin))
   settingsWin.on('closed', () => (settingsWin = null))
@@ -807,7 +809,7 @@ function openOnboarding() {
     return
   }
   // 照 Typefree：440×500 的小窗只要权限，演示放在主窗口上（control/guide.js）
-  onboardingWin = uiWindow({ width: 440, height: 500, minWidth: 440, minHeight: 500, title: '欢迎使用 MeetCaption', resizable: false, maximizable: false, minimizable: false, fullscreenable: false })
+  onboardingWin = uiWindow({ width: 440, height: 500, minWidth: 440, minHeight: 500, title: t('欢迎使用 MeetCaption'), resizable: false, maximizable: false, minimizable: false, fullscreenable: false })
   onboardingWin.loadFile(path.join(root, 'renderer/onboarding/index.html'))
   onboardingWin.once('ready-to-show', () => bringToFront(onboardingWin))
   onboardingWin.on('closed', () => {
@@ -835,48 +837,48 @@ function buildAppMenu() {
       {
         label: app.name,
         submenu: [
-          { role: 'about', label: '关于会议字幕' },
+          { role: 'about', label: t('关于会议字幕') },
           { type: 'separator' },
-          { label: '设置…', accelerator: settings.get().keys.settings || undefined, click: () => openSettings() },
+          { label: t('设置…'), accelerator: settings.get().keys.settings || undefined, click: () => openSettings() },
           { type: 'separator' },
-          { role: 'services', label: '服务' },
+          { role: 'services', label: t('服务') },
           { type: 'separator' },
-          { role: 'hide', label: '隐藏会议字幕' },
-          { role: 'hideOthers', label: '隐藏其他' },
-          { role: 'unhide', label: '全部显示' },
+          { role: 'hide', label: t('隐藏会议字幕') },
+          { role: 'hideOthers', label: t('隐藏其他') },
+          { role: 'unhide', label: t('全部显示') },
           { type: 'separator' },
-          { role: 'quit', label: '退出会议字幕' },
+          { role: 'quit', label: t('退出会议字幕') },
         ],
       },
       {
-        label: '编辑',
+        label: t('编辑'),
         submenu: [
-          { role: 'undo', label: '撤销' },
-          { role: 'redo', label: '重做' },
+          { role: 'undo', label: t('撤销') },
+          { role: 'redo', label: t('重做') },
           { type: 'separator' },
-          { role: 'cut', label: '剪切' },
-          { role: 'copy', label: '拷贝' },
-          { role: 'paste', label: '粘贴' },
-          { role: 'selectAll', label: '全选' },
+          { role: 'cut', label: t('剪切') },
+          { role: 'copy', label: t('拷贝') },
+          { role: 'paste', label: t('粘贴') },
+          { role: 'selectAll', label: t('全选') },
         ],
       },
       ...(dev
         ? [
             {
-              label: '开发',
-              submenu: [{ role: 'reload', label: '重新载入' }, { role: 'toggleDevTools', label: '开发者工具' }],
+              label: t('开发'),
+              submenu: [{ role: 'reload', label: t('重新载入') }, { role: 'toggleDevTools', label: t('开发者工具') }],
             },
           ]
         : []),
       {
-        label: '窗口',
+        label: t('窗口'),
         submenu: [
-          { role: 'minimize', label: '最小化' },
-          { role: 'zoom', label: '缩放' },
-          { role: 'close', label: '关闭窗口' },
+          { role: 'minimize', label: t('最小化') },
+          { role: 'zoom', label: t('缩放') },
+          { role: 'close', label: t('关闭窗口') },
           { type: 'separator' },
-          { label: '主窗口', click: showControl },
-          { role: 'front', label: '前置全部窗口' },
+          { label: t('主窗口'), click: showControl },
+          { role: 'front', label: t('前置全部窗口') },
         ],
       },
     ]),
@@ -888,7 +890,7 @@ function applyLaunchAtLogin(on) {
   try {
     app.setLoginItemSettings({ openAtLogin: Boolean(on) })
   } catch (e) {
-    toUi('engine:notice', { level: 'warn', text: `开机启动没设置成功：${e.message}`, code: 'login-item' })
+    toUi('engine:notice', { level: 'warn', text: t(`开机启动没设置成功：{0}`, e.message), code: 'login-item' })
   }
 }
 
@@ -906,8 +908,8 @@ function themeInfo() {
  */
 async function startEngine({ projectId, mode, classSource } = {}) {
   // 录声纹、声音测试和开会共用麦克风采集：同时开会互相把对方的采集窗口关掉
-  if (enrolling) return { ok: false, error: '正在录制声纹，录完再开始记录', code: 'busy' }
-  if (audioTest) return { ok: false, error: '正在测试声音，测完再开始记录', code: 'busy' }
+  if (enrolling) return { ok: false, error: t('正在录制声纹，录完再开始记录'), code: 'busy' }
+  if (audioTest) return { ok: false, error: t('正在测试声音，测完再开始记录'), code: 'busy' }
   try {
     const id = projectId && projects.has(projectId) ? projectId : currentProjectId()
     if (id !== settings.get().currentProjectId) setCurrentProject(id)
@@ -971,7 +973,7 @@ async function onMemberStop({ type }) {
   if (type === 'idle') {
     member?.markIdle()
     await engine.pause()
-    engine.notice('warn', '15 分钟没听到有人说话，已经自动暂停，不再计时。要接着记就点「继续」。', 'member-idle')
+    engine.notice('warn', t('15 分钟没听到有人说话，已经自动暂停，不再计时。要接着记就点「继续」。'), 'member-idle')
     return
   }
   // exhausted（场次用完）或 ended（服务器那边这一场已结束）：退回本地识别
@@ -981,7 +983,7 @@ async function onMemberStop({ type }) {
   await engine.pause()
   await engine.resume()
   const trial = member?.info?.kind !== 'paid'
-  engine.notice('warn', `${trial ? '试用的 1 小时用完了' : '会员场次用完了'}，已经换成本地识别接着记，翻译和答题先关着。买了场次，下一场就能用。`, 'member-exhausted')
+  engine.notice('warn', t(`{0}，已经换成本地识别接着记，翻译和答题先关着。买了场次，下一场就能用。`, trial ? t('试用的 1 小时用完了') : t('会员场次用完了')), 'member-exhausted')
   showPricing({ pack: 'p1' })
 }
 
@@ -1028,10 +1030,10 @@ function snapshotForUi() {
  */
 const importing = new Set()
 async function addMaterials(e, id, files) {
-  if (importing.has(id)) throw new Error('上一批课件还在读，读完再加')
+  if (importing.has(id)) throw new Error(t('上一批课件还在读，读完再加'))
   if (!files?.length) {
     const r = await dialog.showOpenDialog(senderWin(e), {
-      title: '添加课件',
+      title: t('添加课件'),
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: '课件（PDF、图片）', extensions: Object.keys(MATERIAL_TYPES) }],
     })
@@ -1055,7 +1057,7 @@ async function addMaterials(e, id, files) {
           renderPdf,
           toJpeg: (f) => {
             let img = nativeImage.createFromPath(f)
-            if (img.isEmpty()) throw new Error('图片读不出来')
+            if (img.isEmpty()) throw new Error(t('图片读不出来'))
             if (img.getSize().width > 1600) img = img.resize({ width: 1600, quality: 'good' })
             return img.toJPEG(85)
           },
@@ -1089,7 +1091,7 @@ function changeMaterials(id, fn) {
  * 截的时候我们自己的窗口（主窗口、设置、字幕窗、答题框）临时开内容保护，不进截图，截完恢复。→ { file, at, url } | { error, code }
  */
 async function captureSlide() {
-  if (engine.state !== 'running' || !engine.session) return { error: '还没开始记录，开始上课记录后才能截取画面', code: 'not-running' }
+  if (engine.state !== 'running' || !engine.session) return { error: t('还没开始记录，开始上课记录后才能截取画面'), code: 'not-running' }
   const hide = settings.get().hideFromScreenShare
   const wins = [
     ...[controlWin, settingsWin, onboardingWin].map((w) => [w, false]),
@@ -1113,7 +1115,7 @@ async function captureSlide() {
 // 快捷键截图：成功不打扰（界面收 slides:added），失败给一条提示
 async function slideFromHotkey() {
   const r = await captureSlide()
-  if (r.error) toUi('engine:notice', { level: 'warn', text: `截取画面失败：${r.error}`, code: 'slide' })
+  if (r.error) toUi('engine:notice', { level: 'warn', text: t(`截取画面失败：{0}`, r.error), code: 'slide' })
 }
 
 /** 导出笔记到笔记库：选文件夹（记住上次的），拷笔记和用到的截图。→ { dir, files } | null（取消）| { error } */
@@ -1124,11 +1126,11 @@ async function exportNotes(e, sessionId) {
   } catch (err) {
     return { error: err.message }
   }
-  if (!session.summary?.markdown) return { error: session.mode === 'class' ? '还没生成课堂笔记，先点「生成课堂笔记」' : '还没生成纪要' }
+  if (!session.summary?.markdown) return { error: session.mode === 'class' ? t('还没生成课堂笔记，先点「生成课堂笔记」') : t('还没生成纪要') }
   const last = settings.get().class.exportDir
   const r = await dialog.showOpenDialog(senderWin(e), {
-    title: '导出到笔记库',
-    buttonLabel: '导出到这里',
+    title: t('导出到笔记库'),
+    buttonLabel: t('导出到这里'),
     defaultPath: last && fs.existsSync(last) ? last : app.getPath('documents'),
     properties: ['openDirectory', 'createDirectory'],
   })
@@ -1145,14 +1147,14 @@ async function exportNotes(e, sessionId) {
 /* ---------------- 答题 ---------------- */
 
 function askSegment(segId) {
-  if (!assistOn()) return { ok: false, error: 'AI 答题没打开（设置 → AI 答题）' }
+  if (!assistOn()) return { ok: false, error: t('AI 答题没打开（设置 → AI 答题）') }
   return engine.askSegment(String(segId ?? ''))
 }
 
 function askLast() {
-  if (!assistOn()) return { ok: false, error: 'AI 答题没打开（设置 → AI 答题）' }
+  if (!assistOn()) return { ok: false, error: t('AI 答题没打开（设置 → AI 答题）') }
   const r = engine.askLast()
-  if (!r.ok) toUi('engine:notice', { level: 'warn', text: `没法回答：${r.error}`, code: 'assist-ask' })
+  if (!r.ok) toUi('engine:notice', { level: 'warn', text: t(`没法回答：{0}`, r.error), code: 'assist-ask' })
   return r
 }
 
@@ -1163,7 +1165,7 @@ function checkScreenPermission() {
   if (liveMode() === 'class') {
     toUi('engine:notice', {
       level: 'warn',
-      text: '截取画面要用屏幕录制权限，会议字幕还没有。去「系统设置 → 隐私与安全性 → 录屏与系统录音」打开「会议字幕」，下课后点「重启」生效。',
+      text: t('截取画面要用屏幕录制权限，会议字幕还没有。去「系统设置 → 隐私与安全性 → 录屏与系统录音」打开「会议字幕」，下课后点「重启」生效。'),
       code: 'screen-permission',
     })
     return
@@ -1171,7 +1173,7 @@ function checkScreenPermission() {
   if (!s.assist.enabled || !s.assist.withScreen) return
   toUi('engine:notice', {
     level: 'warn',
-    text: 'AI 答题要带屏幕截图，但会议字幕还没有屏幕录制权限，这次回答不带截图。去「系统设置 → 隐私与安全性 → 录屏与系统录音」打开「会议字幕」，重启应用后生效。',
+    text: t('AI 答题要带屏幕截图，但会议字幕还没有屏幕录制权限，这次回答不带截图。去「系统设置 → 隐私与安全性 → 录屏与系统录音」打开「会议字幕」，重启应用后生效。'),
     code: 'screen-permission',
   })
 }
@@ -1183,9 +1185,9 @@ const fakeFiles = { system: process.env.MEETCAPTION_FAKE_SYSTEM, mic: process.en
 const useFakes = Boolean(fakeFiles.system || fakeFiles.mic)
 
 async function enrollVoiceprint(seconds) {
-  if (enrolling) return { ok: false, error: '正在录制声纹' }
-  if (engine.state !== 'idle') return { ok: false, error: '正在记录会议，先停止记录再录声纹' }
-  if (audioTest) return { ok: false, error: '正在测试声音，等测试结束再录' }
+  if (enrolling) return { ok: false, error: t('正在录制声纹') }
+  if (engine.state !== 'idle') return { ok: false, error: t('正在记录会议，先停止记录再录声纹') }
+  if (audioTest) return { ok: false, error: t('正在测试声音，等测试结束再录') }
   enrolling = true
   try {
     const r = await recordVoiceprint({
@@ -1207,9 +1209,9 @@ async function enrollVoiceprint(seconds) {
  * Mac 第一次抓系统声音时系统会弹录音授权。→ { ok, system: { heard, maxDb }, mic: { heard, maxDb } | null }
  */
 async function testAudio({ seconds = 5, mic } = {}) {
-  if (engine.state !== 'idle') return { ok: false, error: '正在记录会议' }
-  if (enrolling) return { ok: false, error: '正在录制声纹' }
-  if (audioTest) return { ok: false, error: '声音测试已经在进行' }
+  if (engine.state !== 'idle') return { ok: false, error: t('正在记录会议') }
+  if (enrolling) return { ok: false, error: t('正在录制声纹') }
+  if (audioTest) return { ok: false, error: t('声音测试已经在进行') }
   const secs = Math.min(15, Math.max(2, Number(seconds) || 5))
   const withMic = mic ?? settings.get().captureMic
   const stats = { system: { maxDb: -100, bytes: 0 }, mic: { maxDb: -100, bytes: 0 } }
@@ -1232,7 +1234,7 @@ async function testAudio({ seconds = 5, mic } = {}) {
     if (fake) await fake.start({ system: true, mic: withMic, sampleRate: 16000, onPcm })
     else {
       if (isMac) {
-        if (!macTapSupported()) throw new Error('抓电脑声音需要 macOS 14.2 或更新的系统')
+        if (!macTapSupported()) throw new Error(t('抓电脑声音需要 macOS 14.2 或更新的系统'))
         tap = new MacSystemAudio({ sampleRate: 16000 })
         tap.on('data', (buf) => onPcm('system', buf))
         tap.on('error', (e) => onError('system', e.message))
@@ -1290,10 +1292,10 @@ async function requestPermissionsAtLaunch() {
   if (screenPermission() !== 'granted') await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }).catch(() => {})
   if (macTapSupported() && !fakeFiles.system) probeSystemAudio()
   if (systemPreferences.getMediaAccessStatus('microphone') !== 'granted') {
-    toUi('engine:notice', { level: 'warn', text: '会议字幕没有麦克风权限：教室现场上课、你自己说的话都录不到。去「系统设置 → 隐私与安全性 → 麦克风」打开「会议字幕」。', code: 'mic-permission' })
+    toUi('engine:notice', { level: 'warn', text: t('会议字幕没有麦克风权限：教室现场上课、你自己说的话都录不到。去「系统设置 → 隐私与安全性 → 麦克风」打开「会议字幕」。'), code: 'mic-permission' })
   }
   if (screenPermission() !== 'granted') {
-    toUi('engine:notice', { level: 'warn', text: '截取画面和 AI 答题带截图要用屏幕录制权限。去「系统设置 → 隐私与安全性 → 录屏与系统录音」打开「会议字幕」，再点「重启」生效。', code: 'screen-permission' })
+    toUi('engine:notice', { level: 'warn', text: t('截取画面和 AI 答题带截图要用屏幕录制权限。去「系统设置 → 隐私与安全性 → 录屏与系统录音」打开「会议字幕」，再点「重启」生效。'), code: 'screen-permission' })
   }
 }
 
@@ -1314,7 +1316,7 @@ function probeSystemAudio() {
 
 // 屏幕录制权限给了要重启才生效：主窗口提示里的「重启」。正在记录时不重启
 function relaunchApp() {
-  if (engine.state !== 'idle') return { ok: false, error: '正在记录，停止后再重启' }
+  if (engine.state !== 'idle') return { ok: false, error: t('正在记录，停止后再重启') }
   app.relaunch()
   app.quit()
   return { ok: true }
@@ -1435,7 +1437,7 @@ function wireIpc() {
   })
   ipcMain.handle('sessions:remove', async (e, id) => {
     if (store.isLive(id)) {
-      await dialog.showMessageBox(senderWin(e), { type: 'info', message: '这场会议正在记录', detail: '先停止记录再删除。' })
+      await dialog.showMessageBox(senderWin(e), { type: 'info', message: t('这场会议正在记录'), detail: t('先停止记录再删除。') })
       return false
     }
     const { response } = await dialog.showMessageBox(senderWin(e), {
@@ -1443,8 +1445,8 @@ function wireIpc() {
       buttons: ['删除', '取消'],
       defaultId: 1,
       cancelId: 1,
-      message: '删除这场会议的记录？',
-      detail: '文件夹会移到废纸篓 / 回收站，还能找回。',
+      message: t('删除这场会议的记录？'),
+      detail: t('文件夹会移到废纸篓 / 回收站，还能找回。'),
     })
     if (response !== 0) return false
     const projectId = store.projectOf(id)
@@ -1470,7 +1472,7 @@ function wireIpc() {
     try {
       return { ok: true, ...(await summarizer.generate(id, extraAsk)) }
     } catch (e) {
-      return { ok: false, error: isAbort(e) ? '已取消' : e.message }
+      return { ok: false, error: isAbort(e) ? t('已取消') : e.message }
     }
   })
   ipcMain.handle('summary:cancel', (_e, id) => summarizer.cancel(id))
@@ -1484,7 +1486,7 @@ function wireIpc() {
     try {
       return { ok: true, ...(await summarizer.buildHtml(id)) }
     } catch (e) {
-      return { ok: false, error: isAbort(e) ? '已取消' : e.message }
+      return { ok: false, error: isAbort(e) ? t('已取消') : e.message }
     }
   })
   ipcMain.handle('notes:openHtml', async (_e, id) => {
@@ -1494,7 +1496,7 @@ function wireIpc() {
       if (err) throw new Error(err)
       return { ok: true, htmlError }
     } catch (e) {
-      return { ok: false, error: isAbort(e) ? '已取消' : e.message }
+      return { ok: false, error: isAbort(e) ? t('已取消') : e.message }
     }
   })
   // 存在哪由用户选（默认这节课的文件夹），存好用默认程序打开
@@ -1502,7 +1504,7 @@ function wireIpc() {
     try {
       const { file, htmlError } = await notesHtmlFile(id)
       const r = await dialog.showSaveDialog(BrowserWindow.fromWebContents(e.sender), {
-        title: '导出图文笔记 PDF',
+        title: t('导出图文笔记 PDF'),
         defaultPath: path.join(store.dir(id), `${notesBaseName(store.load(id))}.pdf`),
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
       })
@@ -1511,14 +1513,14 @@ function wireIpc() {
       const err = await shell.openPath(r.filePath)
       return { ok: true, file: r.filePath, htmlError, openError: err || null }
     } catch (e) {
-      return { ok: false, error: isAbort(e) ? '已取消' : e.message }
+      return { ok: false, error: isAbort(e) ? t('已取消') : e.message }
     }
   })
   ipcMain.handle('todos:extract', async (_e, id) => {
     try {
       return { ok: true, ...(await summarizer.extract(id)) }
     } catch (e) {
-      return { ok: false, error: isAbort(e) ? '已取消' : e.message }
+      return { ok: false, error: isAbort(e) ? t('已取消') : e.message }
     }
   })
   ipcMain.handle('todos:list', (_e, opts = {}) =>
@@ -1730,6 +1732,14 @@ function wireEngine() {
   })
   settings.on('change', (next, prev) => {
     toUi('settings:changed', next)
+    // 换了界面语言：主进程的提示换表，所有窗口重新加载（托盘菜单一起换）
+    if (next.uiLang !== prev.uiLang) {
+      const before = uiLang()
+      if (setUiLang(next.uiLang, app.getPreferredSystemLanguages()[0] ?? app.getLocale()) !== before) {
+        for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.reload()
+        updateTrayMenu()
+      }
+    }
     if (next.plan === 'member' && prev.plan !== 'member') member.refresh()
     if (
       next.hotkeyToggle !== prev.hotkeyToggle ||
@@ -1751,7 +1761,7 @@ function wireEngine() {
         initLibrary()
         rootNotice()
       } catch (e) {
-        toUi('engine:notice', { level: 'error', text: `新的保存位置用不了：${e.message}`, code: 'save-dir' })
+        toUi('engine:notice', { level: 'error', text: t(`新的保存位置用不了：{0}`, e.message), code: 'save-dir' })
       }
       emitProjects()
       emitSessions({})
@@ -1792,8 +1802,25 @@ async function saveUiShots(dir) {
 // 再打开一次应用：把已经开着的这个拿到前面
 app.on('second-instance', () => focusApp())
 
+/**
+ * 新装第一次打开：语言跟系统。翻译成系统的语言（简体、繁体、德语…，不在清单里就不动）；对方说的默认英语，系统本来就是英语时默认中文。
+ * 老用户（已经有设置文件）不动。
+ */
+function systemLanguageDefaults() {
+  const locale = app.getPreferredSystemLanguages()[0] ?? app.getLocale()
+  const sys = systemUiLang(locale)
+  const base = String(locale).toLowerCase().split(/[-_]/)[0]
+  const target = sys.startsWith('zh') ? sys : TARGET_CODES.includes(base) ? base : null
+  const patch = { language: base === 'en' ? 'zh' : 'en' }
+  if (target) patch.translateTarget = target
+  settings.update(patch)
+}
+
 app.whenReady().then(async () => {
   settings = new SettingsStore()
+  if (settings.isNew) systemLanguageDefaults()
+  setUiLang(settings.get().uiLang, app.getPreferredSystemLanguages()[0] ?? app.getLocale())
+  ipcMain.on('i18n:get', (e) => (e.returnValue = uiDict()))
   nativeTheme.themeSource = themeSource(settings.get().theme)
   projects = new ProjectStore({ root: rootDir, trash })
   store = new SessionStore({ projects, trash })
@@ -1812,7 +1839,7 @@ app.whenReady().then(async () => {
     showControl()
   })
   member.on('session', (e) => {
-    if (e.type === 'rolled') engine.notice('info', `这一场已满 2 小时，自动开始第 ${e.charged} 场`, 'member-rolled')
+    if (e.type === 'rolled') engine.notice('info', t(`这一场已满 2 小时，自动开始第 {0} 场`, e.charged), 'member-rolled')
     // 本地识别 + 会员 AI 时没有识别连接可断，靠心跳知道用完了
     if (e.type === 'exhausted' && engine.state === 'running' && !engine.paused) onMemberStop({ type: 'exhausted' }).catch(() => {})
   })
@@ -1890,7 +1917,7 @@ app.on('before-quit', async (e) => {
     // 课堂：下课后最后一段实时笔记还在整理（20 到 40 秒），最多等 45 秒再退，不然这段笔记就丢了
     if (engine.notesFlush) {
       tray?.setToolTip('会议字幕：正在整理最后一段笔记，整理完就退出')
-      toUi('engine:notice', { level: 'info', text: '正在整理最后一段实时笔记，整理完就退出（最多 45 秒）。', code: 'quit-notes' })
+      toUi('engine:notice', { level: 'info', text: t('正在整理最后一段实时笔记，整理完就退出（最多 45 秒）。'), code: 'quit-notes' })
       await Promise.race([engine.notesFlush, new Promise((r) => setTimeout(r, 45_000))])
     }
     app.quit()

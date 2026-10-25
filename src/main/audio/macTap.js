@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
+import { t } from '../i18n.js'
 
 // macOS 系统声音：用 audiotee（Core Audio taps，macOS 14.2+）抓扬声器里播放的所有声音，
 // stdout 直接吐 16 位单声道 PCM。它收到 SIGTERM 不退出，要用 SIGINT。
@@ -84,7 +85,7 @@ export class MacSystemAudio extends EventEmitter {
         if (!line.trim()) continue
         try {
           const msg = JSON.parse(line)
-          if (msg.message_type === 'error') this.emit('error', new Error(msg.data?.message ?? '系统声音采集出错'))
+          if (msg.message_type === 'error') this.emit('error', new Error(msg.data?.message ?? t('系统声音采集出错')))
         } catch {}
       }
     })
@@ -104,7 +105,7 @@ export class MacSystemAudio extends EventEmitter {
     old?.kill('SIGINT')
     if (this.failures === 0) this.emit('restarting', reason)
     if (this.failures >= RETRY_MS.length * 3) {
-      this.emit('error', new Error(`系统声音采集反复中断，重开了 ${this.failures} 次都没恢复（${reason}）`))
+      this.emit('error', new Error(t(`系统声音采集反复中断，重开了 {0} 次都没恢复（{1}）`, this.failures, reason)))
       this.failures = 0
     }
     const wait = RETRY_MS[Math.min(this.failures, RETRY_MS.length - 1)]

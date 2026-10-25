@@ -193,8 +193,8 @@
         fixes.push({ text: text.slice(r.s, r.e), orig: r.orig })
       }
       for (const r of enT) {
-        const inside = enF.filter((x) => x.s < r.e && x.e > r.s).map((x) => fixes[x.f].orig || '（没有）')
-        if (inside.length) terms[r.t].orig = inside.join('、')
+        const inside = enF.filter((x) => x.s < r.e && x.e > r.s).map((x) => fixes[x.f].orig || t('（没有）'))
+        if (inside.length) terms[r.t].orig = inside.join(t('、'))
       }
     }
     return { text, tr, en: runs(text, enC, enT, enF), zh: tr ? runs(tr, zhC, zhT) : [], terms, fixes, colored: enC.length }
@@ -276,10 +276,10 @@
   /** 气泡内容 { title, text }：术语是解释（里面有纠正过的词就带上识别原文），纠正词是识别原文。 */
   function tipContent(el) {
     const d = el?.dataset ?? {}
-    const orig = d.orig == null ? '' : d.orig ? `识别原文：${d.orig}` : '识别原文里没有这个词'
+    const orig = d.orig == null ? '' : d.orig ? t(`识别原文：{0}`, d.orig) : t('识别原文里没有这个词')
     const title = d.title || el?.textContent || ''
     if (el?.classList?.contains('fix')) return { title, text: orig }
-    return { title, text: orig ? `${d.explain ?? ''}（${orig}）` : (d.explain ?? '') }
+    return { title, text: orig ? t(`{0}（{1}）`, d.explain ?? '', orig) : (d.explain ?? '') }
   }
 
   /**

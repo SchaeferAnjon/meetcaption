@@ -6,6 +6,7 @@
 import { readSse } from './sse.js'
 import { LlmError, requestControl, networkError, clipToTokens, estimateTokens } from './errors.js'
 import { OAUTH } from './chatgptAuth.js'
+import { t } from '../i18n.js'
 
 export const CODEX_RESPONSES_URL = 'https://chatgpt.com/backend-api/codex/responses'
 const EFFORTS = new Set(['none', 'low', 'medium', 'high', 'xhigh', 'max'])
@@ -87,38 +88,38 @@ export function responsesHttpError(status, bodyText, { model, source } = {}) {
   const opt = { status, detail: msg }
   if (status === 401) {
     return source === 'codex'
-      ? new LlmError('auth-expired', 'Codex CLI 的 token 失效了（401），在终端运行一次 codex 让它刷新', opt)
-      : new LlmError('auth-expired', 'ChatGPT 登录已失效（401），请重新登录', opt)
+      ? new LlmError('auth-expired', t('Codex CLI 的 token 失效了（401），在终端运行一次 codex 让它刷新'), opt)
+      : new LlmError('auth-expired', t('ChatGPT 登录已失效（401），请重新登录'), opt)
   }
   if (status === 403) {
-    if (b.html) return new LlmError('forbidden', 'chatgpt.com 拒绝了请求（403，可能被 Cloudflare 拦截，或网络所在地区不支持），换个网络或稍后再试', opt)
-    return new LlmError('forbidden', `这个 ChatGPT 账号没有权限用 Codex 接口（403）：${msg}`, opt)
+    if (b.html) return new LlmError('forbidden', t('chatgpt.com 拒绝了请求（403，可能被 Cloudflare 拦截，或网络所在地区不支持），换个网络或稍后再试'), opt)
+    return new LlmError('forbidden', t(`这个 ChatGPT 账号没有权限用 Codex 接口（403）：{0}`, msg), opt)
   }
   if (status === 429) {
     if (b.type === 'usage_limit_reached') {
       const when = formatReset(b.resetsAt)
-      return new LlmError('usage-limit', `ChatGPT 套餐的额度用完了${when ? `，${when} 恢复` : '，过一段时间再试'}`, {
+      return new LlmError('usage-limit', t(`ChatGPT 套餐的额度用完了{0}`, when ? t(`，{0} 恢复`, when) : t('，过一段时间再试')), {
         ...opt,
         resetsAt: b.resetsAt ? b.resetsAt * 1000 : undefined,
       })
     }
     if (b.type === 'usage_not_included') {
-      return new LlmError('usage-not-included', '这个 ChatGPT 套餐不包含 Codex 用量，需要 Plus、Pro、Team 等付费套餐', opt)
+      return new LlmError('usage-not-included', t('这个 ChatGPT 套餐不包含 Codex 用量，需要 Plus、Pro、Team 等付费套餐'), opt)
     }
-    if (b.type === 'insufficient_quota' || QUOTA_CODES.has(b.code)) return new LlmError('usage-limit', 'ChatGPT 额度用完了', opt)
-    return new LlmError('rate-limit', '请求太频繁（429），稍后再试', { ...opt, retryable: true })
+    if (b.type === 'insufficient_quota' || QUOTA_CODES.has(b.code)) return new LlmError('usage-limit', t('ChatGPT 额度用完了'), opt)
+    return new LlmError('rate-limit', t('请求太频繁（429），稍后再试'), { ...opt, retryable: true })
   }
   if (status === 400) {
     if (/model is not supported|model_not_found|does not exist/i.test(msg)) {
-      return new LlmError('bad-model', `ChatGPT 账号用不了模型 ${model ?? ''}：${msg}`, opt)
+      return new LlmError('bad-model', t(`ChatGPT 账号用不了模型 {0}：{1}`, model ?? '', msg), opt)
     }
-    if (b.code === 'context_length_exceeded') return new LlmError('context-too-long', '内容太长，超过了模型能读的长度', opt)
-    if (/valid image|image data/i.test(msg)) return new LlmError('bad-request', `图片无效：${msg}`, opt)
-    return new LlmError('bad-request', `请求被拒绝（400）：${msg}`, opt)
+    if (b.code === 'context_length_exceeded') return new LlmError('context-too-long', t('内容太长，超过了模型能读的长度'), opt)
+    if (/valid image|image data/i.test(msg)) return new LlmError('bad-request', t(`图片无效：{0}`, msg), opt)
+    return new LlmError('bad-request', t(`请求被拒绝（400）：{0}`, msg), opt)
   }
-  if (status === 404) return new LlmError('http', `找不到接口或模型（404）：${msg}`, opt)
-  if (status >= 500) return new LlmError('server', `ChatGPT 服务出错（HTTP ${status}），稍后再试`, { ...opt, retryable: true })
-  return new LlmError('http', `ChatGPT 服务出错（HTTP ${status}）：${msg}`, opt)
+  if (status === 404) return new LlmError('http', t(`找不到接口或模型（404）：{0}`, msg), opt)
+  if (status >= 500) return new LlmError('server', t(`ChatGPT 服务出错（HTTP {0}），稍后再试`, status), { ...opt, retryable: true })
+  return new LlmError('http', t(`ChatGPT 服务出错（HTTP {0}）：{1}`, status, msg), opt)
 }
 
 /** 流里的 response.failed / error 事件 → LlmError。 */
@@ -126,17 +127,17 @@ export function responsesStreamError(err) {
   const e = err ?? {}
   const code = e.code ?? e.type
   const msg = e.message || ''
-  if (code === 'context_length_exceeded') return new LlmError('context-too-long', '内容太长，超过了模型能读的长度', { detail: msg })
-  if (QUOTA_CODES.has(code) || code === 'usage_limit_reached') return new LlmError('usage-limit', 'ChatGPT 额度用完了', { detail: msg })
-  if (code === 'usage_not_included') return new LlmError('usage-not-included', '这个 ChatGPT 套餐不包含 Codex 用量', { detail: msg })
+  if (code === 'context_length_exceeded') return new LlmError('context-too-long', t('内容太长，超过了模型能读的长度'), { detail: msg })
+  if (QUOTA_CODES.has(code) || code === 'usage_limit_reached') return new LlmError('usage-limit', t('ChatGPT 额度用完了'), { detail: msg })
+  if (code === 'usage_not_included') return new LlmError('usage-not-included', t('这个 ChatGPT 套餐不包含 Codex 用量'), { detail: msg })
   if (code === 'rate_limit_exceeded' || code === 'slow_down') {
-    return new LlmError('rate-limit', '请求太频繁，稍后再试', { detail: msg, retryable: true })
+    return new LlmError('rate-limit', t('请求太频繁，稍后再试'), { detail: msg, retryable: true })
   }
-  if (code === 'server_is_overloaded') return new LlmError('overloaded', 'ChatGPT 服务繁忙，稍后再试', { detail: msg, retryable: true })
+  if (code === 'server_is_overloaded') return new LlmError('overloaded', t('ChatGPT 服务繁忙，稍后再试'), { detail: msg, retryable: true })
   if (code === 'invalid_prompt' || /policy/.test(code ?? '')) {
-    return new LlmError('refused', `请求被 ChatGPT 拒绝：${msg || code}`, { detail: msg })
+    return new LlmError('refused', t(`请求被 ChatGPT 拒绝：{0}`, msg || code), { detail: msg })
   }
-  return new LlmError('stream', `ChatGPT 返回失败：${msg || code || '未知原因'}`, { detail: msg, retryable: true })
+  return new LlmError('stream', t(`ChatGPT 返回失败：{0}`, msg || code || t('未知原因')), { detail: msg, retryable: true })
 }
 
 /* ---------------- 流解析 ---------------- */
@@ -183,7 +184,7 @@ export function applyResponsesEvent(state, ev) {
         state.truncated = true
         return 'done'
       }
-      throw new LlmError('incomplete', reason === 'content_filter' ? '回答被内容过滤中断了' : `回答没有完整生成（${reason}）`)
+      throw new LlmError('incomplete', reason === 'content_filter' ? t('回答被内容过滤中断了') : t(`回答没有完整生成（{0}）`, reason))
     }
     case 'response.failed':
       throw responsesStreamError(j.response?.error)
@@ -216,7 +217,7 @@ export async function chatgptComplete(auth, opts) {
     url = CODEX_RESPONSES_URL,
     fetch: fetchImpl = globalThis.fetch,
   } = opts
-  if (!auth) throw new LlmError('not-logged-in', '还没用 ChatGPT 账号登录（设置 → AI 服务）')
+  if (!auth) throw new LlmError('not-logged-in', t('还没用 ChatGPT 账号登录（设置 → AI 服务）'))
   const body = JSON.stringify(buildResponsesBody({ model, system, messages, effort, json }))
   const ctl = requestControl({ signal, timeoutMs, idleMs })
   const st = newStreamState()
@@ -260,7 +261,7 @@ export async function chatgptComplete(auth, opts) {
       if (st.done) break
     }
     if (!st.done && !st.truncated) {
-      const e = new LlmError('stream', 'ChatGPT 的回答中途断了', { retryable: true })
+      const e = new LlmError('stream', t('ChatGPT 的回答中途断了'), { retryable: true })
       e.partial = st.text
       throw e
     }

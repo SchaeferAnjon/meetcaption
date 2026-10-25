@@ -6,6 +6,7 @@ import { Marked } from 'marked'
 import { clock, ymd } from '../prompts.js'
 import { parseAt } from '../todos.js'
 import { jpegSize, pageRef } from './materials.js'
+import { t } from '../i18n.js'
 
 // 图文版课堂笔记（课堂笔记.html）：照 Dispatch 交付页的样子（左边目录、看图器：点一条放大到图上那个框、自动 / 浅色 / 深色），
 // 一个文件，图片和公式字体都内嵌，拷给别人、放进笔记库都能直接打开。
@@ -186,7 +187,7 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
     used.add(key)
     const points = (mapped.get(key)?.points ?? []).map((p) => ({ ...p, boxes: boxesOf(page, p.lines) }))
     const name = page.m.name.replace(/\.[^.]+$/, '')
-    figs.push(viewer({ file: page.file, w: page.w, h: page.h, label: label || `《${name}》第 ${page.n} 页` }, points))
+    figs.push(viewer({ file: page.file, w: page.w, h: page.h, label: label || t(`《{0}》第 {1} 页`, name, page.n) }, points))
     return `\n\n${FIG_OPEN}${figs.length - 1}${FIG_CLOSE}\n\n`
   }
   const slides = new Set((session.slides ?? []).map((x) => path.basename(String(x?.file ?? ''))))
@@ -197,7 +198,7 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
         const base = path.basename(decodeURIComponent(name))
         const file = path.join(sessionDir, 'slides', base)
         if (!slides.has(base) || !fs.existsSync(file)) return ''
-        figs.push(viewer({ file, ...jpegSize(fs.readFileSync(file)), label: alt || '课上截图' }))
+        figs.push(viewer({ file, ...jpegSize(fs.readFileSync(file)), label: alt || t('课上截图') }))
         return `\n\n${FIG_OPEN}${figs.length - 1}${FIG_CLOSE}\n\n`
       })
   // 大纲那一节按上课的顺序走一遍：每个小节先是老师讲到的课件页（框出讲的那几行、旁边是讲了什么），

@@ -7,11 +7,11 @@ window.LANG_CODES = [
 ]
 ;(function () {
   const names = new Intl.DisplayNames([window.UI_LANG || 'zh-Hans'], { type: 'language' })
-  const name = (code) => (code === 'zh' ? '中文' : names.of(code))
+  const name = (code) => (code === 'zh' ? t('中文') : names.of(code))
   window.LANGS = window.LANG_CODES.map((value) => ({ value, label: name(value) }))
-  window.SOURCE_LANGS = [...window.LANGS, { value: 'auto', label: '自动识别（中英混说）' }]
+  window.SOURCE_LANGS = [...window.LANGS, { value: 'auto', label: t('自动识别（中英混说）') }]
   // 翻译成什么：多一个繁体中文（只做翻译目标）
-  window.TARGET_LANGS = [...window.LANGS.map((l) => (l.value === 'zh' ? { value: 'zh', label: '简体中文' } : l)), { value: 'zh-Hant', label: '繁体中文' }]
+  window.TARGET_LANGS = [...window.LANGS.map((l) => (l.value === 'zh' ? { value: 'zh', label: t('简体中文') } : l)), { value: 'zh-Hant', label: t('繁体中文') }]
 })()
 window.langLabel = (code) => [...window.TARGET_LANGS, ...window.SOURCE_LANGS].find((l) => l.value === code)?.label ?? code
 window.needsMultilingual = (code) => !['zh', 'en', 'auto'].includes(code)

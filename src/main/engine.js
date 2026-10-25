@@ -18,6 +18,7 @@ import { joinFixed, splitSentences } from './text.js'
 import { LANG_NAMES, needsMultilingual, needsTranslation } from './languages.js'
 import { modeSettings, speakerLabel } from './modes.js'
 import { LiveNotes } from './class/liveNotes.js'
+import { t } from './i18n.js'
 
 // 一场会议的运行时：采集 → 门限切句 → 识别 → 分句 → 判断是谁说的 → 译文、意群对齐和术语 → 存档，对方的提问交给答题助手。
 // 电脑声音（system）是对方。麦克风（mic）的每段定稿先看是不是外放漏进来的对方声音（和对方最近 10 秒的字幕比词重合），是就丢掉；
@@ -68,14 +69,14 @@ function createProvider(s) {
   // 本地识别不用热词：X-ASR 的热词时灵时不灵，术语靠 AI 纠错（纠错请求里带着项目术语）
   if (s.engine === 'local') return new LocalStreamASR()
   if (s.engine === 'volc') {
-    if (!s.volcAppId || !s.volcAccessToken) throw new Error('还没填豆包的 App ID 和 Access Token，去「设置」里填')
+    if (!s.volcAppId || !s.volcAccessToken) throw new Error(t('还没填豆包的 App ID 和 Access Token，去「设置」里填'))
     return new VolcStreamASR({ appId: s.volcAppId, accessToken: s.volcAccessToken, resourceId: s.volcResourceId, hotwords, url: s.volcUrl })
   }
   if (s.engine === 'soniox') {
-    if (!s.sonioxKey && !s.sonioxGetKey) throw new Error('还没填 Soniox 的 API Key，去「设置」里填')
+    if (!s.sonioxKey && !s.sonioxGetKey) throw new Error(t('还没填 Soniox 的 API Key，去「设置」里填'))
     return new SonioxStreamASR({ key: s.sonioxKey, getKey: s.sonioxGetKey, language: s.language, context: s.context, hotwords })
   }
-  if (!s.openaiKey) throw new Error('还没填 OpenAI API Key，去「设置」里填')
+  if (!s.openaiKey) throw new Error(t('还没填 OpenAI API Key，去「设置」里填'))
   return new OpenAIRealtimeASR({
     key: s.openaiKey,
     baseUrl: s.openaiBaseUrl,
@@ -339,18 +340,18 @@ export class MeetingEngine extends EventEmitter {
     const warnings = []
     let created = null
     const checkAbort = () => {
-      if (this.abortStart) throw Object.assign(new Error('已取消开始'), { code: 'start-cancelled' })
+      if (this.abortStart) throw Object.assign(new Error(t('已取消开始')), { code: 'start-cancelled' })
     }
     this.#setState('starting')
     try {
       const classMic = this.#classMic()
       const withMic = classMic || (this.fake ? Boolean(this.fake.mic) : s.captureMic)
-      if (classMic && this.fake && !this.fake.mic) throw new Error('教室现场要用麦克风，自测要给 --fake-mic')
+      if (classMic && this.fake && !this.fake.mic) throw new Error(t('教室现场要用麦克风，自测要给 --fake-mic'))
       this.sources = [...(classMic ? [] : ['system']), ...(withMic ? ['mic'] : [])]
       this.hotwords = hotwordList(s, extraKeywords)
       this.#buildPipelines(s)
       if (needsMultilingual(s.language) && s.engine !== 'openai' && s.engine !== 'soniox')
-        warnings.push({ text: `${s.engine === 'local' ? '本地识别' : '豆包'}只认中文和英文，听不懂${LANG_NAMES[s.language]}。在「设置 → 语音识别」里换成 Soniox 或 OpenAI 再开始。`, code: 'asr-language' })
+        warnings.push({ text: t(`{0}只认中文和英文，听不懂{1}。在「设置 → 语音识别」里换成 Soniox 或 OpenAI 再开始。`, s.engine === 'local' ? t('本地识别') : t('豆包'), LANG_NAMES[s.language]), code: 'asr-language' })
       const vpLoad = withMic ? this.#loadVoiceprint(warnings) : null
       await Promise.all([...this.pipelines.values()].map((p) => p.provider.connect()))
       await vpLoad
@@ -370,7 +371,7 @@ export class MeetingEngine extends EventEmitter {
       this.#startSilenceFiller()
     } catch (err) {
       const cancelled = this.abortStart
-      const e = cancelled ? Object.assign(new Error('已取消开始'), { code: 'start-cancelled' }) : err
+      const e = cancelled ? Object.assign(new Error(t('已取消开始')), { code: 'start-cancelled' }) : err
       await this.#teardown()
       // 只删这次新建、还没有内容的会议文件夹（先标上结束时间，不然存储当它还在记录、不让删）
       if (created) {
@@ -410,7 +411,7 @@ export class MeetingEngine extends EventEmitter {
       this.vp = { model, profile }
       this.emit('trace', { type: 'voiceprint', ms: Date.now() - t0 })
     } catch (e) {
-      warnings.push({ text: `声纹模型没加载上，这次麦克风里的话都算「${this.#classMic() ? '老师' : '我'}」：${e.message}`, code: 'voiceprint' })
+      warnings.push({ text: t(`声纹模型没加载上，这次麦克风里的话都算「{0}」：{1}`, this.#classMic() ? t('老师') : t('我'), e.message), code: 'voiceprint' })
     }
   }
 
@@ -427,20 +428,20 @@ export class MeetingEngine extends EventEmitter {
     }
     const wantRendererSystem = withSystem && process.platform !== 'darwin'
     if (withSystem && !wantRendererSystem) {
-      if (!macTapSupported()) throw new Error('抓电脑声音需要 macOS 14.2 或更新的系统')
+      if (!macTapSupported()) throw new Error(t('抓电脑声音需要 macOS 14.2 或更新的系统'))
       const tap = new MacSystemAudio({ sampleRate })
       tap.on('data', (buf) => this.feed('system', buf))
-      tap.on('error', (e) => this.notice('error', `系统声音采集出错：${e.message}`))
-      tap.on('stalled', () => this.notice('warn', '还没收到电脑的声音。如果屏幕上弹出「会议字幕想访问以录制你的系统音频」，点「允许」。', 'mac-permission'))
+      tap.on('error', (e) => this.notice('error', t(`系统声音采集出错：{0}`, e.message)))
+      tap.on('stalled', () => this.notice('warn', t('还没收到电脑的声音。如果屏幕上弹出「会议字幕想访问以录制你的系统音频」，点「允许」。'), 'mac-permission'))
       tap.on('resumed', () => this.notice('clear', '', 'mac-permission'))
       // 换了输出设备（戴上 / 摘下耳机）audiotee 断了：它自己重开，这里只报状态
       tap.on('restarting', (why) => {
         debug('system', 'tap restarting', why)
-        this.notice('warn', '电脑声音断开了（可能换了耳机或扬声器），正在重新连接…', 'capture-system')
+        this.notice('warn', t('电脑声音断开了（可能换了耳机或扬声器），正在重新连接…'), 'capture-system')
       })
       tap.on('restored', () => {
         this.notice('clear', '', 'capture-system')
-        this.notice('info', '电脑声音已重新连上', 'capture-restored')
+        this.notice('info', t('电脑声音已重新连上'), 'capture-restored')
       })
       tap.start()
       this.macTap = tap
@@ -453,7 +454,7 @@ export class MeetingEngine extends EventEmitter {
         sampleRate,
         micDeviceId: s.micDeviceId,
         onPcm: (source, buf) => this.#captured(source, buf),
-        onError: (source, msg) => this.notice('error', `${SOURCE_NAME[source]}采集出错：${msg}`),
+        onError: (source, msg) => this.notice('error', t(`{0}采集出错：{1}`, SOURCE_NAME[source], msg)),
         onLost: (source, reason) => this.#recoverCapture(source, reason),
       })
       const mic = this.rendererCapture.info?.mic
@@ -487,7 +488,7 @@ export class MeetingEngine extends EventEmitter {
     let warned = false
     const warn = () => {
       warned = true
-      this.notice('warn', `${name}断开了（可能拔了耳机或换了设备），正在重新连接…`, code)
+      this.notice('warn', t(`{0}断开了（可能拔了耳机或换了设备），正在重新连接…`, name), code)
     }
     if (loud) warn()
     debug(source, 'capture lost', reason)
@@ -505,7 +506,7 @@ export class MeetingEngine extends EventEmitter {
             const label = r.label ? `：${r.label}` : ''
             const text = r.fallback ? `选的麦克风没接上，先用系统默认${label}` : warned ? `麦克风已重新连上${label}` : `麦克风换成了${label || '系统默认'}`
             this.notice('info', text, 'capture-device')
-          } else if (warned) this.notice('info', `${name}已重新连上`, 'capture-device')
+          } else if (warned) this.notice('info', t(`{0}已重新连上`, name), 'capture-device')
           this.emit('trace', { type: 'capture-restored', source, reason, tries: i + 1, label: r.label ?? '' })
           return
         }
@@ -566,7 +567,7 @@ export class MeetingEngine extends EventEmitter {
 
   #startNotes(session) {
     const notes = new LiveNotes({
-      llm: this.llm ?? (async () => Promise.reject(new Error('没接 AI 服务'))),
+      llm: this.llm ?? (async () => Promise.reject(new Error(t('没接 AI 服务')))),
       llmStatus: this.llmStatus,
       startedAt: session.startedAt,
       everyMs: () => Math.max(1, Number(this.cfg?.class?.notesEveryMin) || 2) * 60_000,
@@ -603,7 +604,7 @@ export class MeetingEngine extends EventEmitter {
   /** 截取的画面（主进程已经存进 slides/）记到这场会议里。→ { file, at } */
   addSlide({ file, at = Date.now() }) {
     const s = this.session
-    if (!s || this.state !== 'running') throw new Error('没在记录，开始记录后才能截取画面')
+    if (!s || this.state !== 'running') throw new Error(t('没在记录，开始记录后才能截取画面'))
     s.slides ??= []
     const slide = { file, at }
     s.slides.push(slide)
@@ -686,8 +687,8 @@ export class MeetingEngine extends EventEmitter {
     // 识别服务改了断句，之前的未定稿句子作废（豆包）：从实时记录里拿掉
     provider.on('drop', ({ key }) => this.#dropStale(`${source}:${key}`))
     provider.on('status', (st) => {
-      if (st === 'reconnecting' && this.state === 'running') this.notice('warn', '识别连接断了，正在重连…', 'reconnecting')
-      if (st === 'ready' && this.state === 'running') this.notice('info', '识别已重新连上', 'reconnected')
+      if (st === 'reconnecting' && this.state === 'running') this.notice('warn', t('识别连接断了，正在重连…'), 'reconnecting')
+      if (st === 'ready' && this.state === 'running') this.notice('info', t('识别已重新连上'), 'reconnected')
     })
     provider.on('warn', (msg) => this.notice('warn', msg))
     // 会员服务器停了识别（场次用完、没说话自动暂停）：主进程决定暂停还是换本地识别
@@ -1003,7 +1004,7 @@ export class MeetingEngine extends EventEmitter {
     if (ask === 'not-ready') {
       if (!this.assistWarned) {
         this.assistWarned = true
-        this.notice('warn', `对方在提问，但 AI 答题用不了：${this.llmStatus?.()?.reason ?? ''}`, 'assist-llm')
+        this.notice('warn', t(`对方在提问，但 AI 答题用不了：{0}`, this.llmStatus?.()?.reason ?? ''), 'assist-llm')
       }
       return
     }
@@ -1045,13 +1046,13 @@ export class MeetingEngine extends EventEmitter {
 
   /** 快捷键：回答对方刚才的问题（最近 90 秒内对方的最后一个问题，没有就拿对方最后两段）。 */
   askLast() {
-    if (!this.assistant) return { ok: false, error: '答题助手没启动' }
+    if (!this.assistant) return { ok: false, error: t('答题助手没启动') }
     const st = this.llmStatus?.()
     if (st && !st.ready) return { ok: false, error: st.reason }
     // 还没说完的也算：老师刚问出口就按快捷键，那句还在出字
     const segs = this.#ordered().filter((x) => x.text)
     const q = pickLastQuestion(segs)
-    if (!q) return { ok: false, error: '最近 90 秒没有对方说的话' }
+    if (!q) return { ok: false, error: t('最近 90 秒没有对方说的话') }
     const seg = this.live.get(q.segId)
     const run = q.matched && seg ? questionRun(segs, seg, { endedAt: (x) => this.meta.get(x.id)?.endedAt }) : [{ id: q.segId, text: q.text }]
     if (this.state === 'running') this.#holdEnhance() // 按快捷键答题也让答案先走
@@ -1060,11 +1061,11 @@ export class MeetingEngine extends EventEmitter {
 
   /** 主窗口点了某一句提问：回答这一句（连同前面紧挨着的铺垫句）。 */
   askSegment(segId) {
-    if (!this.assistant) return { ok: false, error: '答题助手没启动' }
+    if (!this.assistant) return { ok: false, error: t('答题助手没启动') }
     const st = this.llmStatus?.()
     if (st && !st.ready) return { ok: false, error: st.reason }
     const seg = this.live.get(segId)
-    if (!seg?.text) return { ok: false, error: '找不到这句话（可能是上一场的记录）' }
+    if (!seg?.text) return { ok: false, error: t('找不到这句话（可能是上一场的记录）') }
     const run = seg.final ? questionRun(this.#ordered().filter((x) => x.final && x.text), seg, { endedAt: (x) => this.meta.get(x.id)?.endedAt }) : [seg]
     if (this.state === 'running') this.#holdEnhance()
     return { ok: true, question: this.#ask(run, 'click') }
@@ -1180,7 +1181,7 @@ export class MeetingEngine extends EventEmitter {
     if (this.cfg?.llmProvider !== 'chatgpt') return
     for (const job of this.enhRunning) {
       job.yielded = true
-      job.ctrl.abort(Object.assign(new Error('让答题先走'), { code: 'yield' }))
+      job.ctrl.abort(Object.assign(new Error(t('让答题先走')), { code: 'yield' }))
     }
   }
 
@@ -1245,7 +1246,7 @@ export class MeetingEngine extends EventEmitter {
           // 402：会员场次用完，另有「场次用完」的提示，这里不再报
           if (!this.enhWarned && e.status !== 402) {
             this.enhWarned = true
-            this.notice('warn', `${job.translate ? '翻译' : '术语解释'}失败：${e.message}`, 'enhance')
+            this.notice('warn', t(`{0}失败：{1}`, job.translate ? t('翻译') : t('术语解释'), e.message), 'enhance')
           }
         })
         .finally(() => {
@@ -1259,7 +1260,7 @@ export class MeetingEngine extends EventEmitter {
   // 要意群、术语或纠错时走 enhance（一次拿译文、纠正后的句子、意群对齐和术语，JSON）；只要译文时用原来的翻译 prompt，快一点
   async #enhance(job) {
     const { text, translate, chunks, terms, correct } = job
-    if (!this.llm) throw new Error('没接 AI 服务')
+    if (!this.llm) throw new Error(t('没接 AI 服务'))
     const st = this.llmStatus?.()
     if (st && !st.ready) throw new Error(st.reason)
     const s = this.cfg
@@ -1447,7 +1448,7 @@ export class MeetingEngine extends EventEmitter {
         await Promise.all([...this.pipelines.values()].map((p) => p.provider.close().catch(() => {})))
         this.pipelines.clear()
         this.paused = true
-        this.notice('error', `没能继续记录：${e.message}`, 'resume')
+        this.notice('error', t(`没能继续记录：{0}`, e.message), 'resume')
         this.#emitPause()
         return
       }

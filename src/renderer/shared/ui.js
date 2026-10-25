@@ -92,7 +92,7 @@
       } else if (key === 'text') {
         node.textContent = v == null ? '' : String(v);
       } else if (key === 'html' || key === 'innerHTML') {
-        console.warn('[ui.el] 不支持 html，外来文字请用 text');
+        console.warn(t('[ui.el] 不支持 html，外来文字请用 text'));
       } else if (key === 'style') {
         if (typeof v === 'string') node.style.cssText += ';' + v;
         else if (v) {
@@ -263,7 +263,7 @@
   // ---------- 小组件 ----------
 
   function spinner(size = 14) {
-    return el('span.spinner', { role: 'status', 'aria-label': '加载中', style: { width: size + 'px', height: size + 'px' } });
+    return el('span.spinner', { role: 'status', 'aria-label': t('加载中'), style: { width: size + 'px', height: size + 'px' } });
   }
 
   function iconBox(name, tint = 'gray', opts = {}) {
@@ -725,7 +725,7 @@
 
   // steps({ steps: ['录声纹', '连接 AI', …], current: 0 }) → <ol class="steps">，用 .set(i) 切换
   function steps(o = {}) {
-    const root = el('ol.steps', { 'aria-label': o.ariaLabel || '步骤' });
+    const root = el('ol.steps', { 'aria-label': o.ariaLabel || t('步骤') });
     const items = (o.steps || []).map((label, i) =>
       el('li.step', {}, el('span.step-dot'), el('span.step-label.truncate', { text: label })));
     append(root, items);
@@ -771,7 +771,7 @@
     const list = el('div.menu-list');
     let search = null;
     if (opts.searchable) {
-      search = el('input', { type: 'text', placeholder: opts.placeholder || '搜索…', spellcheck: false, 'aria-label': opts.placeholder || '搜索' });
+      search = el('input', { type: 'text', placeholder: opts.placeholder || t('搜索…'), spellcheck: false, 'aria-label': opts.placeholder || t('搜索') });
       root.appendChild(el('div.menu-search', {}, icon('search', 14), search));
     }
     root.appendChild(list);
@@ -827,7 +827,7 @@
       }
       const last = list.lastElementChild;
       if (last && last.classList.contains('menu-sep')) last.remove();
-      if (!shown) list.appendChild(el('div.menu-empty', { text: q ? '没有匹配的选项' : '没有选项' }));
+      if (!shown) list.appendChild(el('div.menu-empty', { text: q ? t('没有匹配的选项') : t('没有选项') }));
       if (nav) {
         const checked = Array.from(list.querySelectorAll('.menu-item')).find((r) => r._item.checked);
         nav.refresh();
@@ -908,7 +908,7 @@
       clear(lead);
       if (o && o.icon) lead.appendChild(o.tint ? iconBox(o.icon, o.tint, { size: 'sm' }) : icon(o.icon, 14));
       else if (o && o.tint) lead.appendChild(el('span.menu-swatch', { dataset: { tint: o.tint } }));
-      label.textContent = o ? o.label : opts.placeholder || '请选择';
+      label.textContent = o ? o.label : opts.placeholder || t('请选择');
       btn.classList.toggle('is-placeholder', !o);
     }
 
@@ -1083,7 +1083,7 @@
         }, o.action.label));
       }
       if (o.type === 'error' || o.closable) {
-        node.appendChild(el('button.btn.btn-ghost.btn-icon.btn-sm', { type: 'button', 'aria-label': '关闭', onClick: () => close() }, icon('x', 14)));
+        node.appendChild(el('button.btn.btn-ghost.btn-icon.btn-sm', { type: 'button', 'aria-label': t('关闭'), onClick: () => close() }, icon('x', 14)));
       }
       arm();
     }
@@ -1230,12 +1230,12 @@
     return new Promise((resolve) => {
       let result = false;
       modal({
-        title: o.title || '确定吗？',
+        title: o.title || t('确定吗？'),
         description: o.message,
         width: o.width || 400,
         actions: [
-          { label: o.cancelLabel || '取消' },
-          { label: o.okLabel || '确定', kind: o.danger ? 'danger' : 'primary', onClick: () => { result = true; } },
+          { label: o.cancelLabel || t('取消') },
+          { label: o.okLabel || t('确定'), kind: o.danger ? 'danger' : 'primary', onClick: () => { result = true; } },
         ],
         onClose: () => resolve(result),
       });
@@ -1266,7 +1266,7 @@
     const listId = 'ui-palette-' + Math.random().toString(36).slice(2, 8);
     const input = el('input', {
       type: 'text',
-      placeholder: o.placeholder || '搜索项目、会议、待办和命令',
+      placeholder: o.placeholder || t('搜索项目、会议、待办和命令'),
       spellcheck: false,
       autocomplete: 'off',
       role: 'combobox',
@@ -1278,15 +1278,15 @@
     const busy = spinner(14);
     busy.hidden = true;
     const list = el('div.palette-list', { id: listId, role: 'listbox' });
-    const primaryLabel = el('span', { text: o.actionLabel || '打开' });
+    const primaryLabel = el('span', { text: o.actionLabel || t('打开') });
     const primaryBtn = el('button.action', { type: 'button' }, primaryLabel, kbd('Enter', { size: 'sm' }));
     const actionsKey = o.actionsKey === undefined ? 'CommandOrControl+K' : o.actionsKey;
-    const actionsBtn = el('button.action', { type: 'button' }, el('span', { text: '操作' }), actionsKey ? kbd(actionsKey, { size: 'sm' }) : null);
-    const ctxInfo = o.context || { icon: 'command', tint: 'indigo', label: '会议字幕' };
+    const actionsBtn = el('button.action', { type: 'button' }, el('span', { text: t('操作') }), actionsKey ? kbd(actionsKey, { size: 'sm' }) : null);
+    const ctxInfo = o.context || { icon: 'command', tint: 'indigo', label: t('会议字幕') };
     const footer = el('div.action-bar', {},
       el('div.action-bar-context', {}, ctxInfo.icon ? iconBox(ctxInfo.icon, ctxInfo.tint || 'indigo', { size: 'sm' }) : null, el('span.truncate', { text: ctxInfo.label || '' })),
       primaryBtn, el('span.action-sep'), actionsBtn);
-    const box = el('div.palette', { role: 'dialog', 'aria-modal': 'true', 'aria-label': '命令面板' },
+    const box = el('div.palette', { role: 'dialog', 'aria-modal': 'true', 'aria-label': t('命令面板') },
       el('div.palette-search', {}, icon('search', 18), input, busy),
       list, footer);
     const backdrop = el('div.palette-backdrop', {}, box);
@@ -1367,7 +1367,7 @@
         const busyNow = !busy.hidden;
         list.appendChild(el('div.palette-empty', {},
           busyNow ? spinner(16) : icon('search', 22),
-          q ? el('div', {}, busyNow ? '正在搜索「' : '没有找到「', el('strong', { text: q }), '」') : el('div', { text: '没有可用的命令' }),
+          q ? el('div', {}, busyNow ? t('正在搜索「') : t('没有找到「'), el('strong', { text: q }), t('」')) : el('div', { text: t('没有可用的命令') }),
           !busyNow && o.emptyText ? el('div.text-sm', { text: o.emptyText }) : null));
       }
       nav.refresh(keepId);
@@ -1379,7 +1379,7 @@
     function syncFooter() {
       const row = nav.selected();
       const it = row && row._item;
-      primaryLabel.textContent = (it && it.actionLabel) || o.actionLabel || '打开';
+      primaryLabel.textContent = (it && it.actionLabel) || o.actionLabel || t('打开');
       primaryBtn.disabled = !it;
       actionsBtn.disabled = !(it && it.actions && it.actions.length);
     }
@@ -1437,7 +1437,7 @@
         } catch (err) {
           if (token !== remoteToken || closed) return;
           remoteGroups = [];
-          console.error('[commandPalette] 搜索出错', err);
+          console.error(t('[commandPalette] 搜索出错'), err);
         }
         busy.hidden = true;
         render();

@@ -8,14 +8,14 @@ function renderSidebar() {
   const side = document.getElementById('sidebar')
   const hadFocus = side.contains(document.activeElement) ? document.activeElement.dataset.nav : null
   ui.clear(side)
-  const nav = el('nav.sidebar-scroll', { 'aria-label': '导航' })
+  const nav = el('nav.sidebar-scroll', { 'aria-label': t('导航') })
 
   nav.append(
     el(
       'button.search-trigger',
       { type: 'button', dataset: { nav: 'search' }, onClick: () => openPalette() },
       icon('search', 14),
-      el('span', { text: '搜索' }),
+      el('span', { text: t('搜索') }),
       keyHint('palette'),
     ),
   )
@@ -28,7 +28,7 @@ function renderSidebar() {
       navItem({
         key: 'live',
         lead: el('span.nav-live', {}, paused ? icon('pause', 14) : on ? el('span.dot.dot-live') : icon('audio-lines', 16)),
-        label: paused ? '已暂停' : on ? modeInfo(live.mode).live : live.mode === 'class' ? '刚才的课' : '刚才的会议',
+        label: paused ? t('已暂停') : on ? modeInfo(live.mode).live : live.mode === 'class' ? t('刚才的课') : t('刚才的会议'),
         count: on && live.startedAt ? el('span.count.num', { dataset: { elapsed: '' }, text: fmtOffset(Date.now() - live.startedAt) }) : null,
         onClick: () => go('live', {}, { root: true }),
       }),
@@ -37,20 +37,20 @@ function renderSidebar() {
 
   const openTodos = activeProjects().reduce((n, p) => n + (p.openTodos || 0), 0)
   nav.append(
-    navItem({ key: 'home', lead: icon('house', 16), label: '首页', onClick: () => go('home', {}, { root: true }) }),
-    navItem({ key: 'todos', lead: icon('list-todo', 16), label: '待办', count: openTodos ? String(openTodos) : null, onClick: () => go('todos', {}, { root: true }) }),
+    navItem({ key: 'home', lead: icon('house', 16), label: t('首页'), onClick: () => go('home', {}, { root: true }) }),
+    navItem({ key: 'todos', lead: icon('list-todo', 16), label: t('待办'), count: openTodos ? String(openTodos) : null, onClick: () => go('todos', {}, { root: true }) }),
   )
 
   nav.append(
     el(
       'div.nav-section',
       {},
-      el('span', { text: '项目' }),
-      el('button.btn.btn-ghost.btn-icon.btn-sm', { type: 'button', 'aria-label': '新建项目', title: '新建项目', onClick: () => newProjectModal() }, icon('plus', 14)),
+      el('span', { text: t('项目') }),
+      el('button.btn.btn-ghost.btn-icon.btn-sm', { type: 'button', 'aria-label': t('新建项目'), title: t('新建项目'), onClick: () => newProjectModal() }, icon('plus', 14)),
     ),
   )
   for (const p of activeProjects()) nav.append(projectNavItem(p))
-  nav.append(navItem({ key: 'new-project', lead: icon('plus', 16), label: '新建项目', muted: true, onClick: () => newProjectModal() }))
+  nav.append(navItem({ key: 'new-project', lead: icon('plus', 16), label: t('新建项目'), muted: true, onClick: () => newProjectModal() }))
 
   const archived = state.projects.filter((p) => p.archived)
   if (archived.length) {
@@ -69,7 +69,7 @@ function renderSidebar() {
             renderSidebar()
           },
         },
-        el('span', { text: `已归档（${archived.length}）` }),
+        el('span', { text: t(`已归档（{0}）`, archived.length) }),
         icon(open ? 'chevron-down' : 'chevron-right', 12),
       ),
     )
@@ -99,7 +99,7 @@ function projectNavItem(p, archived = false) {
     label: p.name,
     count: p.meetings ? String(p.meetings) : null,
     muted: archived,
-    title: current ? `${p.name}（当前项目，开会就开在这里）` : p.name,
+    title: current ? t(`{0}（当前项目，开会就开在这里）`, p.name) : p.name,
     onClick: () => go('project', { id: p.id }, { root: true }),
   })
   if (current) item.classList.add('is-current')
@@ -114,20 +114,20 @@ function projectContextMenu(anchor, p) {
   const inbox = p.id === INBOX
   const busyHere = state.engine.state !== 'idle' && state.live?.projectId === p.id
   const setArchived = async (archived) => {
-    if (archived && busyHere) return ui.toast({ title: '这个项目里正在开会', message: '先停止记录再归档', type: 'warning' })
+    if (archived && busyHere) return ui.toast({ title: t('这个项目里正在开会'), message: t('先停止记录再归档'), type: 'warning' })
     const r = await call('updateProject', p.id, { archived })
-    if (failed(r)) return ui.toast({ title: '没能保存', message: r?.error, type: 'error' })
-    ui.toast({ title: archived ? '已归档' : '已取消归档', type: 'success' })
+    if (failed(r)) return ui.toast({ title: t('没能保存'), message: r?.error, type: 'error' })
+    ui.toast({ title: archived ? t('已归档') : t('已取消归档'), type: 'success' })
   }
   const items = [
-    { label: '打开', icon: 'arrow-right', onSelect: () => go('project', { id: p.id }, { root: true }) },
-    !p.archived && { label: `在「${p.name}」里开始会议`, icon: 'mic', disabled: state.engine.state !== 'idle', onSelect: () => startMeeting(p.id) },
-    !inbox && { label: '改名', icon: 'pencil', onSelect: () => go('project', { id: p.id, rename: true }, { root: true }) },
-    { label: '换颜色和图标…', icon: 'star', onSelect: () => appearanceModal(projectOf(p.id) ?? p) },
-    { label: '打开文件夹', icon: 'folder', onSelect: () => call('openProjectFolder', p.id) },
+    { label: t('打开'), icon: 'arrow-right', onSelect: () => go('project', { id: p.id }, { root: true }) },
+    !p.archived && { label: t(`在「{0}」里开始会议`, p.name), icon: 'mic', disabled: state.engine.state !== 'idle', onSelect: () => startMeeting(p.id) },
+    !inbox && { label: t('改名'), icon: 'pencil', onSelect: () => go('project', { id: p.id, rename: true }, { root: true }) },
+    { label: t('换颜色和图标…'), icon: 'star', onSelect: () => appearanceModal(projectOf(p.id) ?? p) },
+    { label: t('打开文件夹'), icon: 'folder', onSelect: () => call('openProjectFolder', p.id) },
     !inbox && 'sep',
-    !inbox && (p.archived ? { label: '取消归档', icon: 'archive', onSelect: () => setArchived(false) } : { label: '归档', icon: 'archive', onSelect: () => setArchived(true) }),
-    !inbox && { label: '删除项目…', icon: 'trash', danger: true, disabled: busyHere, onSelect: () => deleteProjectFlow(projectOf(p.id) ?? p) },
+    !inbox && (p.archived ? { label: t('取消归档'), icon: 'archive', onSelect: () => setArchived(false) } : { label: t('归档'), icon: 'archive', onSelect: () => setArchived(true) }),
+    !inbox && { label: t('删除项目…'), icon: 'trash', danger: true, disabled: busyHere, onSelect: () => deleteProjectFlow(projectOf(p.id) ?? p) },
   ].filter(Boolean)
   ui.menu(anchor, items, { minWidth: 220 })
 }
@@ -159,9 +159,9 @@ function sidebarFooter() {
   const llm = state.llm
   const provider = s.llmProvider ?? llm?.provider
   const member = s.plan === 'member'
-  const aiName = member ? '会员' : provider === 'chatgpt' ? 'ChatGPT' : provider === 'openai' ? 'OpenAI' : provider === 'custom' ? '自定义' : (llm?.label ?? '')
+  const aiName = member ? t('会员') : provider === 'chatgpt' ? 'ChatGPT' : provider === 'openai' ? 'OpenAI' : provider === 'custom' ? t('自定义') : (llm?.label ?? '')
   const aiOk = llm ? Boolean(llm.ready) : Boolean(ob.ai)
-  const asrName = member ? (s.memberAsr === 'local' ? '本地' : '会员云') : s.engine === 'local' ? '本地' : s.engine === 'soniox' ? 'Soniox' : s.engine === 'volc' ? '豆包' : 'OpenAI'
+  const asrName = member ? (s.memberAsr === 'local' ? t('本地') : t('会员云')) : s.engine === 'local' ? t('本地') : s.engine === 'soniox' ? 'Soniox' : s.engine === 'volc' ? t('豆包') : 'OpenAI'
   const micOn = s.captureMic !== false
   const chips = el(
     'div.status-strip',
@@ -169,8 +169,8 @@ function sidebarFooter() {
     statusChip({
       ok: ob.voiceprint,
       warn: micOn && !ob.voiceprint,
-      label: '声纹',
-      tip: ob.voiceprint ? { title: '声纹已录好', text: '麦克风里的话能分清是你还是对方' } : micOn ? { title: '还没录声纹', text: '点这里去录，12 秒就好' } : { title: '没开麦克风', text: '只记录电脑里的声音，用不到声纹' },
+      label: t('声纹'),
+      tip: ob.voiceprint ? { title: t('声纹已录好'), text: t('麦克风里的话能分清是你还是对方') } : micOn ? { title: t('还没录声纹'), text: t('点这里去录，12 秒就好') } : { title: t('没开麦克风'), text: t('只记录电脑里的声音，用不到声纹') },
       onClick: () => openSettings('voiceprint'),
     }),
     statusChip({
@@ -178,15 +178,15 @@ function sidebarFooter() {
       warn: !aiOk,
       kind: 'AI',
       label: aiName,
-      tip: aiOk ? { title: 'AI 已连上', text: llm?.label || aiName || 'AI 服务' } : { title: 'AI 还没连上', text: llm?.reason || '翻译、纪要和 AI 答题要用' },
+      tip: aiOk ? { title: t('AI 已连上'), text: llm?.label || aiName || t('AI 服务') } : { title: t('AI 还没连上'), text: llm?.reason || t('翻译、纪要和 AI 答题要用') },
       onClick: () => (member ? openPricing() : openSettings('ai')),
     }),
     statusChip({
       ok: ob.asr,
       warn: !ob.asr,
-      kind: '识别',
+      kind: t('识别'),
       label: asrName,
-      tip: ob.asr ? { title: '语音识别已配好', text: s.engine === 'local' ? '在这台电脑上识别，免费' : s.engine === 'soniox' ? 'Soniox 实时识别' : s.engine === 'volc' ? '豆包流式识别' : 'OpenAI 实时识别' } : { title: '语音识别还没配好', text: s.engine === 'local' ? '本地识别模型缺失，重新安装一下' : '点这里填密钥' },
+      tip: ob.asr ? { title: t('语音识别已配好'), text: s.engine === 'local' ? t('在这台电脑上识别，免费') : s.engine === 'soniox' ? t('Soniox 实时识别') : s.engine === 'volc' ? t('豆包流式识别') : t('OpenAI 实时识别') } : { title: t('语音识别还没配好'), text: s.engine === 'local' ? t('本地识别模型缺失，重新安装一下') : t('点这里填密钥') },
       onClick: () => openSettings(member ? 'member' : 'asr'),
     }),
   )
@@ -195,7 +195,7 @@ function sidebarFooter() {
     {},
     memberCard(),
     chips,
-    el('button.nav-item', { type: 'button', dataset: { nav: 'settings' }, onClick: () => openSettings() }, icon('settings', 16), el('span.nav-label', { text: '设置' }), keyHint('settings')),
+    el('button.nav-item', { type: 'button', dataset: { nav: 'settings' }, onClick: () => openSettings() }, icon('settings', 16), el('span.nav-label', { text: t('设置') }), keyHint('settings')),
   )
 }
 
@@ -245,7 +245,7 @@ function applySidebar() {
 }
 
 function sidebarToggle() {
-  const label = sidebarCollapsed() ? '展开侧栏' : '收起侧栏'
+  const label = sidebarCollapsed() ? t('展开侧栏') : t('收起侧栏')
   const b = el('button.btn.btn-ghost.btn-icon.btn-sm.sidebar-toggle', { type: 'button', 'aria-label': label, onClick: toggleSidebar }, icon('panel-left', 16))
   const k = appKey('sidebar')
   ui.tip(b, { title: label, text: k ? ui.accelText(k) : undefined }, { delay: 400, placement: 'bottom' })

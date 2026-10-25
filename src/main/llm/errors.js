@@ -1,4 +1,5 @@
 // 两种提供方共用：错误类型、超时/取消控制、网络错误翻译、输出长度估算。
+import { t } from '../i18n.js'
 
 export class LlmError extends Error {
   /**
@@ -37,12 +38,12 @@ export function requestControl({ signal, timeoutMs, idleMs }) {
     if (!ctrl.signal.aborted) ctrl.abort(err)
   }
   if (timeoutMs) {
-    total = setTimeout(() => fire(new LlmError('timeout', `AI 服务超时（${Math.round(timeoutMs / 1000)} 秒没完成）`, { retryable: true })), timeoutMs)
+    total = setTimeout(() => fire(new LlmError('timeout', t(`AI 服务超时（{0} 秒没完成）`, Math.round(timeoutMs / 1000)), { retryable: true })), timeoutMs)
   }
   const touch = () => {
     if (!idleMs) return
     clearTimeout(idle)
-    idle = setTimeout(() => fire(new LlmError('timeout', `AI 服务 ${Math.round(idleMs / 1000)} 秒没有响应`, { retryable: true })), idleMs)
+    idle = setTimeout(() => fire(new LlmError('timeout', t(`AI 服务 {0} 秒没有响应`, Math.round(idleMs / 1000)), { retryable: true })), idleMs)
   }
   const onAbort = () => fire(signal.reason ?? abortError())
   if (signal) {
@@ -72,7 +73,7 @@ export function networkError(e, url) {
   } catch {}
   const cause = e?.cause
   const why = cause?.code || cause?.message || e?.message || String(e)
-  return new LlmError('network', `连不上 ${host}（网络或代理问题）：${why}`, { retryable: true })
+  return new LlmError('network', t(`连不上 {0}（网络或代理问题）：{1}`, host, why), { retryable: true })
 }
 
 /** 粗估 token 数：中日韩字符每个约 1 个，其余约 4 个字符 1 个。 */

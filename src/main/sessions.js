@@ -3,6 +3,7 @@ import path from 'node:path'
 import { clock } from './prompts.js'
 import { INBOX_ID, uniqueName } from './projects.js'
 import { notesFileName } from './class/files.js'
+import { t } from './i18n.js'
 
 // 每场会议一个文件夹，放在所属项目的文件夹里：session.json 是原始数据，另外写一份人能直接看的「字幕记录.md」和「会议纪要.md」
 // （课堂会议叫「课堂笔记.md」，截取的画面在 slides/ 里）。
@@ -158,7 +159,7 @@ export class SessionStore {
   projectOf(id) {
     let pid = this.#index().get(id)
     if (!pid || !this.projects.has(pid)) pid = this.reindex().get(id)
-    if (!pid) throw Object.assign(new Error('找不到这场会议（文件夹可能被移走或删掉了）'), { code: 'no-session' })
+    if (!pid) throw Object.assign(new Error(t('找不到这场会议（文件夹可能被移走或删掉了）')), { code: 'no-session' })
     return pid
   }
 
@@ -246,8 +247,8 @@ export class SessionStore {
 
   /** 移到别的项目：挪文件夹，名字冲突加后缀（id 跟着变），返回新的 session。 */
   move(id, projectId) {
-    if (!this.projects.has(projectId)) throw Object.assign(new Error('找不到这个项目'), { code: 'no-project' })
-    if (this.isLive(id)) throw new Error('正在记录的会议不能移动，先停止记录')
+    if (!this.projects.has(projectId)) throw Object.assign(new Error(t('找不到这个项目')), { code: 'no-project' })
+    if (this.isLive(id)) throw new Error(t('正在记录的会议不能移动，先停止记录'))
     const from = this.projectOf(id)
     if (from === projectId) return this.load(id)
     const target = this.projects.dir(projectId)
@@ -257,7 +258,7 @@ export class SessionStore {
     try {
       fs.renameSync(this.dir(id), path.join(target, next))
     } catch (e) {
-      throw new Error(`移动失败（可能有文件正被别的程序打开）：${e.message}`)
+      throw new Error(t(`移动失败（可能有文件正被别的程序打开）：{0}`, e.message))
     }
     index.delete(id)
     index.set(next, projectId)
@@ -272,7 +273,7 @@ export class SessionStore {
 
   /** 把一个项目里的会议全部挪到另一个项目（删项目前用），返回挪了几场。 */
   moveAll(fromProjectId, toProjectId) {
-    if (this.current && !this.current.endedAt && this.#index().get(this.current.id) === fromProjectId) throw new Error('这个项目里正在开会，先停止记录')
+    if (this.current && !this.current.endedAt && this.#index().get(this.current.id) === fromProjectId) throw new Error(t('这个项目里正在开会，先停止记录'))
     let n = 0
     for (const [id, pid] of [...this.reindex()]) {
       if (pid !== fromProjectId) continue
@@ -283,7 +284,7 @@ export class SessionStore {
   }
 
   async remove(id) {
-    if (this.isLive(id)) throw new Error('正在记录的会议不能删除，先停止记录')
+    if (this.isLive(id)) throw new Error(t('正在记录的会议不能删除，先停止记录'))
     const dir = this.dir(id)
     clearTimeout(this.timers.get(id))
     await this.trash(dir)

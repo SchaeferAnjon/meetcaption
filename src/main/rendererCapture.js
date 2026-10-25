@@ -1,4 +1,5 @@
 import { BrowserWindow, desktopCapturer, ipcMain, session, systemPreferences } from 'electron'
+import { t } from './i18n.js'
 
 // 在一个隐藏窗口里用 Web Audio 采集：Windows 的系统声音（Chromium 的 WASAPI loopback）和麦克风。
 // 页面用 AudioContext 直接按识别需要的采样率重采样，AudioWorklet 攒 100ms 一包 16 位 PCM 发回主进程。
@@ -47,10 +48,10 @@ export class RendererCapture {
     if (system) installDisplayMediaHandler()
     if (mic && process.platform === 'darwin') {
       const ok = await systemPreferences.askForMediaAccess('microphone')
-      if (!ok) throw new Error('没有麦克风权限：系统设置 → 隐私与安全性 → 麦克风，打开「会议字幕」')
+      if (!ok) throw new Error(t('没有麦克风权限：系统设置 → 隐私与安全性 → 麦克风，打开「会议字幕」'))
     }
     // 等授权的时候被停掉了（比如「正在连接」时点了停止）：不再开窗口
-    if (this.token !== token) throw new Error('音频采集已停止')
+    if (this.token !== token) throw new Error(t('音频采集已停止'))
     this.handlers = { onPcm, onError, onLost }
     const win = new BrowserWindow({
       show: false,
@@ -64,7 +65,7 @@ export class RendererCapture {
     const result = await win.webContents.executeJavaScript(`window.startCapture(${JSON.stringify({ system, mic, sampleRate, micDeviceId })})`, true)
     if (!result?.ok) {
       this.stop(token)
-      throw new Error(result?.error || '音频采集启动失败')
+      throw new Error(result?.error || t('音频采集启动失败'))
     }
     this.info = result
     return token
@@ -72,9 +73,9 @@ export class RendererCapture {
 
   /** 重开 token 那次采集里的一路（patch.micDeviceId 换麦克风）：→ { ok, label, fallback } 或 { ok: false, error }。 */
   async restart(token, source, patch = {}) {
-    if (token !== this.token || !this.win || this.win.isDestroyed()) return { ok: false, error: '音频采集已停止', stopped: true }
+    if (token !== this.token || !this.win || this.win.isDestroyed()) return { ok: false, error: t('音频采集已停止'), stopped: true }
     const r = await this.win.webContents.executeJavaScript(`window.restartSource(${JSON.stringify(source)}, ${JSON.stringify(patch)})`, true)
-    return token === this.token ? r : { ok: false, error: '音频采集已停止', stopped: true }
+    return token === this.token ? r : { ok: false, error: t('音频采集已停止'), stopped: true }
   }
 
   /** token 不给就停掉现在开着的；给了且不是现在这一次的，什么都不做。 */

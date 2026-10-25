@@ -1,5 +1,6 @@
 import { dbfs } from './audio/gate.js'
 import { enrollFrom, loadVoiceprintModel, pcm16ToFloat32 } from './audio/voiceprint.js'
+import { t } from './i18n.js'
 
 // 录声纹：只开麦克风录 seconds 秒（16k），每 200ms 报一次音量（这 200ms 里最大的 dBFS）和剩余秒数，
 // 录完去静音、算向量、存档。capture 是 RendererCapture（或自测用的 WavCapture）。
@@ -25,7 +26,7 @@ export async function recordVoiceprint({ capture, store, seconds = 12, micDevice
         chunks.push(Buffer.from(buf))
         level = Math.max(level, dbfs(new Int16Array(Uint8Array.from(buf).buffer)))
       },
-      onError: (_s, msg) => (failed = new Error(`麦克风出错：${msg}`)),
+      onError: (_s, msg) => (failed = new Error(t(`麦克风出错：{0}`, msg))),
     })
     const t0 = Date.now()
     await new Promise((resolve) => {
