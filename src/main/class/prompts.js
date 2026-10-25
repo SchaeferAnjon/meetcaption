@@ -1,5 +1,6 @@
 import { calendarText, clock, dateLabel, transcriptText } from '../prompts.js'
 import { relativeDayHints } from '../todos.js'
+import { promptLang, templateRule, writeLang } from '../languages.js'
 
 // 课堂模式的三个 prompt：实时笔记（边听边整理，JSON）、课后课堂笔记（Markdown）、作业提取（沿用待办的 JSON 格式）。
 
@@ -34,7 +35,7 @@ const NOTES_ROLE = {
 - examples：老师举的例子，一句话说清楚例子和它说明了什么。
 - emphasis：老师明确强调的（this is important、remember、this will be on the exam、考试会考、注意）或反复讲的点，at 是原话的时间，quote 是原话（保留英文）。
 - homework：作业、阅读、要交的东西、考试和截止时间。due 按日历换算成 YYYY-MM-DD，没说时间写 null；dueText 是原话里的时间说法（保留英文）。
-- terms：课上出现的专业术语，英文、中文译名、一句中文解释（不超过 40 个字）。`,
+- terms：课上出现的专业术语，原文、{L}译名、一句{L}解释（不超过 40 个字）。`,
   },
   meeting: {
     who: '你是会议记录助手，用户正在开会，你边听边帮他整理会议笔记。',
@@ -46,7 +47,7 @@ const NOTES_ROLE = {
 - formulas、examples：会上真的出现公式、举了具体例子才写，一般给空数组。
 - emphasis：已经定下来的结论和决定，或对方明确提出的要求和修改意见，at 是原话的时间，quote 是原话（保留原文）。
 - homework：待办，text 写清谁做什么（「我：…」或「对方：…」），due 按日历换算成 YYYY-MM-DD，没说时间写 null；dueText 是原话里的时间说法（保留原文）。
-- terms：会上出现的专业术语、项目名、缩写，英文、中文译名、一句中文解释（不超过 40 个字）。`,
+- terms：会上出现的专业术语、项目名、缩写，原文、{L}译名、一句{L}解释（不超过 40 个字）。`,
   },
   interview: {
     who: '你是面试记录助手，用户正在参加面试，你边听边帮他整理面试笔记，方便他随时看问过什么、答得怎么样。',
@@ -58,7 +59,7 @@ const NOTES_ROLE = {
 - formulas、examples：面试里真的推公式、举了具体例子才写，一般给空数组。
 - emphasis：面试官在意或反复追问的地方、给出的评价和暗示、我没答好需要补的点，at 是原话的时间，quote 是原话（保留原文）。
 - homework：面试后要做的事和时间点：下一轮面试、要补发的材料、面试官让我准备的东西。due 按日历换算成 YYYY-MM-DD，没说时间写 null；dueText 是原话里的时间说法（保留原文）。
-- terms：面试里出现的专业术语、技术名词、公司和产品名，英文、中文译名、一句中文解释（不超过 40 个字）。`,
+- terms：面试里出现的专业术语、技术名词、公司和产品名，原文、{L}译名、一句{L}解释（不超过 40 个字）。`,
   },
 }
 
@@ -98,8 +99,9 @@ export function notesDigest(prev, { full = FULL_SECTIONS } = {}) {
  * 实时笔记：上一版笔记的摘要 + 新的字幕片段 → 这一批的变化（增量 JSON，liveNotes.js 的 applyNotes 合并）。
  * prev：上一版（没有就 null）；lines：新增的字幕片段；startedAt：开始时间（换算日期）；mode：class | meeting | interview。
  */
-export function notesMessages({ prev = null, lines, context = '', startedAt = Date.now(), mode = 'class' }) {
+export function notesMessages({ prev = null, lines, context = '', startedAt = Date.now(), mode = 'class', lang = 'zh' }) {
   const r = NOTES_ROLE[mode] ?? NOTES_ROLE.class
+  const L = promptLang(lang)
   const system = `${r.who}
 下面给你上一版笔记的摘要和刚才${r.lines}。
 只输出这一批新内容带来的变化，不要重写上一版已有的内容，程序会把你写的合并进笔记。格式：
@@ -113,8 +115,8 @@ ${JSON.stringify(NOTES_SHAPE)}
 - 这一批没有新内容的类别给空数组，什么都没有就全给空数组。
 
 要求：
-- 用简体中文写，术语、人名、模型名、书名保留英文原文。
-${r.rules}
+- 用${L}写，术语、人名、模型名、书名保留原文。
+${r.rules.replaceAll('{L}', L)}
 - points、examples、emphasis 里提到符号或式子时写成行内公式 $...$，比如 "用 k-fold cross-validation 选 $\\\\lambda$"，不要把 \\\\lambda 这种命令不带 $ 直接写在文字里。homework 和 terms 用纯文字，不加 $。
 - 反斜杠：输出的是 JSON，字符串里 LaTeX 的每个反斜杠都写成两个（\\\\lambda、\\\\text{ridge}、\\\\frac{a}{b}、\\\\rVert），JSON 解析后才是一个。只写一个会被当成转义，\\text、\\rVert、\\frac、\\beta、\\nabla 会变成制表符、回车、换页、退格、换行；写四个又会变成换行。
 - 识别稿可能有错字（尤其是公式和术语），按上下文纠正；拿不准的不写。
@@ -138,8 +140,9 @@ ${r.rules}
  */
 export function classNotesMessages({ session, project = null, extraAsk = '', slides = [], liveNotes = null, materials = null }) {
   const withMaterials = Boolean(materials?.text)
+  const out = writeLang(session, project)
   const system = `你是一位细心的课堂笔记助手。用户刚听完一节课，下面是课堂的自动识别稿（可能有识别错误、缺标点；「老师」是授课老师，「我」是用户，我偶尔会在课上提问）。
-请用简体中文写一份课堂笔记，术语、人名、模型名、书名保留英文原文；公式用 LaTeX（行内用 $...$，单独一行的用 $$...$$）。要求：
+请用${promptLang(out)}写一份课堂笔记，术语、人名、模型名、书名保留原文；公式用 LaTeX（行内用 $...$，单独一行的用 $$...$$）。要求：
 - 只根据识别稿、实时笔记和截图写，不编造；识别稿里念出来的公式（比如 "y i minus theta transpose x i, squared"）还原成 LaTeX；拿不准的标「（待确认）」。
 - 时间戳用识别稿里的 [mm:ss]。
 - 相对日期换算成具体日期：上课日期是 ${dateLabel(session.startedAt)}，「next Wednesday」「this Sunday」「下周三」都算出日期并保留原话；「next + 星期几」按下一周的那一天算。
@@ -150,7 +153,7 @@ export function classNotesMessages({ session, project = null, extraAsk = '', sli
 - 小节标题后面注明对应的课件页，比如「（课件 p.12 到 p.15）」。在讲到对应内容的地方用 ![课件第 N 页：简短说明](materials/…/pNNN.jpg) 插入那一页，路径照抄课件文字里每页标的路径；只插有图、表、公式推导或关键定义的页，一般 3 到 10 页；标题页、目录页、只有几行字的页不插，不要整份课件都插。`
       : ''
   }
-- 不要用破折号。
+- 不要用破折号。${templateRule(out)}
 
 按下面的 Markdown 结构输出，没有内容的小节写「无」：
 
@@ -193,6 +196,7 @@ export function classNotesMessages({ session, project = null, extraAsk = '', sli
 
 /** 课堂的作业提取：输出同待办提取（{"title","items"}），全部归到这节课所属的项目。 */
 export function classTodoMessages({ session, summary, project, liveNotes = null }) {
+  const L = promptLang(writeLang(session, project))
   const system = `你是课堂助理，从一节课的课堂笔记和识别稿里提取作业、阅读任务、要交的东西、考试和截止时间，输出 JSON。
 「老师」是授课老师，「我」是用户（学生）。
 
@@ -203,14 +207,14 @@ ${relativeDayHints(session.startedAt)}
 
 规则：
 - 只提取老师明确布置的、要我做或要注意的事：作业、阅读、项目、要交的报告、考试和测验。泛泛的建议不算。
-- text：一句简体中文，动词开头，具体到能照着做（写清楚是哪次作业、做什么）；术语、书名保留原文；不要用破折号。考试写成「准备 期中考试（范围：…）」这类。
+- text：一句${L}，动词开头，具体到能照着做（写清楚是哪次作业、做什么）；术语、书名保留原文；不要用破折号。考试写成「准备 期中考试（范围：…）」这类。
 - owner：作业和考试都是 me。
 - dueText：原话里的时间说法，原样保留（比如 "next Wednesday before midnight"），没有写 null。
 - quote：识别稿里的原话依据，原样保留英文，不超过 120 个字符。
 - at：原话在识别稿里的时间戳（mm:ss 或 h:mm:ss），没有写 null。
 - projectId 一律写 ${project?.id ?? 'inbox'}。
 - 同一件事只写一条；没有就给空数组。
-- title：给这节课起一个简短的中文标题（不超过 20 个字），说清楚讲了什么。
+- title：给这节课起一个简短的${L}标题（不超过 20 个字或 8 个词），说清楚讲了什么。
 
 只输出一个 JSON 对象，不要代码块，不要别的文字：
 {"title":"…","items":[{"text":"…","due":"YYYY-MM-DD","dueText":"…","owner":"me","projectId":"${project?.id ?? 'inbox'}","quote":"…","at":"mm:ss"}]}`
@@ -229,6 +233,7 @@ ${relativeDayHints(session.startedAt)}
  * materialsText：materials.js 的 materialsForMap(...).text（每页的文字行编了号）。
  */
 export function slideMapMessages({ session, markdown, sections, materialsText }) {
+  const L = promptLang(writeLang(session))
   const system = `你在帮用户做一份图文版课堂笔记：老师是对着课件讲课的，把课件页插在老师讲到它的地方，在页上框出老师对着讲的那几行，旁边写老师讲了什么。
 下面给你课堂笔记（Markdown）、笔记里「大纲与知识点」的小节（编了号）、老师的课件（每页的文字行编了号）和课堂识别稿（[分:秒] 说话人：内容；「老师」是授课老师）。
 
@@ -240,7 +245,7 @@ export function slideMapMessages({ session, markdown, sections, materialsText })
 - s：这一页的内容属于笔记的哪个小节，写小节编号。
 - points：老师对着这一页讲的每一个点，按讲的先后，一页 1 到 6 条。
   - l：这一点对应课件上的哪几行，写行号，1 到 4 行，挑最贴切的；讲的是页上的图、或者整页都在讲同一件事时给空数组。
-  - t：用简体中文一两句写老师怎么讲这一点（解释、举的例子、补充、强调），不要只把课件那一行翻译一遍；术语、人名保留英文；式子写成行内公式 $...$，JSON 里 LaTeX 的反斜杠写两个。
+  - t：用${L}一两句写老师怎么讲这一点（解释、举的例子、补充、强调），不要只把课件那一行翻译一遍；术语、人名保留英文；式子写成行内公式 $...$，JSON 里 LaTeX 的反斜杠写两个。
   - at：识别稿里讲这一点的时间（mm:ss）。q：老师的原话，照识别稿原样保留，不超过 120 个字符。
 - 只根据识别稿和课件写，不编造。不要用破折号。
 只输出一个 JSON 对象，不要代码块，不要别的文字。`

@@ -128,3 +128,28 @@ test('界面的语言清单（renderer/shared/langs.js）和主进程同一份�
   vm.runInNewContext(fs.readFileSync(new URL('../src/renderer/shared/langs.js', import.meta.url), 'utf8'), { window: Object.assign(en, { UI_LANG: 'en' }), Intl })
   assert.equal(en.langLabel('de'), 'German')
 })
+
+test('AI 写给用户看的东西跟这一场「翻译成」的语言：纪要、课堂笔记、实时笔记、待办、术语解释', async () => {
+  const { summaryMessages, enhanceMessages } = await import('../src/main/prompts.js')
+  const { classNotesMessages, notesMessages, classTodoMessages } = await import('../src/main/class/prompts.js')
+  const { todoMessages } = await import('../src/main/todos.js')
+  const { writeLang } = await import('../src/main/languages.js')
+  const de = { startedAt: Date.now(), segments: [], target: 'de' }
+  const old = { startedAt: Date.now(), segments: [] }
+  assert.equal(writeLang(old), 'zh', '旧记录没记 target：照旧简体中文')
+  assert.equal(writeLang(old, { target: 'fr' }), 'fr')
+  const sum = summaryMessages({ session: de })[0].content
+  assert.match(sum, /请用德语（Deutsch）写会议纪要/)
+  assert.match(sum, /小节标题、表头.*都换成德语/)
+  assert.match(sum, /\(due: YYYY-MM-DD\)/)
+  assert.doesNotMatch(summaryMessages({ session: old })[0].content, /都换成|due:/, '简体中文照旧，不加规则')
+  assert.match(summaryMessages({ session: { ...de, target: 'zh-Hant' } })[0].content, /都换成繁体中文/)
+  assert.doesNotMatch(summaryMessages({ session: { ...de, target: 'zh-Hant' } })[0].content, /due:/, '繁体照样写「截止」')
+  assert.match(classNotesMessages({ session: de })[0].content, /请用德语（Deutsch）写一份课堂笔记/)
+  assert.match(classTodoMessages({ session: de, summary: '' })[0].content, /text：一句德语（Deutsch）/)
+  assert.match(todoMessages({ session: de, summary: '', project: null, projects: [] })[0].content, /德语（Deutsch）标题/)
+  const live = notesMessages({ lines: [], lang: 'ja' })[0].content
+  assert.match(live, /用日语（日本語）写/)
+  assert.match(live, /日语（日本語）译名、一句日语（日本語）解释/)
+  assert.match(enhanceMessages({ sentence: 'x', target: 'ko' })[0].content, /explain 是一句韩语（한국어）/)
+})

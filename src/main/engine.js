@@ -357,7 +357,7 @@ export class MeetingEngine extends EventEmitter {
       this.micCheck = this.pipelines.has('mic') && (Boolean(this.vp) || this.pipelines.has('system'))
       checkAbort()
       const cls = this.mode === 'class' ? { classSource: this.classSource, slides: [] } : {}
-      created = this.store.create({ ...(project ? { projectId: project.id } : {}), mode: this.mode, ...cls, liveNotes: null, liveNotesAt: null, engine: s.engine, engineLabel: engineLabel(s), language: s.language, answers: [] })
+      created = this.store.create({ ...(project ? { projectId: project.id } : {}), mode: this.mode, ...cls, liveNotes: null, liveNotesAt: null, engine: s.engine, engineLabel: engineLabel(s), language: s.language, target: s.translateTarget, answers: [] })
       this.session = created
       this.live.clear()
       await this.#startCapture(s)
@@ -572,6 +572,7 @@ export class MeetingEngine extends EventEmitter {
       everyMs: () => Math.max(1, Number(this.cfg?.class?.notesEveryMin) || 2) * 60_000,
       context: this.project?.context ?? '',
       mode: this.mode,
+      lang: session.target ?? 'zh',
     })
     notes.on('update', (u) => this.#onNotes(session, u))
     this.notes = notes
@@ -1030,6 +1031,7 @@ export class MeetingEngine extends EventEmitter {
         matched,
         withScreen: s.assist.withScreen,
         answerLang: s.assist.answerLang,
+        noteLang: this.session?.target ?? s.translateTarget,
         mode: this.mode,
         reason,
         segIds: [...ids],

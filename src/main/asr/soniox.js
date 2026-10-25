@@ -7,7 +7,8 @@ import WebSocket from 'ws'
 //
 // Key 两种来法：自带 Key（key）；会员（getKey）每条连接向我们的服务器换一把临时 Key：只能用一次，
 // 连上以后最长连 maxMs，到点 Soniox 断开（403）。快到点时在下一个句末换一条新连接，旧的收尾关掉。
-// getKey 抛出带 code 的错（exhausted / idle / ended / asr-budget）时不再重连，发 'member' 交给上层换本地识别或暂停。
+// getKey 抛出带 code 的错（exhausted / idle / ended）时不再重连，发 'member' 交给上层换本地识别或暂停；
+// 服务器说连接太多、太频繁（too-many / too-fast）照常退避重连，等前面的 Key 过期腾出来。
 //
 // 断线不丢字：留最近 60 秒送出的音频；新连接从最后一个定稿的字的终点补发。这一句里已经定稿的字当这一句的定稿发出去，
 // 没定稿的尾巴新连接重新认；一个字都没定稿的这一句作废（'drop'）。
@@ -18,7 +19,7 @@ const ROTATE_BEFORE_MS = 90_000 // 离 Key 到点不到这么久，就在下一�
 const FORCE_BEFORE_MS = 20_000 // 到这时还没等到句末（一直有人在说）：让 Soniox 把手上的字都定稿（finalize），定完就换
 const DEAD_AFTER_MS = 20_000 // 送着音频、这么久一条回复都没有，当连接死了
 // 会员服务器不再给 Key 的几种情况（错误码 → 交给上层的类型）
-const MEMBER_STOPS = { exhausted: 'exhausted', 'asr-budget': 'exhausted', idle: 'idle', ended: 'ended', 'bad-session': 'ended' }
+const MEMBER_STOPS = { exhausted: 'exhausted', idle: 'idle', ended: 'ended', 'bad-session': 'ended' }
 
 class FatalError extends Error {}
 

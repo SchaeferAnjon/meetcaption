@@ -156,13 +156,20 @@ test('会员：每条连接换一把临时 Key；快到点在句末换连接；�
   f.send(f.conns[1], [tok('二', 0, 200), { text: '<fin>', is_final: true }])
   await until(() => f.conns[2]?.auth === 'Bearer temp:3')
   assert.deepEqual(ev.filter((e) => e.name === 'final').map((e) => e.text), ['一', '二'])
+  // 服务器说连接太多（老断线的人前面的 Key 还没过期）：接着退避重连，不交给上层
+  refuse = 'too-many'
+  f.conns[2].ws.terminate()
+  await sleep(1300)
+  assert.ok(!ev.some((e) => e.name === 'member'))
+  refuse = null
+  await until(() => f.conns[3]?.auth === 'Bearer temp:4', 5000)
   // 服务器不再给 Key（场次用完）：不再重连，发 member
   refuse = 'exhausted'
-  f.conns[2].ws.terminate()
+  f.conns[3].ws.terminate()
   await until(() => ev.some((e) => e.name === 'member'))
   assert.equal(ev.find((e) => e.name === 'member').value, 'exhausted')
   await sleep(100)
-  assert.equal(f.conns.length, 3)
+  assert.equal(f.conns.length, 4)
   await asr.close()
   f.close()
 })

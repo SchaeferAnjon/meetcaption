@@ -25,6 +25,19 @@ export const promptLang = (code) => {
   return `${langName(code)}（${new Intl.DisplayNames([code], { type: 'language' }).of(code)}）`
 }
 
+/**
+ * AI 写给用户看的东西（纪要、笔记、待办、术语解释、答题的要点）用哪种语言：这一场「翻译成」的语言（开始记录时记在 session.target），
+ * 没记的旧记录用项目的，再没有就是简体中文。
+ */
+export const writeLang = (session, project = null) => session?.target || project?.target || 'zh'
+
+/** Markdown 模板是中文写的：要写成别的语言时，让模型把小节标题这些固定的字也换掉；截止写成 (due: …)，程序认得（todos.js 的 summaryDeadlines）。 */
+export function templateRule(lang) {
+  if (lang === 'zh') return ''
+  const L = promptLang(lang)
+  return `\n- 下面结构里的小节标题、表头和「无」「原话」「答案」这些固定的字都换成${L}。${isChinese(lang) ? '' : '待办的截止写成「(due: YYYY-MM-DD)」或「(due: none)」，due 这个词不翻译。'}`
+}
+
 /** 本地识别和豆包认不了、要 Soniox 或 OpenAI 的语言（中英文和自动以外的）。 */
 export const needsMultilingual = (lang) => !['zh', 'en', 'auto'].includes(lang)
 

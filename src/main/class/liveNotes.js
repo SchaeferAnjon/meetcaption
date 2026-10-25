@@ -247,7 +247,7 @@ export class LiveNotes extends EventEmitter {
    * everyMs() → 攒多久更新一次（设置里的 class.notesEveryMin，开会中改了马上生效）；context：课程或会议背景；
    * mode：class | meeting | interview；prev：接着之前的笔记（没有就 null）。
    */
-  constructor({ llm, llmStatus = null, startedAt = Date.now(), everyMs = () => 120_000, context = '', mode = 'class', prev = null, now = () => Date.now(), wordsCap = 400, hanCap = 600, minWords = 15, retryMs = 60_000, timeoutMs = 180_000 }) {
+  constructor({ llm, llmStatus = null, startedAt = Date.now(), everyMs = () => 120_000, context = '', mode = 'class', lang = 'zh', prev = null, now = () => Date.now(), wordsCap = 400, hanCap = 600, minWords = 15, retryMs = 60_000, timeoutMs = 180_000 }) {
     super()
     this.llm = llm
     this.llmStatus = llmStatus
@@ -255,6 +255,7 @@ export class LiveNotes extends EventEmitter {
     this.everyMs = everyMs
     this.context = context
     this.mode = mode
+    this.lang = lang
     this.now = now
     this.opts = { wordsCap, hanCap, minWords, retryMs, timeoutMs }
     this.notes = prev
@@ -341,7 +342,7 @@ export class LiveNotes extends EventEmitter {
 
   async #run(batch) {
     const lines = batch.map((p) => ({ at: Math.max(0, p.at - this.startedAt), speaker: p.speaker, text: p.text }))
-    const [system, user] = notesMessages({ prev: this.notes, lines, context: this.context, startedAt: this.startedAt, mode: this.mode })
+    const [system, user] = notesMessages({ prev: this.notes, lines, context: this.context, startedAt: this.startedAt, mode: this.mode, lang: this.lang })
     const t0 = this.now()
     try {
       const raw = await this.llm({ model: 'smart', effort: 'low', json: true, timeoutMs: this.opts.timeoutMs, system: system.content, messages: [user] })

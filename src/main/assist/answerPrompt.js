@@ -1,10 +1,8 @@
-// 实时答题的 prompt。输出要短：第一行中文要点，后面 2 到 4 句能直接说出口的回答。
+// 实时答题的 prompt。输出要短：第一行要点（用这一场「翻译成」的语言，一眼看懂），后面 2 到 4 句能直接说出口的回答（默认跟提问的语言）。
+import { promptLang } from '../languages.js'
 
-const LANG_RULE = {
-  auto: '跟随提问的语言：英文提问用英文答，中文提问用中文答',
-  en: '用英文回答',
-  zh: '用简体中文回答',
-}
+const langRule = (answerLang) =>
+  !answerLang || answerLang === 'auto' ? '跟随提问的语言：对方用哪种语言问，就用哪种语言答' : `用${promptLang(answerLang)}回答`
 
 const PROFILE_MAX = 4000
 // 最近的对话给多一点：课上老师问的常常是十几分钟前讲的内容（只给 12 句时只能答出「没有问题」这种空话）
@@ -21,16 +19,16 @@ const SCENE = {
 
 // 课堂上老师问的多半是「有没有问题」「听懂了吗」这种开放的邀请，答「没有问题」没有用
 const CLASS_RULES = [
-  '- 老师问的是「有没有问题」「听懂了吗」「有什么想法」这类开放的邀请时，不要答「没有问题」或「我懂了」：围绕刚讲的内容，给我一个具体、有价值、能直接问出口的问题（比如追问一个关键概念的条件、例外、和前面内容的联系，或者举例确认理解）。第一行写「要点：可以问」加问题的中文大意。',
+  '- 老师问的是「有没有问题」「听懂了吗」「有什么想法」这类开放的邀请时，不要答「没有问题」或「我懂了」：围绕刚讲的内容，给我一个具体、有价值、能直接问出口的问题（比如追问一个关键概念的条件、例外、和前面内容的联系，或者举例确认理解）。第一行写「要点：可以问」加问题的大意。',
   '- 老师问的是内容问题：用课上刚讲的内容和例子回答，术语和老师的说法保持一致。',
 ]
 
-export function answerSystem({ answerLang = 'auto', withScreen = false, mode = 'meeting' } = {}) {
+export function answerSystem({ answerLang = 'auto', noteLang = 'zh', withScreen = false, mode = 'meeting' } = {}) {
   return [
     `你是我的实时答题助手。${SCENE[mode] ?? SCENE.meeting}你写一段我能直接照着说出口的回答。`,
     '格式：',
-    '第一行：「要点：」加一句中文要点，15 个字以内，让我一眼知道怎么答。',
-    `第二行起：回答本身，${LANG_RULE[answerLang] ?? LANG_RULE.auto}。2 到 4 句，第一人称，口语，像我自己在说话。每句尽量不超过 20 个词（中文 30 个字），不用分号、括号和破折号。`,
+    `第一行：「要点：」（这三个字照写）加一句${promptLang(noteLang)}要点，15 个字或 8 个词以内，让我一眼知道怎么答。`,
+    `第二行起：回答本身，${langRule(answerLang)}。2 到 4 句，第一人称，口语，像我自己在说话。每句尽量不超过 20 个词（中文 30 个字），不用分号、括号和破折号。`,
     '要求：',
     '- 直接回答，不复述问题，不说 Great question 之类的客套，不用列表、标题和 Markdown。',
     '- 不反问，不让我先确认问题是什么意思，也不提截图。问题有几种理解时，按对话里最可能的那一种直接答。',
@@ -86,7 +84,7 @@ export function notesText(notes, max = NOTES_CHARS) {
   return out.length > max ? out.slice(0, max) + '…' : out
 }
 
-export function answerMessages({ question, transcript, context, profile, notes = null, matched = true, answerLang = 'auto', withScreen = false, mode = 'meeting' }) {
+export function answerMessages({ question, transcript, context, profile, notes = null, matched = true, answerLang = 'auto', noteLang = 'zh', withScreen = false, mode = 'meeting' }) {
   const parts = []
   if (context?.trim()) parts.push(`会议背景：${context.trim()}`)
   const p = profile?.trim()
@@ -103,7 +101,7 @@ export function answerMessages({ question, transcript, context, profile, notes =
   parts.push(matched ? `对方的问题：${q}` : `没认出明确的问题，这是对方最后说的话：${q}`)
   if (withScreen) parts.push('附图是我现在的屏幕，只在问题和屏幕内容有关时才围绕它回答。')
   return {
-    system: answerSystem({ answerLang, withScreen, mode }),
+    system: answerSystem({ answerLang, noteLang, withScreen, mode }),
     messages: [{ role: 'user', content: parts.join('\n\n') }],
   }
 }

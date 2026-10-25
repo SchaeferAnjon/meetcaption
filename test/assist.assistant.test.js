@@ -173,9 +173,11 @@ test('assistant: the same auto question is answered once; regenerate reuses the 
 })
 
 test('answer prompt: language rule, profile, trimmed transcript', () => {
-  assert.match(answerSystem({ answerLang: 'en' }), /用英文回答/)
+  assert.match(answerSystem({ answerLang: 'en' }), /用英语（English）回答/)
+  assert.match(answerSystem({ answerLang: 'de' }), /用德语（Deutsch）回答/)
   assert.match(answerSystem({ answerLang: 'auto' }), /跟随提问的语言/)
-  assert.match(answerSystem({}), /要点/)
+  assert.match(answerSystem({}), /「要点：」（这三个字照写）加一句简体中文要点/)
+  assert.match(answerSystem({ noteLang: 'ja' }), /加一句日语（日本語）要点/, '要点用这一场翻译成的语言')
   const segs = Array.from({ length: 90 }, (_, i) => ({ who: i % 2 ? 'me' : 'other', text: `line ${i}` }))
   const t = recentTranscript(segs)
   assert.equal(t.split('\n').length, 60)

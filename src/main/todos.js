@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import { calendarText, cleanText, dateLabel, extractJson, transcriptText, ymd } from './prompts.js'
 import { INBOX_ID } from './projects.js'
+import { promptLang, writeLang } from './languages.js'
 
 // 待办和 DDL：纪要生成后再让模型做一次结构化提取，每条标到一个项目，存进 session.summary.items：
 // { id, text, due: 'YYYY-MM-DD' | null, dueUncertain?, dueText, owner: 'me' | 'other' | null, projectId, quote, at, done, doneAt? }
@@ -23,6 +24,7 @@ function projectLine(p) {
 /** 提取待办的请求。projects 是全部没归档的项目（含未归类），project 是这场会议所属的项目。 */
 export function todoMessages({ session, summary, project, projects }) {
   const list = projects.filter((p) => !p.archived || p.id === project?.id)
+  const L = promptLang(writeLang(session, project))
   const system = `你是会议助理，从一场会议的纪要和识别稿里提取待办事项和截止时间（DDL），输出 JSON。
 「我」是用户，「对方」是会上的其他人。
 
@@ -38,13 +40,13 @@ ${relativeDayHints(session.startedAt)}
 
 规则：
 - 只提取明确要做的事：谁答应要做、被要求做的事，约好的截止时间、会议和面试。泛泛的讨论不算。
-- text：一句简体中文，动词开头，具体到能照着做；术语、人名、公司名保留原文；不要用破折号。
+- text：一句${L}，动词开头，具体到能照着做；术语、人名、公司名保留原文；不要用破折号。
 - owner：me（我要做）、other（对方要做）、null（双方一起或说不清）。
 - dueText：原话里的时间说法，原样保留（比如 "by next Friday"），没有写 null。
 - quote：识别稿里的原话依据，原样保留英文，不超过 120 个字符。
 - at：原话在识别稿里的时间戳（mm:ss 或 h:mm:ss），没有写 null。
 - 同一件事只写一条；没有待办就给空数组。
-- title：给这场会起一个简短的中文标题（不超过 20 个字），说清楚主要谈了什么。
+- title：给这场会起一个简短的${L}标题（不超过 20 个字或 8 个词），说清楚主要谈了什么。
 
 只输出一个 JSON 对象，不要代码块，不要别的文字：
 {"title":"…","items":[{"text":"…","due":"YYYY-MM-DD","dueText":"…","owner":"me","projectId":"…","quote":"…","at":"mm:ss"}]}`

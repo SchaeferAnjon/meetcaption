@@ -1,5 +1,5 @@
 import { isMostlyChinese } from './text.js'
-import { isChinese, needsMultilingual, promptLang } from './languages.js'
+import { isChinese, needsMultilingual, promptLang, templateRule, writeLang } from './languages.js'
 
 // 对方说的是中英文以外的语言（德语课等）：告诉模型原文是什么语言，识别稿里的错字按这种语言去理解
 const sourceLine = (source) => (needsMultilingual(source) ? `发言的原文是${promptLang(source)}。` : '')
@@ -86,13 +86,14 @@ export function projectBrief({ project, projects = [] }) {
 
 export function summaryMessages({ session, project = null, projects = [], context, extraAsk }) {
   const dateText = dateLabel(session.startedAt)
+  const out = writeLang(session, project)
   const system = `你是一位细心的会议助理。用户刚开完一场会。下面是会议的自动识别稿（可能有识别错误、缺标点，也可能只录到一方；「我」是用户，「对方」是会上的其他人）。
-请用简体中文写会议纪要，术语、论文章节名、人名保留英文原文。要求：
+请用${promptLang(out)}写会议纪要，术语、论文章节名、人名保留原文。要求：
 - 只根据识别稿写，不编造；拿不准的地方标「（待确认）」。
 - 相对时间要换算成具体日期：会议日期是 ${dateText}，「next Friday」「in two weeks」「下周三」这类都算出日期并保留原话；「next + 星期几」按下一周的那一天算。
 - 待办和 DDL 要具体到能直接照着做，每条后面用「原话：」附上识别稿里的依据（保留原文）和时间戳。
 - 用户同时在做好几个项目（见项目清单）。会里说到别的项目的事照样写进纪要，在那一条后面用【项目名】标出来。
-- 不要用破折号。
+- 不要用破折号。${templateRule(out)}
 
 按下面的 Markdown 结构输出，没有内容的小节写「无」：
 
@@ -230,7 +231,7 @@ export function enhanceMessages({ sentence, previous = [], target = 'zh', source
           ? `- term 必须从${src}里原样复制：大小写、单复数、连字符都不改，不补全缩写，不加引号。`
           : '- term 必须从这一句原文里原样复制：大小写、单复数、连字符都不改，不补全缩写，不加引号。',
         translate ? '- zh 是 tr 里和它对应的中文片段（原样复制）；译文里这个词保留了原文、没有中文说法的，zh 给空字符串。' : '',
-        '- explain 是一句简体中文，最多 40 个字符（英文字母和空格也算），结合背景说它在这里指什么；缩写先给中文名或简短全称，不写很长的英文全称；不要用破折号。',
+        `- explain 是一句${lang}，最多 40 个字符（英文字母和空格也算），结合背景说它在这里指什么；缩写先给${toZh ? '中文名' : `${lang}的说法`}或简短全称，不写很长的英文全称；不要用破折号。`,
       ]
         .filter(Boolean)
         .join('\n'),
@@ -238,7 +239,7 @@ export function enhanceMessages({ sentence, previous = [], target = 'zh', source
   const numbered = tasks.length > 1 ? tasks.map((t, i) => `任务${'一二三四'[i]}：${t}`) : [`任务：${tasks[0] ?? ''}`]
   const heard = needsMultilingual(source) ? promptLang(source).replace(/（.*）/, '') : '英语'
   const audience =
-    (scene === 'class' ? `你是课堂实时字幕助手，听众是中文母语的学生，${heard}听力一般。` : `你是会议实时字幕助手，听众是中文母语的研究生，${heard}听力一般。`) + sourceLine(source)
+    (scene === 'class' ? `你是课堂实时字幕助手，听众是母语为${lang}的学生，${heard}听力一般。` : `你是会议实时字幕助手，听众是母语为${lang}的研究生，${heard}听力一般。`) + sourceLine(source)
   const examples = correct ? [...CHUNK_EXAMPLES, FIX_EXAMPLE] : CHUNK_EXAMPLES
   const system = [
     audience,
