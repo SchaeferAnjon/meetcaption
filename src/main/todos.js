@@ -240,22 +240,26 @@ function deadlineOf(s) {
   return { due: dates[0] ?? null, uncertain }
 }
 
-const quoteOf = (s) => String(s ?? '').match(/["“「]([^"”」]{4,})["”」]/)?.[1] ?? ''
+// 引号：英文 "…" “…”、中文「…」、德语 „…“、法语 «…»
+const quoteOf = (s) => String(s ?? '').match(/["“「„«]\s*([^"”」“»]{4,}?)\s*["”」“»]/)?.[1] ?? ''
 
 /**
  * 纪要（课堂笔记）里给了截止时间的事 → [{ text, due, uncertain, quote }]，拿不准的也列出来（uncertain，due 可能是 null）。认两种写法：
- * 待办行「- [ ] 事项（截止：2026-09-28）  原话："…" [mm:ss]」和 DDL 表格行「| 2026-09-28（周一） | 事项 | "原话" |」。
+ * 待办行「- [ ] 事项（截止：2026-09-28）  原话："…" [mm:ss]」（截止词可以是别的语言：Fällig、期限、due）和 DDL 表格行「| 2026-09-28（周一） | 事项 | "原话" |」。
  * 截止写法里还套着括号的（「截止：2026-10-03（待确认））」）也认。
  */
 export function summaryDeadlines(markdown) {
   const out = []
   for (const raw of String(markdown ?? '').split('\n')) {
     const line = raw.trim()
-    const m = line.match(/^[-*+]\s*(?:\[[ xX]?\]\s*)?(.+?)[（(]\s*(?:截止(?:时间|日期)?|DDL|due)\s*[：:]\s*((?:[^（()）]|[（(][^（()）]*[）)])*)[）)](.*)$/i)
+    // 截止词不限语言（纪要可能是德语、日语写的：Fällig、期限、Due…）：括号里一个不带冒号的短词加冒号，后面要能认出日期才算
+    const m = line.match(/^[-*+]\s*(?:\[[ xX]?\]\s*)?(.+?)[（(]\s*([^：:（()）\d]{1,20}?)\s*[：:]\s*((?:[^（()）]|[（(][^（()）]*[）)])*)[）)](.*)$/i)
     if (m) {
-      const dl = deadlineOf(m[2])
-      if (dl) out.push({ text: m[1].trim(), ...dl, quote: quoteOf(m[3]) })
-      continue
+      const dl = deadlineOf(m[3])
+      if (dl) {
+        out.push({ text: m[1].trim(), ...dl, quote: quoteOf(m[4]) })
+        continue
+      }
     }
     if (!line.startsWith('|')) continue
     const cells = line.split('|').slice(1, -1).map((c) => c.trim())

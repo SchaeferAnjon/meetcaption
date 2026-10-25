@@ -141,10 +141,9 @@ test('AI 写给用户看的东西跟这一场「翻译成」的语言：纪要�
   const sum = summaryMessages({ session: de })[0].content
   assert.match(sum, /请用德语（Deutsch）写会议纪要/)
   assert.match(sum, /小节标题、表头.*都换成德语/)
-  assert.match(sum, /\(due: YYYY-MM-DD\)/)
-  assert.doesNotMatch(summaryMessages({ session: old })[0].content, /都换成|due:/, '简体中文照旧，不加规则')
+  assert.match(sum, /截止日期照样写成 YYYY-MM-DD/)
+  assert.doesNotMatch(summaryMessages({ session: old })[0].content, /都换成/, '简体中文照旧，不加规则')
   assert.match(summaryMessages({ session: { ...de, target: 'zh-Hant' } })[0].content, /都换成繁体中文/)
-  assert.doesNotMatch(summaryMessages({ session: { ...de, target: 'zh-Hant' } })[0].content, /due:/, '繁体照样写「截止」')
   assert.match(classNotesMessages({ session: de })[0].content, /请用德语（Deutsch）写一份课堂笔记/)
   assert.match(classTodoMessages({ session: de, summary: '' })[0].content, /text：一句德语（Deutsch）/)
   assert.match(todoMessages({ session: de, summary: '', project: null, projects: [] })[0].content, /德语（Deutsch）标题/)
@@ -152,4 +151,20 @@ test('AI 写给用户看的东西跟这一场「翻译成」的语言：纪要�
   assert.match(live, /用日语（日本語）写/)
   assert.match(live, /日语（日本語）译名、一句日语（日本語）解释/)
   assert.match(enhanceMessages({ sentence: 'x', target: 'ko' })[0].content, /explain 是一句韩语（한국어）/)
+})
+
+test('纪要里的截止认任何语言的截止词：德语、日语、英语写的纪要也能提出待办的日期', async () => {
+  const { summaryDeadlines } = await import('../src/main/todos.js')
+  const md = [
+    '- [ ] Folien senden (Fällig: 2026-10-26)  Zitat: „send me the slides before Monday.“ [00:40]',
+    '- [ ] スライドを送付する（期限：2026-10-26）  原話："send me the slides" [00:40]',
+    '- [ ] Send slides (Due: 2026-10-26)',
+    '- [ ] 交初稿（截止：2026-10-30）  原话："by next Friday" [00:00]',
+    '- [ ] Ablation erneut ausführen (Fällig: keine Angabe)',
+    '- [ ] Notiz (Quelle: Protokoll)',
+  ].join('\n')
+  const got = summaryDeadlines(md)
+  assert.deepEqual(got.map((x) => x.due), ['2026-10-26', '2026-10-26', '2026-10-26', '2026-10-30'])
+  assert.equal(got[0].text, 'Folien senden')
+  assert.equal(got[0].quote, 'send me the slides before Monday.')
 })

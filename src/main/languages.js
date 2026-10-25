@@ -35,7 +35,7 @@ export const writeLang = (session, project = null) => session?.target || project
 export function templateRule(lang) {
   if (lang === 'zh') return ''
   const L = promptLang(lang)
-  return `\n- 下面结构里的小节标题、表头和「无」「原话」「答案」这些固定的字都换成${L}。${isChinese(lang) ? '' : '待办的截止写成「(due: YYYY-MM-DD)」或「(due: none)」，due 这个词不翻译。'}`
+  return `\n- 下面结构里的小节标题、表头和「无」「原话：」「答案：」「待确认」这些固定的字都换成${L}（每条后面的「原话：」也写成${L}，比如英语写 Quote:），整份不留中文。待办的截止日期照样写成 YYYY-MM-DD。`
 }
 
 /** 本地识别和豆包认不了、要 Soniox 或 OpenAI 的语言（中英文和自动以外的）。 */
