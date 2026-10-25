@@ -1,18 +1,31 @@
-// 能选的语言：对方说的（识别用）和翻译成的。界面上的同一份清单在 renderer/shared/langs.js。
-// 本地识别（X-ASR）和豆包流式识别只认中文和英文（2026-10 实测豆包指定 de-DE 也认不出德语），其他语言要用 OpenAI 识别。
+// 能选的语言：对方说的（识别用）和翻译成的。界面上的同一份清单在 renderer/shared/langs.js（单测核对两边一致）。
+// 清单是 Soniox 实时识别支持的 60 种（2026-10 官方列表），常用的十种排前面。本地识别（X-ASR）和豆包只认中文和英文
+// （2026-10 实测豆包指定 de-DE 也认不出德语），其他语言要用 Soniox 或 OpenAI 识别（会员的云识别是 Soniox）。
+// 语言名不手写：按界面语言用 Intl.DisplayNames 取（Node 和 Electron 都带完整的 ICU）。
 
-export const LANG_NAMES = { zh: '中文', en: '英语', de: '德语', fr: '法语', es: '西班牙语', it: '意大利语', pt: '葡萄牙语', ru: '俄语', ja: '日语', ko: '韩语' }
-export const LANG_CODES = Object.keys(LANG_NAMES)
+export const LANG_CODES = [
+  ...['en', 'zh', 'ja', 'ko', 'de', 'fr', 'es', 'it', 'pt', 'ru'],
+  ...'af sq ar az eu be bn bs bg ca hr cs da nl et fi gl el gu he hi hu id kn kk lv lt mk ms ml mr no fa pl pa ro sr sk sl sw sv tl ta te th tr uk ur vi cy'.split(' '),
+]
 export const SOURCE_LANGS = [...LANG_CODES, 'auto'] // auto：中英混着说
 // 能翻成的：对方的语言之外多一个繁体中文（只做翻译目标，识别还是按「中文」认）
 export const TARGET_CODES = [...LANG_CODES, 'zh-Hant']
 export const isChinese = (code) => code === 'zh' || code === 'zh-Hant'
 
-// 写进 prompt 的名字（带上原名，模型不会弄错是哪种语言）
-const PROMPT_NAMES = { zh: '简体中文', 'zh-Hant': '繁体中文（繁體字，台湾、香港的用词）', en: '英语（English）', de: '德语（Deutsch）', fr: '法语（Français）', es: '西班牙语（Español）', it: '意大利语（Italiano）', pt: '葡萄牙语（Português）', ru: '俄语（Русский）', ja: '日语（日本語）', ko: '韩语（한국어）' }
-export const promptLang = (code) => PROMPT_NAMES[code] ?? PROMPT_NAMES.zh
+const zhNames = new Intl.DisplayNames(['zh-Hans'], { type: 'language' })
+/** 中文名（提示语和 prompt 用）：德语、繁体中文 */
+export const langName = (code) => (code === 'zh-Hant' ? '繁体中文' : code === 'zh' ? '中文' : zhNames.of(code))
+export const LANG_NAMES = Object.fromEntries(LANG_CODES.map((c) => [c, langName(c)]))
 
-/** 只有 OpenAI 识别能认的语言（中英文和自动以外的）。 */
+// 写进 prompt 的名字（带上原名，模型不会弄错是哪种语言）：德语（Deutsch）
+const PROMPT_NAMES = { zh: '简体中文', 'zh-Hant': '繁体中文（繁體字，台湾、香港的用词）', en: '英语（English）' }
+export const promptLang = (code) => {
+  if (PROMPT_NAMES[code]) return PROMPT_NAMES[code]
+  if (!LANG_CODES.includes(code)) return PROMPT_NAMES.zh
+  return `${langName(code)}（${new Intl.DisplayNames([code], { type: 'language' }).of(code)}）`
+}
+
+/** 本地识别和豆包认不了、要 Soniox 或 OpenAI 的语言（中英文和自动以外的）。 */
 export const needsMultilingual = (lang) => !['zh', 'en', 'auto'].includes(lang)
 
 // 拉丁字母的几种语言各自最常见的虚词：数一句里各有几个，最多的那种就是（一个都没有返回 null）

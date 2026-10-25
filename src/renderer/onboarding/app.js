@@ -11,6 +11,7 @@ let mic = 'not-determined' // granted | denied | not-determined
 let sys = 'idle' // idle | asked
 let screen = 'ask' // ask | granted | skip
 let member = null
+let langsOpen = false
 
 const steps = () => (isMac ? ['welcome', 'mic', 'sys', 'done'] : ['welcome', 'mic', 'done'])
 
@@ -24,6 +25,31 @@ function autoNext() {
   setTimeout(() => {
     if (step === s) next()
   }, 600)
+}
+
+// 欢迎页上写明支持的语言（偏好「写明支持的语言」）：一行概括，点开看全部
+function langsBlock() {
+  const names = LANGS.map((l) => l.label).join('、')
+  return el(
+    'div.ob-langs',
+    {},
+    el(
+      'button.ob-langs-sum',
+      { type: 'button', 'aria-expanded': String(langsOpen), onClick: () => ((langsOpen = !langsOpen), render()) },
+      icon('languages', 14),
+      el('span', {}, '识别 ', el('b', { text: `${LANGS.length} 种语言` }), '，翻译成其中任意一种'),
+      icon('chevron-down', 13),
+    ),
+    langsOpen
+      ? el(
+          'div.ob-langs-list',
+          {},
+          el('p', {}, el('b', { text: '识别和翻译：' }), names, '。'),
+          el('p', {}, el('b', { text: '只做翻译：' }), '繁体中文。'),
+          el('p.ob-langs-note', { text: '本地识别（免费、不联网）只认中文和英文；其他语言用云识别。' }),
+        )
+      : null,
+  )
 }
 
 function badge(name, cls = '') {
@@ -86,7 +112,8 @@ function render() {
     body = [
       el('img.ob-logo', { src: '../../assets/icon.png', alt: '' }),
       el('h2', { text: '欢迎使用 MeetCaption' }),
-      el('p', { text: '开会、面试、上网课时，对方说的每一句都实时出字幕和中文；问题一来，答案就到。简单几步就能开始。' }),
+      el('p', { text: '开会、面试、上网课时，对方说的每一句都实时出字幕和译文；问题一来，答案就到。简单几步就能开始。' }),
+      langsBlock(),
       el('button.btn.btn-primary.ob-cta', { type: 'button', onClick: next }, '开始设置'),
     ]
   } else if (key === 'mic') {

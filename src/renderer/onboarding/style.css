@@ -176,3 +176,61 @@ body {
   width: 22px;
   background: var(--text);
 }
+
+/* 欢迎页：支持的语言（一行概括，点开是一个能滚动的小框） */
+.ob-langs {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.ob-langs-sum {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fill-1);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.ob-langs-sum:hover {
+  background: var(--fill-2);
+  color: var(--text);
+}
+.ob-langs-sum b {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+.ob-langs-list {
+  max-height: 128px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--fill-1);
+  text-align: left;
+  user-select: text;
+}
+.ob-langs-list p {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.ob-langs-list p:last-child {
+  margin-bottom: 0;
+}
+.ob-langs-list b {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+.ob-langs-note {
+  color: var(--text-3);
+}
+.ob-langs-sum[aria-expanded='true'] .icon:last-child {
+  transform: rotate(180deg);
+}
