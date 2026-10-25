@@ -85,7 +85,7 @@ VIEWS.home = {
       const ob = state.onboarding ?? {}
       const s = state.settings ?? {}
       const steps = []
-      if (!ob.asr) steps.push({ title: '语音识别还没配好', desc: '填上豆包或 OpenAI 的密钥，才能出字幕。', label: '去设置', run: () => openSettings('asr') })
+      if (!ob.asr) steps.push({ title: '语音识别还没配好', desc: '选本地识别，或填上 Soniox、豆包、OpenAI 的密钥，才能出字幕。', label: '去设置', run: () => openSettings('asr') })
       if (!ob.ai)
         steps.push({
           title: 'AI 服务还没连上',

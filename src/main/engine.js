@@ -7,6 +7,7 @@ import { pcm16ToFloat32, resample, scoreSegment } from './audio/voiceprint.js'
 import { OpenAIRealtimeASR } from './asr/openai.js'
 import { VolcStreamASR } from './asr/volc.js'
 import { LocalStreamASR } from './asr/local.js'
+import { SonioxStreamASR } from './asr/soniox.js'
 import { isQuestion, pickLastQuestion } from './assist/question.js'
 import { splitAnswer } from './assist/answerPrompt.js'
 import { checkFix, chunkCoverage, enhanceMessages, noDashes, parseEnhance, streamedHead, translateMessages } from './prompts.js'
@@ -14,7 +15,7 @@ import { keywordList } from './defaults.js'
 import { projectSettings } from './projects.js'
 import { isCrosstalk, questionRun, tokenize } from './speaker.js'
 import { joinFixed, splitSentences } from './text.js'
-import { LANG_NAMES, needsOpenAI, needsTranslation } from './languages.js'
+import { LANG_NAMES, needsMultilingual, needsTranslation } from './languages.js'
 import { modeSettings, speakerLabel } from './modes.js'
 import { LiveNotes } from './class/liveNotes.js'
 
@@ -42,6 +43,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 export function engineLabel(s) {
   if (s.engine === 'local') return '本地识别（X-ASR）'
+  if (s.engine === 'soniox') return s.sonioxGetKey ? '会员云识别（Soniox）' : 'Soniox 实时识别'
   if (s.volcUrl) return '会员云识别（豆包 2.0）'
   return s.engine === 'volc' ? `豆包流式识别（${s.volcResourceId}）` : `OpenAI ${s.openaiModel}`
 }
@@ -68,6 +70,10 @@ function createProvider(s) {
   if (s.engine === 'volc') {
     if (!s.volcAppId || !s.volcAccessToken) throw new Error('还没填豆包的 App ID 和 Access Token，去「设置」里填')
     return new VolcStreamASR({ appId: s.volcAppId, accessToken: s.volcAccessToken, resourceId: s.volcResourceId, hotwords, url: s.volcUrl })
+  }
+  if (s.engine === 'soniox') {
+    if (!s.sonioxKey && !s.sonioxGetKey) throw new Error('还没填 Soniox 的 API Key，去「设置」里填')
+    return new SonioxStreamASR({ key: s.sonioxKey, getKey: s.sonioxGetKey, language: s.language, context: s.context, hotwords })
   }
   if (!s.openaiKey) throw new Error('还没填 OpenAI API Key，去「设置」里填')
   return new OpenAIRealtimeASR({
@@ -343,8 +349,8 @@ export class MeetingEngine extends EventEmitter {
       this.sources = [...(classMic ? [] : ['system']), ...(withMic ? ['mic'] : [])]
       this.hotwords = hotwordList(s, extraKeywords)
       this.#buildPipelines(s)
-      if (needsOpenAI(s.language) && s.engine !== 'openai')
-        warnings.push({ text: `${s.engine === 'local' ? '本地识别' : '豆包'}只认中文和英文，听不懂${LANG_NAMES[s.language]}。在「设置 → 语音识别」里换成 OpenAI 再开始。`, code: 'asr-language' })
+      if (needsMultilingual(s.language) && s.engine !== 'openai' && s.engine !== 'soniox')
+        warnings.push({ text: `${s.engine === 'local' ? '本地识别' : '豆包'}只认中文和英文，听不懂${LANG_NAMES[s.language]}。在「设置 → 语音识别」里换成 Soniox 或 OpenAI 再开始。`, code: 'asr-language' })
       const vpLoad = withMic ? this.#loadVoiceprint(warnings) : null
       await Promise.all([...this.pipelines.values()].map((p) => p.provider.connect()))
       await vpLoad

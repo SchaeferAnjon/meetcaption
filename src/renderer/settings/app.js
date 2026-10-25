@@ -178,9 +178,11 @@ function buildAsr() {
     engineHint.textContent =
       s.engine === 'local'
         ? '在这台电脑上识别，免费，不用联网，也不用填 Key。中文、英文和中英夹杂都能认，说完一个词约半秒出字。专有名词偶尔听错，AI 纠错会按项目术语改回来。'
-        : s.engine === 'volc'
-          ? '豆包流式语音识别（火山引擎），国内网络可以直连，要自己开通、按小时付费。'
-          : 'OpenAI 实时转写，要 API Key，约 1 美元一小时，只在有人说话时计费。'
+        : s.engine === 'soniox'
+          ? 'Soniox 实时识别，60 种语言，中英文和外语都比豆包准，约 0.12 美元一小时，按连接时长计费。在 console.soniox.com 注册拿 API Key。'
+          : s.engine === 'volc'
+            ? '豆包流式语音识别（火山引擎），只认中文和英文，国内网络可以直连，要自己开通、按小时付费。'
+            : 'OpenAI 实时转写，要 API Key，约 1 美元一小时，只在有人说话时计费。'
   })
   const openaiRows = el(
     'div',
@@ -200,6 +202,7 @@ function buildAsr() {
       ),
     ),
   )
+  const sonioxRows = el('div', {}, P.row('Soniox API Key', P.textInput('sonioxKey', { secret: true, trim: true, label: 'Soniox API Key' })))
   const volcRows = el(
     'div',
     {},
@@ -215,6 +218,7 @@ function buildAsr() {
   )
   P.showWhen(openaiRows, (s) => s.engine === 'openai')
   P.showWhen(volcRows, (s) => s.engine === 'volc')
+  P.showWhen(sonioxRows, (s) => s.engine === 'soniox')
   P.showWhen(advanced, (s) => s.engine === 'openai')
   const test = P.testButton('测试', () => P.call('testAsr', {}), () => (P.get('engine') === 'local' ? '本地识别可以用了' : '连接成功，可以开始用了'))
   return [
@@ -229,6 +233,7 @@ function buildAsr() {
             'engine',
             [
               { value: 'local', label: '本地（免费）' },
+              { value: 'soniox', label: 'Soniox' },
               { value: 'volc', label: '豆包' },
               { value: 'openai', label: 'OpenAI' },
             ],
@@ -237,6 +242,7 @@ function buildAsr() {
           engineHint,
         ],
       ),
+      sonioxRows,
       openaiRows,
       volcRows,
       P.row('', test),
@@ -694,7 +700,7 @@ function buildMember() {
   const memberRows = [
     P.row('剩余场次', box),
     P.row('识别', P.segField('memberAsr', [
-      { value: 'cloud', label: '云识别（豆包 2.0）', icon: 'audio-lines' },
+      { value: 'cloud', label: '云识别（Soniox）', icon: 'audio-lines' },
       { value: 'local', label: '本地识别', icon: 'monitor' },
     ], { label: '会员用哪种识别' }), '云识别更准，专有名词少听错；本地识别在电脑上跑、断网也能用。两种都按场算，AI 照样能用。'),
   ]

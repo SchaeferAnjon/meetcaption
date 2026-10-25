@@ -161,7 +161,7 @@ function sidebarFooter() {
   const member = s.plan === 'member'
   const aiName = member ? '会员' : provider === 'chatgpt' ? 'ChatGPT' : provider === 'openai' ? 'OpenAI' : provider === 'custom' ? '自定义' : (llm?.label ?? '')
   const aiOk = llm ? Boolean(llm.ready) : Boolean(ob.ai)
-  const asrName = member ? (s.memberAsr === 'local' ? '本地' : '会员云') : s.engine === 'local' ? '本地' : s.engine === 'volc' ? '豆包' : 'OpenAI'
+  const asrName = member ? (s.memberAsr === 'local' ? '本地' : '会员云') : s.engine === 'local' ? '本地' : s.engine === 'soniox' ? 'Soniox' : s.engine === 'volc' ? '豆包' : 'OpenAI'
   const micOn = s.captureMic !== false
   const chips = el(
     'div.status-strip',
@@ -186,7 +186,7 @@ function sidebarFooter() {
       warn: !ob.asr,
       kind: '识别',
       label: asrName,
-      tip: ob.asr ? { title: '语音识别已配好', text: s.engine === 'local' ? '在这台电脑上识别，免费' : s.engine === 'volc' ? '豆包流式识别' : 'OpenAI 实时识别' } : { title: '语音识别还没配好', text: s.engine === 'local' ? '本地识别模型缺失，重新安装一下' : '点这里填密钥' },
+      tip: ob.asr ? { title: '语音识别已配好', text: s.engine === 'local' ? '在这台电脑上识别，免费' : s.engine === 'soniox' ? 'Soniox 实时识别' : s.engine === 'volc' ? '豆包流式识别' : 'OpenAI 实时识别' } : { title: '语音识别还没配好', text: s.engine === 'local' ? '本地识别模型缺失，重新安装一下' : '点这里填密钥' },
       onClick: () => openSettings(member ? 'member' : 'asr'),
     }),
   )

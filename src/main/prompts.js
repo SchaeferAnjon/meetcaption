@@ -1,8 +1,8 @@
 import { isMostlyChinese } from './text.js'
-import { isChinese, needsOpenAI, promptLang } from './languages.js'
+import { isChinese, needsMultilingual, promptLang } from './languages.js'
 
 // 对方说的是中英文以外的语言（德语课等）：告诉模型原文是什么语言，识别稿里的错字按这种语言去理解
-const sourceLine = (source) => (needsOpenAI(source) ? `发言的原文是${promptLang(source)}。` : '')
+const sourceLine = (source) => (needsMultilingual(source) ? `发言的原文是${promptLang(source)}。` : '')
 
 export function translateMessages({ sentence, previous, target, source, context, keywords }) {
   const lang = promptLang(target)
@@ -236,7 +236,7 @@ export function enhanceMessages({ sentence, previous = [], target = 'zh', source
         .join('\n'),
     )
   const numbered = tasks.length > 1 ? tasks.map((t, i) => `任务${'一二三四'[i]}：${t}`) : [`任务：${tasks[0] ?? ''}`]
-  const heard = needsOpenAI(source) ? promptLang(source).replace(/（.*）/, '') : '英语'
+  const heard = needsMultilingual(source) ? promptLang(source).replace(/（.*）/, '') : '英语'
   const audience =
     (scene === 'class' ? `你是课堂实时字幕助手，听众是中文母语的学生，${heard}听力一般。` : `你是会议实时字幕助手，听众是中文母语的研究生，${heard}听力一般。`) + sourceLine(source)
   const examples = correct ? [...CHUNK_EXAMPLES, FIX_EXAMPLE] : CHUNK_EXAMPLES

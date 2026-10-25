@@ -261,9 +261,13 @@ VIEWS.project = {
         t.addEventListener('blur', () => flush.flush())
         return el('label.info-field', {}, el('span.info-label', { text: label }), el('span.info-hint', { text: hint }), t)
       }
-      // 对方语言和翻译成什么：德语课可以译成英语。本地识别和豆包只认中英文，选了别的语言提示换 OpenAI
-      const langWarn = el('div.info-hint.lang-warn', {}, icon('triangle-alert', 13), el('span', { text: '本地识别和豆包只认中文和英文，这个语言要用 OpenAI 识别。' }), el('button.btn.btn-sm.btn-ghost', { type: 'button', onClick: () => openSettings('asr') }, '去换'))
-      const renderLangWarn = () => (langWarn.hidden = !(needsOpenAI(full.language ?? 'en') && state.settings?.engine !== 'openai'))
+      // 对方语言和翻译成什么：德语课可以译成英语。本地识别和豆包只认中英文，选了别的语言提示换 Soniox 或 OpenAI（会员的云识别是 Soniox，不提示）
+      const langWarn = el('div.info-hint.lang-warn', {}, icon('triangle-alert', 13), el('span', { text: '本地识别和豆包只认中文和英文，这个语言要用 Soniox 或 OpenAI 识别。' }), el('button.btn.btn-sm.btn-ghost', { type: 'button', onClick: () => openSettings('asr') }, '去换'))
+      const multiAsr = () => {
+        const s = state.settings ?? {}
+        return s.plan === 'member' ? s.memberAsr !== 'local' : s.engine === 'openai' || s.engine === 'soniox'
+      }
+      const renderLangWarn = () => (langWarn.hidden = !(needsMultilingual(full.language ?? 'en') && !multiAsr()))
       const lang = ui.select({
         options: SOURCE_LANGS,
         value: full.language ?? 'en',

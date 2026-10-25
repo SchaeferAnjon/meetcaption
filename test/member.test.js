@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
 import { WebSocketServer } from 'ws'
-import { Member, memberSettings, ASR_URL } from '../src/main/member/client.js'
+import { Member, memberSettings } from '../src/main/member/client.js'
 import { VolcStreamASR } from '../src/main/asr/volc.js'
 import { DEFAULTS, merge } from '../src/main/defaults.js'
 import { compatConfig, llmStatus } from '../src/main/llm/index.js'
@@ -74,13 +74,13 @@ test('一场：开始拿到票，心跳带着是否在记录，用完、自动�
   m.stop()
 })
 
-test('会员模式的实际设置：识别换成经服务器的豆包，AI 换成会员通道；场次不够退回本地、试用用完关 AI', () => {
-  const s = merge(DEFAULTS, { plan: 'member', llmProvider: 'openai', engine: 'local' })
-  const m = { session: { token: 'mcs_1' }, aiKey: () => 'mcs_1', noAi: false, fallback: false }
+test('会员模式的实际设置：识别换成 Soniox（向服务器换临时 Key），AI 换成会员通道；场次不够退回本地、试用用完关 AI', async () => {
+  const s = merge(DEFAULTS, { plan: 'member', llmProvider: 'openai', engine: 'local', sonioxKey: 'mine' })
+  const m = { session: { token: 'mcs_1' }, aiKey: () => 'mcs_1', asrKey: async () => ({ key: 'temp:1', maxMs: 900_000 }), noAi: false, fallback: false }
   const e = memberSettings(s, m)
-  assert.equal(e.engine, 'volc')
-  assert.equal(e.volcUrl, ASR_URL)
-  assert.equal(e.volcAccessToken, 'mcs_1')
+  assert.equal(e.engine, 'soniox')
+  assert.equal(e.sonioxKey, '', '不用自己填的 Key')
+  assert.deepEqual(await e.sonioxGetKey(), { key: 'temp:1', maxMs: 900_000 })
   const cfg = compatConfig(e)
   assert.match(cfg.baseUrl, /\/v1$/)
   assert.equal(cfg.key, 'mcs_1')

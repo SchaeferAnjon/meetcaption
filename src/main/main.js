@@ -16,6 +16,7 @@ import { RendererCapture } from './rendererCapture.js'
 import { ChatGPTAuth, complete, listModels, llmStatus, resolveModel, isAbort, PROVIDERS } from './llm/index.js'
 import { OpenAIRealtimeASR } from './asr/openai.js'
 import { VolcStreamASR } from './asr/volc.js'
+import { SonioxStreamASR } from './asr/soniox.js'
 import { LocalStreamASR, localAsrAvailable, prewarmLocalAsr, stopLocalAsr } from './asr/local.js'
 import { MODEL_ID, VoiceprintStore, loadVoiceprintModel } from './audio/voiceprint.js'
 import { WavCapture } from './audio/wav.js'
@@ -267,7 +268,7 @@ function onboardingStatus() {
     voiceprint: vpStatus().enrolled,
     ai: aiStatus(effective(s)).ready,
     // 会员的云识别不用 Key；选本地识别的照样看模型在不在
-    asr: s.plan === 'member' && s.memberAsr !== 'local' ? true : s.engine === 'local' || s.plan === 'member' ? localAsrAvailable() : s.engine === 'volc' ? Boolean(s.volcAppId && s.volcAccessToken) : Boolean(s.openaiKey),
+    asr: s.plan === 'member' && s.memberAsr !== 'local' ? true : s.engine === 'local' || s.plan === 'member' ? localAsrAvailable() : s.engine === 'volc' ? Boolean(s.volcAppId && s.volcAccessToken) : s.engine === 'soniox' ? Boolean(s.sonioxKey) : Boolean(s.openaiKey),
     project: projects.list().some((p) => p.id !== INBOX_ID && !p.archived),
   }
 }
@@ -948,6 +949,16 @@ async function startMemberSession() {
   }
 }
 
+// 会员：15 分钟两路都没认出一个字就自动暂停，不再计时（Soniox 是应用直连的，服务器看不到字，由这里判断）
+const MEMBER_IDLE_MS = 15 * 60_000
+let heardAt = 0
+function watchMemberIdle() {
+  setInterval(() => {
+    if (!member?.session || engine.state !== 'running' || engine.paused) return
+    if (Date.now() - heardAt > MEMBER_IDLE_MS) onMemberStop({ type: 'idle' }).catch((e) => console.error('[member]', e))
+  }, 30_000).unref?.()
+}
+
 /** 把主窗口叫出来、打开收费页。场次用完时（字幕不停，照常用本地识别记）先选好单买 1 场。 */
 function showPricing(opts) {
   showControl()
@@ -1323,10 +1334,16 @@ async function testAsr(patch) {
       ? new LocalStreamASR()
       : s.engine === 'volc'
         ? new VolcStreamASR({ appId: s.volcAppId, accessToken: s.volcAccessToken, resourceId: s.volcResourceId })
-        : new OpenAIRealtimeASR({ key: s.openaiKey, baseUrl: s.openaiBaseUrl, model: s.openaiModel, languages: [], delay: s.openaiDelay })
-  provider.on('fatal', () => {})
+        : s.engine === 'soniox'
+          ? new SonioxStreamASR({ key: s.sonioxKey })
+          : new OpenAIRealtimeASR({ key: s.openaiKey, baseUrl: s.openaiBaseUrl, model: s.openaiModel, languages: [], delay: s.openaiDelay })
+  let fatal = null
+  provider.on('fatal', (e) => (fatal = e))
   try {
     await provider.connect()
+    // Soniox 连上以后才看 Key：Key 不对时收到配置后 0.2 秒内回错误
+    if (s.engine === 'soniox') await new Promise((r) => setTimeout(r, 1500))
+    if (fatal) return { ok: false, error: fatal.message }
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e.message }
@@ -1637,6 +1654,7 @@ function wireEngine() {
     if (st.state === 'idle') member?.endSession()
     toUi('engine:state', { ...st, dir: sessionDir(st.sessionId ?? st.lastSessionId) })
     if (st.state === 'running') {
+      heardAt = Date.now()
       classAnswered = false
       // 上一场按快捷键藏起来的字幕，新的一场重新显示（不然会以为坏了）
       overlayWanted = true
@@ -1658,17 +1676,20 @@ function wireEngine() {
     }
   })
   engine.on('segment', (seg) => {
+    if (seg.text) heardAt = Date.now()
     toUi('engine:segment', seg)
     toOverlay('overlay:segment', seg)
   })
   engine.on('level', (lv) => toUi('engine:level', lv))
   engine.on('pause', (p) => {
+    if (!p.paused) heardAt = Date.now()
     member?.setRunning(!p.paused)
     toUi('engine:pause', p)
     toOverlay('overlay:config', overlayConfig())
     updateTrayMenu()
   })
   engine.on('member', (m) => onMemberStop(m).catch((e) => console.error('[member]', e)))
+  watchMemberIdle()
   engine.on('devices', (d) => toUi('engine:devices', d))
   engine.on('notice', (n) => toUi('engine:notice', n))
   engine.on('notes', (n) => toUi('notes:update', n))

@@ -8,7 +8,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 export const API = (process.env.MEETCAPTION_API ?? 'https://api.us-cloud.uk').replace(/\/+$/, '')
-export const ASR_URL = `${API.replace(/^http/, 'ws')}/v1/asr`
 
 export const PACKS = [
   { id: 'p1', sessions: 1, cny: 12.8, usd: 1.99 },
@@ -199,6 +198,13 @@ export class Member extends EventEmitter {
     return r
   }
 
+  /** 识别要连 Soniox 时调：拿这一场的票换一把临时 Key（只能连一次，最长连 maxMs）。 */
+  async asrKey() {
+    const s = this.session
+    if (!s) throw new MemberError('ended', '这一场已经结束了')
+    return this.#call('POST', '/v1/session/asr-key', { token: s.token })
+  }
+
   /** 每 30 秒一次；暂停时 running=false（暂停的时间不计）。服务器说用完了、自动暂停了就发 'session' 事件。 */
   async heartbeat() {
     const s = this.session
@@ -273,19 +279,17 @@ export class Member extends EventEmitter {
 }
 
 /**
- * 会员模式下实际用的设置：识别换成经我们服务器的豆包（选了本地识别、或场次用完退回时用本地），AI 换成会员通道。
- * 只在主进程内部用；设置窗口看到的还是用户自己存的设置。
+ * 会员模式下实际用的设置：识别换成 Soniox，应用拿场次票向我们的服务器换临时 Key 直连（选了本地识别、或场次用完退回时用本地），
+ * AI 换成会员通道。只在主进程内部用；设置窗口看到的还是用户自己存的设置。
  */
 export function memberSettings(s, m) {
   if (s.plan !== 'member') return s
   const local = s.memberAsr === 'local' || m.fallback || !m.session
   return {
     ...s,
-    engine: local ? 'local' : 'volc',
-    volcAppId: 'member',
-    volcAccessToken: m.session?.token ?? '',
-    volcResourceId: 'volc.seedasr.sauc.duration',
-    volcUrl: ASR_URL,
+    engine: local ? 'local' : 'soniox',
+    sonioxKey: '',
+    sonioxGetKey: () => m.asrKey(),
     llmProvider: 'member',
     llmFastModel: 'deepseek-flash',
     llmSummaryModel: 'deepseek-flash',

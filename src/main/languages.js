@@ -13,7 +13,7 @@ const PROMPT_NAMES = { zh: '简体中文', 'zh-Hant': '繁体中文（繁體字�
 export const promptLang = (code) => PROMPT_NAMES[code] ?? PROMPT_NAMES.zh
 
 /** 只有 OpenAI 识别能认的语言（中英文和自动以外的）。 */
-export const needsOpenAI = (lang) => !['zh', 'en', 'auto'].includes(lang)
+export const needsMultilingual = (lang) => !['zh', 'en', 'auto'].includes(lang)
 
 // 拉丁字母的几种语言各自最常见的虚词：数一句里各有几个，最多的那种就是（一个都没有返回 null）
 const STOP = {
