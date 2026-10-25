@@ -637,12 +637,12 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
   const ACTIONS = {
     talk: { name: t('对方说话，字幕就出来'), desc: t('对方一开口，屏幕最上层就出字幕：一个词一个词地跟着，<b>不用对方开字幕</b>，Zoom、Teams、腾讯会议都行。'), step: t('对方说的英文一句句出来'), dur: 6200,
       html: () => call(hud()), run(s, at) { const ws = [...s.querySelectorAll('.w')]; ws.forEach((w, i) => at(300 + i * 230, () => w.classList.add('on'))); } },
-    color: { name: t('中文跟在下面，意群同色'), desc: t('每句英文下面跟一句中文，<b>同一个意思用同一种颜色</b>，顺序倒过来也一眼对得上。'), step: t('英文和中文按颜色对上'), dur: 6400,
+    color: { name: t('译文跟在下面，意群同色'), desc: t('每句原文下面跟一句译文，<b>同一个意思用同一种颜色</b>，顺序倒过来也一眼对得上。'), step: t('原文和译文按颜色对上'), dur: 6400,
       html: () => call(hud()), run(s, at) { s.querySelectorAll('.w').forEach((w) => w.classList.add('on')); const ck = [...s.querySelectorAll('.ck')], zc = [...s.querySelectorAll('.zc')]; [[0, 0], [1, 2], [2, 1]].forEach(([e, z], j) => at(500 + j * 900, () => { ck[e].classList.add('col'); zc[z].classList.add('on'); })); at(3300, () => zc[3].classList.add('on')); } },
     term: { name: t('鼠标停在术语上看解释'), desc: t('专业词两边都画了虚线，<b>鼠标停上去</b>就弹出一句解释；字幕窗不挡点击，会议软件照常用。'), step: t('停在「ablation」上'), dur: 6000,
       html: () => call(hud() + t('<div class="tip"><b>ablation · 消融实验</b><br>去掉模型的某个部分，看效果掉多少，用来判断这部分有没有用。</div>') + CURSOR),
       run(s, at) { s.querySelectorAll('.w,.zc').forEach((w) => w.classList.add('on')); s.querySelectorAll('.ck').forEach((w) => w.classList.add('col')); const c = s.querySelector('.cursor'), tip = s.querySelector('.tip'), term = s.querySelector('.caphud .term'); at(400, () => { const o = s.getBoundingClientRect(), r = term.getBoundingClientRect(), k = o.width / W || 1; const x = (r.left - o.left + r.width * 0.5) / k, top = (r.top - o.top) / k; c.style.left = `${x - 3}px`; c.style.top = `${top + (r.height / k) * 0.45}px`; tip.style.left = `${Math.max(8, Math.min(W - 238, x - 115))}px`; tip.style.bottom = `${H - top + 8}px`; }); at(1500, () => tip.classList.add('on')); } },
-    ask: { name: t('对方提问，答案就浮出来'), desc: t('听出是在问你，右上角的答题框<b>马上给出能照着说的回答</b>，下面带中文。'), step: t('对方问完，答案自己出来'), dur: 7600,
+    ask: { name: t('对方提问，答案就浮出来'), desc: t('听出是在问你，右上角的答题框<b>马上给出能照着说的回答</b>，下面带译文。'), step: t('对方问完，答案自己出来'), dur: 7600,
       html: () => call(t(`<div class="caphud"><div class="en"><span class="qtag">提问</span><span class="qq">What would you do differently if you had more time?</span></div><div class="zh" style="color:#bbb">如果时间更多，你会怎么做得不一样？</div></div><div class="ansbox"><div class="ah"><span class="dt"></span>AI 回答 · 1.2 秒</div><div class="q">如果时间更多，你会怎么做？</div><div class="a"></div><div class="az">我会先缩小实验规模，在一个数据集上验证假设，再扩大。</div></div>`)),
       run(s, at) { at(600, () => s.querySelector('.qtag').classList.add('on')); at(1100, () => s.querySelector('.ansbox').classList.add('on')); const t = "I'd scale the experiment down first, validate the idea on one dataset, then expand."; const a = s.querySelector('.a'); for (let i = 0; i <= t.length; i += 3) at(1500 + i * 28, () => (a.textContent = t.slice(0, i))); at(1500 + t.length * 28 + 100, () => { a.textContent = t; s.querySelector('.az').classList.add('on'); }); } },
     key: { name: t('没自动出来，按 ⌥⌘A'), desc: t('老师点名、对方没用问号的时候，<b>按一下快捷键</b>，AI 就回答刚才那句。在任何软件里都能按。'), step: t('按快捷键让 AI 回答'), dur: 6400,
@@ -742,10 +742,24 @@ function heroLines(v) {
 }
 const HERO_A = `<h1 class="thesis${HERO_LANGS[heroLang].latin ? ' latin' : ''}" id="thesis" lang="${HERO_LANGS[heroLang].code}" aria-label="${HERO_LANGS[heroLang].big.join(' ')}">${heroLines(HERO_LANGS[heroLang])}</h1>
 `;
-const HERO_B = t(`<h1 class="thesis" id="thesis" aria-label="对方一问，答案就到。">
-  <span class="ln"><span class="fl" style="--r:-4deg;--y:-.3em"><span class="tx">So, um,</span></span><span class="big" data-k="1">对方</span><span class="fl" style="--r:3deg;--y:.35em"><span class="tx">what would you</span></span><span class="big" data-k="2">一问，</span></span>
-  <span class="ln"><span class="fl" style="--r:3.5deg;--y:.3em"><span class="tx">do differently</span></span><span class="big dim" data-k="3">答案</span><span class="fl" style="--r:-3deg;--y:-.3em"><span class="tx">with more time?</span><span class="qmark">提问</span></span><span class="big dim" data-k="4">就到。</span><span class="caret"></span></span></h1>
-  <div class="ansslot"><div class="anscard" id="anscard"><div class="ah"><i></i>可以这样答 · 1.2 秒</div>I'd scale it down first, validate on one dataset, then expand.<div class="zh">我会先缩小规模，在一个数据集上验证，再扩大。</div></div></div>`);
+// AI 答题那块的大标题：每种语言手写四小段（「对方 / 一问， / 答案 / 就到。」），灰色小字是对方说的英文；答题卡片的标题和译文行也按页面语言写
+// （英文页的译文行用中文，和其他演示一致：英文下面跟一句别的语言）
+const HERO_B_TEXT = {
+  zh: { big: ['对方', '一问，', '答案', '就到。'], q: '提问', head: '可以这样答 · 1.2 秒', tr: '我会先缩小规模，在一个数据集上验证，再扩大。' },
+  'zh-Hant': { big: ['對方', '一問，', '答案', '就到。'], q: '提問', head: '可以這樣答 · 1.2 秒', tr: '我會先縮小規模，在一個資料集上驗證，再擴大。' },
+  en: { latin: true, big: ['They', 'ask,', 'the answer', 'is here.'], q: 'Question', head: 'You could say · 1.2 s', tr: '我会先缩小规模，在一个数据集上验证，再扩大。' },
+  ja: { big: ['相手の', '質問に、', '答えが', 'すぐ出る。'], q: '質問', head: 'こう答えられます · 1.2 秒', tr: 'まず規模を小さくして、1 つのデータセットで検証してから広げます。' },
+  ko: { big: ['상대가', '물으면,', '답이', '바로 나와요.'], q: '질문', head: '이렇게 답해 보세요 · 1.2초', tr: '먼저 규모를 줄여 데이터셋 하나로 검증한 뒤 넓히겠습니다.' },
+  de: { latin: true, big: ['Sie', 'fragen,', 'die Antwort', 'ist da.'], q: 'Frage', head: 'So könntest du antworten · 1,2 s', tr: 'Ich würde erst klein anfangen, auf einem Datensatz prüfen und dann ausweiten.' },
+  fr: { latin: true, big: ['Une', 'question,', 'la réponse', 'est là.'], q: 'Question', head: 'Vous pourriez répondre · 1,2 s', tr: "Je commencerais petit, je validerais sur un jeu de données, puis j'élargirais." },
+  es: { latin: true, big: ['Te', 'preguntan,', 'la respuesta', 'ya está.'], q: 'Pregunta', head: 'Podrías responder · 1,2 s', tr: 'Primero lo haría a pequeña escala, lo validaría con un conjunto de datos y luego lo ampliaría.' },
+  it: { latin: true, big: ['Ti', 'chiedono,', 'la risposta', 'è già qui.'], q: 'Domanda', head: 'Potresti rispondere · 1,2 s', tr: 'Prima ridurrei la scala, convaliderei su un dataset e poi amplierei.' },
+};
+const HB = HERO_B_TEXT[LANG] || HERO_B_TEXT.en;
+const HERO_B = `<h1 class="thesis${HB.latin ? ' latin' : ''}" id="thesis" lang="${LOCALE}" aria-label="${HB.big.join(' ')}">
+  <span class="ln"><span class="fl" style="--r:-4deg;--y:-.3em"><span class="tx">So, um,</span></span><span class="big" data-k="1">${HB.big[0]}</span><span class="fl" style="--r:3deg;--y:.35em"><span class="tx">what would you</span></span><span class="big" data-k="2">${HB.big[1]}</span></span>
+  <span class="ln"><span class="fl" style="--r:3.5deg;--y:.3em"><span class="tx">do differently</span></span><span class="big dim" data-k="3">${HB.big[2]}</span><span class="fl" style="--r:-3deg;--y:-.3em"><span class="tx">with more time?</span><span class="qmark">${HB.q}</span></span><span class="big dim" data-k="4">${HB.big[3]}</span><span class="caret"></span></span></h1>
+  <div class="ansslot"><div class="anscard" id="anscard"><div class="ah"><i></i>${HB.head}</div>I'd scale it down first, validate on one dataset, then expand.<div class="zh">${HB.tr}</div></div></div>`;
 
 function home() {
   return t(`<section class="hero" data-part="首屏"><div class="wrap">
@@ -790,7 +804,7 @@ function home() {
   <section class="sec" data-part="价格条"><div class="wrap center"><span class="kicker">价格</span><h2 class="h2">软件开源免费，会员买的是省心。</h2>{9}<div style="margin-top:26px"><a class="sbtn" data-go="pricing">看价格详情</a></div></div></section>
 
   <section class="sec" data-part="常见问题"><div class="wrap center"><span class="kicker">常见问题</span><h2 class="h2">常见问题</h2><div class="faq" style="text-align:left">{10}</div></div></section>
-  <section class="finale"><div class="wrap"><h2 class="h2">下次开会，<br>试试看。</h2><p class="hero-sub" style="margin-top:-6px">新用户送 1 场，不用填任何东西。</p><div class="hero-cta">{11}<a class="sbtn lg" data-go="pricing">看价格</a></div></div></section>`, DIR === 'A' ? HERO_A : HERO_B, DIR === 'A' ? t('开 Zoom、Teams、腾讯会议或者上网课，电脑里放出来的声音实时变成字幕，每句下面跟一句译文，同一个意思同一种颜色。支持 60 种语言的识别和翻译。') : t('开会、面试、上网课时，听出是在问你，屏幕角上马上给出能照着说的回答。字幕、中文、答案都只有你看得见。'), dlPair(), RECOG_LANGS.length, RECOG_LANGS.length, langList(), HERO_B.replace('id="thesis"', 'id="thesis2"').replace('id="anscard"', 'id="anscard2"'), [['captions', t('悬浮双语字幕'), t('浮在所有窗口最上层，点击穿透不挡操作；放在屏幕上半就往下长，下半就往上长。')], ['message-square-text', t('AI 答题'), t('听出是在问你就给出能照着说的回答，带中文；没自动出来就按一下快捷键。')], ['notebook-pen', t('课堂笔记'), t('每两分钟整理一版实时笔记，截下网课课件，下课生成图文并茂的课堂笔记。')], ['fingerprint-pattern', t('分得清是谁在说'), t('录 12 秒声纹就能分清你和对方；外放时串进麦克风的声音也能滤掉。')], ['list-todo', t('会后纪要和待办'), t('一键整理要点、修改意见、待办和截止日期，「下周五」会换算成具体日期。')], ['eye-off', t('共享屏幕时隐藏'), t('对方看你的共享屏幕、录屏、截图，都看不到字幕和答题框。')]].map(([i, t, d]) => `<div class="feat"><div class="ic"><svg class="i"><use href="#i-${i}"/></svg></div><b>${t}</b><p>${d}</p></div>`).join(''), [t('本地识别时的声音'), t('会议记录、纪要、课堂笔记'), t('声纹'), t('你填的 API Key')].map((x) => `<li><svg class="i"><use href="#i-check"/></svg>${x}</li>`).join(''), plans(false), faqHome(), dlPair());
+  <section class="finale"><div class="wrap"><h2 class="h2">下次开会，<br>试试看。</h2><p class="hero-sub" style="margin-top:-6px">新用户送 1 场，不用填任何东西。</p><div class="hero-cta">{11}<a class="sbtn lg" data-go="pricing">看价格</a></div></div></section>`, DIR === 'A' ? HERO_A : HERO_B, DIR === 'A' ? t('开 Zoom、Teams、腾讯会议或者上网课，电脑里放出来的声音实时变成字幕，每句下面跟一句译文，同一个意思同一种颜色。支持 60 种语言的识别和翻译。') : t('开会、面试、上网课时，听出是在问你，屏幕角上马上给出能照着说的回答。字幕、译文、答案都只有你看得见。'), dlPair(), RECOG_LANGS.length, RECOG_LANGS.length, langList(), HERO_B.replace('id="thesis"', 'id="thesis2"').replace('id="anscard"', 'id="anscard2"'), [['captions', t('悬浮双语字幕'), t('浮在所有窗口最上层，点击穿透不挡操作；放在屏幕上半就往下长，下半就往上长。')], ['message-square-text', t('AI 答题'), t('听出是在问你就给出能照着说的回答，带译文；没自动出来就按一下快捷键。')], ['notebook-pen', t('课堂笔记'), t('每两分钟整理一版实时笔记，截下网课课件，下课生成图文并茂的课堂笔记。')], ['fingerprint-pattern', t('分得清是谁在说'), t('录 12 秒声纹就能分清你和对方；外放时串进麦克风的声音也能滤掉。')], ['list-todo', t('会后纪要和待办'), t('一键整理要点、修改意见、待办和截止日期，「下周五」会换算成具体日期。')], ['eye-off', t('共享屏幕时隐藏'), t('对方看你的共享屏幕、录屏、截图，都看不到字幕和答题框。')]].map(([i, t, d]) => `<div class="feat"><div class="ic"><svg class="i"><use href="#i-${i}"/></svg></div><b>${t}</b><p>${d}</p></div>`).join(''), [t('本地识别时的声音'), t('会议记录、纪要、课堂笔记'), t('声纹'), t('你填的 API Key')].map((x) => `<li><svg class="i"><use href="#i-check"/></svg>${x}</li>`).join(''), plans(false), faqHome(), dlPair());
 }
 function faqHome() {
   return [[t('对方不开字幕也行吗？'), t('行。它听的是你电脑里放出来的声音，Zoom、Teams、腾讯会议、网课网页都一样，不用对方做任何事。')], [t('不联网能用吗？'), t('字幕能：本地识别在你电脑上跑。翻译、AI 答题、笔记要联网。')], [t('怎么收费？'), t('新用户送 1 场，最长 1 小时，什么都不用填。之后两种选择：填你自己的 AI Key，永久免费；或者按场买会员，不用配任何 Key，¥12.8 一场起。详见 <a data-go="pricing" style="text-decoration:underline">价格</a>。')], [t('对方能看到字幕吗？'), t('看不到。共享屏幕、录屏、截图里都没有字幕和答题框。')], [t('它是开源的吗？'), t('是，GPL-3.0，代码在 GitHub。自己编译的版本填自己的 Key，功能一样。')], [t('Mac 打开时说「无法验证开发者」？'), t('去「系统设置 → 隐私与安全性」，拉到最下面点「仍要打开」，只要第一次。')]].map(([q, a]) => `<details><summary>${q}</summary><div class="ans">${a}</div></details>`).join('');
@@ -909,7 +923,9 @@ function initThesis(th, dir) {
   const at = (ms, f) => timers.push(setTimeout(f, ms));
   const card = th.nextElementSibling?.querySelector('.anscard');
   let fls, bigs, texts;
-  const load = () => { fls = $$('.fl', th); bigs = $$('.big', th); texts = fls.map((f) => f.querySelector('.tx').textContent); };
+  // 长的语言（意大利语、法语）或窄屏时大字会超出页面：字都在的时候量一次，宽了就按比例缩小字号
+  const fit = () => { const clean = th.classList.contains('clean'); th.classList.remove('clean'); th.style.fontSize = ''; const room = th.parentElement.clientWidth; const w = th.scrollWidth; if (w > room) th.style.fontSize = `${(parseFloat(getComputedStyle(th).fontSize) * room) / w * 0.98}px`; if (clean) th.classList.add('clean'); };
+  const load = () => { fls = $$('.fl', th); bigs = $$('.big', th); texts = fls.map((f) => f.querySelector('.tx').textContent); fit(); };
   load();
   // A 方向：每轮换一种语言；点语言按钮直接跳过去
   const setLang = (i) => {
@@ -949,8 +965,8 @@ function initThesis(th, dir) {
   cycle(true);
 }
 function initStage() {
-  const order = DIR === 'A' ? [[t('双语字幕'), t('英文下面跟中文，意群同色'), ['talk', 'color', 'term']], [t('AI 答题'), t('问题一来，答案就到'), ['ask', 'key', 'share']], [t('课堂笔记'), t('边听边记，下课出笔记'), ['notes', 'shot']]]
-    : [[t('AI 答题'), t('问题一来，答案就到'), ['ask', 'key', 'share']], [t('双语字幕'), t('英文下面跟中文，意群同色'), ['talk', 'color', 'term']], [t('课堂笔记'), t('边听边记，下课出笔记'), ['notes', 'shot']]];
+  const order = DIR === 'A' ? [[t('双语字幕'), t('原文下面跟译文，意群同色'), ['talk', 'color', 'term']], [t('AI 答题'), t('问题一来，答案就到'), ['ask', 'key', 'share']], [t('课堂笔记'), t('边听边记，下课出笔记'), ['notes', 'shot']]]
+    : [[t('AI 答题'), t('问题一来，答案就到'), ['ask', 'key', 'share']], [t('双语字幕'), t('原文下面跟译文，意群同色'), ['talk', 'color', 'term']], [t('课堂笔记'), t('边听边记，下课出笔记'), ['notes', 'shot']]];
   player = Scenes.mount($('#stage'));
   let tab = 0, sub = 0, tm = null;
   const render = () => {
