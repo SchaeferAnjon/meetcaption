@@ -716,6 +716,8 @@ const FILES = { arm: ['MeetCaption-mac-arm64.dmg', t('Mac · Apple 芯片（M1 �
 let OS = /Win/.test(navigator.platform) ? 'win' : 'mac';
 const st = { cur: LANG.startsWith('zh') ? 'cny' : 'usd', pack: 'p10' };
 const ck = (t) => `<li><svg class="i"><use href="#i-check"/></svg><span>${t}</span></li>`;
+// 首屏和页尾两个下载按钮都摆出来：Windows 在左、Mac 在右（偏好「首屏下载 Win 在左」）
+const dlPair = () => [['win', 'windows', t('免费下载 Windows 版')], ['arm', 'apple', t('免费下载 Mac 版')]].map(([k, icon, label]) => `<a class="sbtn ink lg" data-dl="${k}"><svg><use href="#i-${icon}"/></svg><span>${label}</span></a>`).join('');
 const dlBtn = (cls = 'sbtn ink lg') => `<span style="position:relative;display:inline-block"><a class="${cls}" data-dl="auto"><svg><use href="#i-download"/></svg><span class="dltext">${OS === 'win' ? t('免费下载 Windows 版') : t('免费下载 Mac 版')}</span></a></span>`;
 
 /* ---------------- 首屏：两个方向不同 ---------------- */
@@ -752,7 +754,7 @@ function home() {
     <p class="hero-sub">{1}</p>
     <div class="hero-cta">{2}<a class="sbtn lg" href="https://github.com/SchaeferAnjon/meetcaption" target="_blank" rel="noopener"><svg><use href="#i-github"/></svg>在 GitHub 看源码</a></div>
     <p class="hero-meta"><b>不用注册，不用登录</b> · 新用户送 1 场 · macOS 14.2+ · Windows 10+ · 开源 GPL-3.0</p>
-    <p class="hero-alt">也有 <a data-dl="{3}">{4}</a> · <a data-dl="intel">Intel 芯片的 Mac</a> · <span id="verline"></span></p>
+    <p class="hero-alt"><a data-dl="intel">Intel 芯片的 Mac</a> · <span id="verline"></span></p>
   </div>
   <div class="stagewrap" id="how" data-part="演示舞台"><div id="stage"></div><div class="stabs" id="stabs"></div><p class="stage-note">界面演示动画</p></div>
   <div class="wrap"><dl class="facts"><div class="fact"><dt>开源</dt><dd class="v">GPL-3.0</dd><dd>代码全部公开，可以自己编译</dd></div><div class="fact"><dt>账号</dt><dd class="v">不需要</dd><dd>不用手机号、不用邮箱，打开就能用</dd></div><div class="fact"><dt>字幕</dt><dd class="v">本地识别</dd><dd>在你电脑上跑，永久免费，断网也行</dd></div><div class="fact"><dt>隐私</dt><dd class="v">只在你电脑上</dd><dd>会议记录、声纹、Key 都不上传</dd></div></dl></div></section>
@@ -764,19 +766,19 @@ function home() {
       <div class="case"><div class="tg"><svg class="i"><use href="#i-graduation-cap"/></svg>网课 · 老师讲概念</div><div class="bub"><span class="c1">If the learning rate is too large,</span> <span class="c2">gradient descent</span> <span class="c3">will oscillate.</span><div class="zh"><span class="c1">学习率太大的话</span>，<span class="c2">梯度下降</span><span class="c3">会来回震荡</span>。</div></div><div class="note">右边的实时笔记记下「★ 考点：学习率怎么选」，下课生成图文笔记。</div></div>
     </div></div></section>
 
-  <section class="sec" id="langs" data-part="支持的语言"><div class="wrap center"><span class="kicker">支持的语言</span><h2 class="h2">{5} 种语言，<br>听得懂，也翻得出。</h2>
-    <p class="hero-sub">对方说这 {6} 种语言里的任何一种，都能出字幕，再翻成其中任意一种（另加繁体中文）。纪要、笔记和 AI 答题的要点，也用你选的那种语言写。</p>
-    <div class="langs60">{7}</div>
+  <section class="sec" id="langs" data-part="支持的语言"><div class="wrap center"><span class="kicker">支持的语言</span><h2 class="h2">{3} 种语言，<br>听得懂，也翻得出。</h2>
+    <p class="hero-sub">对方说这 {4} 种语言里的任何一种，都能出字幕，再翻成其中任意一种（另加繁体中文）。纪要、笔记和 AI 答题的要点，也用你选的那种语言写。</p>
+    <div class="langs60">{5}</div>
     <p class="langnote">软件界面有 9 种语言：简体中文、繁體中文、English、日本語、한국어、Deutsch、Français、Español、Italiano。本地识别（免费、不联网）只认中文和英文，其他语言用云识别。</p></div></section>
 
-  <section class="sec ask" id="ask" data-part="AI 答题"><div class="wrap center"><span class="kicker">AI 答题</span>{8}
+  <section class="sec ask" id="ask" data-part="AI 答题"><div class="wrap center"><span class="kicker">AI 答题</span>{6}
     <p class="hero-sub">开会、面试、上网课时，听出是在问你，屏幕角上马上给出能照着说的回答，下面带中文。没自动出来就按一下快捷键；共享屏幕时对方看不到。</p></div></section>
 
   <section class="sec" data-part="功能"><div class="wrap center"><span class="kicker">不止是字幕</span><h2 class="h2">开会、面试、上课，<br>一个软件都接住。</h2>
-    <div class="feats" style="text-align:left">{9}</div></div></section>
+    <div class="feats" style="text-align:left">{7}</div></div></section>
 
   <section class="night" id="open" data-part="开源与隐私"><div class="wrap"><span class="kicker">开源与隐私</span><h2 class="h2">你的话去了哪里，<br>每一步都查得到。</h2><p class="lede">用本地识别时，声音不出你的电脑。会员的云识别把声音直接发给 Soniox；要翻译、要回答的句子发给 AI，发给谁由你选。</p>
-    <div class="flow"><div class="box"><h4><svg class="i"><use href="#i-hard-drive"/></svg>留在你的电脑上</h4><ul>{10}</ul></div>
+    <div class="flow"><div class="box"><h4><svg class="i"><use href="#i-hard-drive"/></svg>留在你的电脑上</h4><ul>{8}</ul></div>
       <div class="arrowcol"><span>要翻译、要回答的句子</span><div class="ar"></div><span>不带声音，不带记录</span></div>
       <div class="box"><h4><svg class="i"><use href="#i-sparkles"/></svg>AI 服务</h4><ul><li><svg class="i"><use href="#i-check"/></svg>自带 Key：直接发给你选的服务商，不经过我们</li><li><svg class="i"><use href="#i-check"/></svg>试用和会员：经我们的服务器转给模型，不保存</li><li><svg class="i"><use href="#i-check"/></svg>会员的云识别：声音从你的电脑直接发给 Soniox，不经过我们</li></ul></div></div>
     <div class="ocells"><div class="ocell"><b>不需要账号</b>没有注册、没有登录。买场次付完款，授权码直接显示，也自动加到应用里。</div><div class="ocell"><b>Key 只在本机</b>Mac 上存在本机设置文件，Windows 用系统加密，不上传。</div><div class="ocell"><b>代码公开</b>GPL-3.0，每一步数据去了哪里都能自己核对，也能自己编译。</div></div></div></section>
@@ -785,10 +787,10 @@ function home() {
     <div class="steps3" style="text-align:left"><div class="st3"><div class="n">1</div><b>下载安装</b><p>Mac 第一次打开时，在「系统设置 → 隐私与安全性」里点「仍要打开」。</p></div><div class="st3"><div class="n">2</div><b>给两个权限</b><p>麦克风和电脑声音，第一次打开就问好，开会时不再弹框。</p></div><div class="st3"><div class="n">3</div><b>开会时按一下</b><p>在会议软件里按 ⌥⌘R 开始记录，字幕马上出来。</p></div></div>
     <p class="steps-more">想自己配 Key、长期免费用？<a data-go="guide">跟着图文教程，5 分钟搞定 →</a></p></div></section>
 
-  <section class="sec" data-part="价格条"><div class="wrap center"><span class="kicker">价格</span><h2 class="h2">软件开源免费，会员买的是省心。</h2>{11}<div style="margin-top:26px"><a class="sbtn" data-go="pricing">看价格详情</a></div></div></section>
+  <section class="sec" data-part="价格条"><div class="wrap center"><span class="kicker">价格</span><h2 class="h2">软件开源免费，会员买的是省心。</h2>{9}<div style="margin-top:26px"><a class="sbtn" data-go="pricing">看价格详情</a></div></div></section>
 
-  <section class="sec" data-part="常见问题"><div class="wrap center"><span class="kicker">常见问题</span><h2 class="h2">常见问题</h2><div class="faq" style="text-align:left">{12}</div></div></section>
-  <section class="finale"><div class="wrap"><h2 class="h2">下次开会，<br>试试看。</h2><p class="hero-sub" style="margin-top:-6px">新用户送 1 场，不用填任何东西。</p><div class="hero-cta">{13}<a class="sbtn lg" data-go="pricing">看价格</a></div></div></section>`, DIR === 'A' ? HERO_A : HERO_B, DIR === 'A' ? t('开 Zoom、Teams、腾讯会议或者上网课，电脑里放出来的声音实时变成字幕，每句下面跟一句译文，同一个意思同一种颜色。支持 60 种语言的识别和翻译。') : t('开会、面试、上网课时，听出是在问你，屏幕角上马上给出能照着说的回答。字幕、中文、答案都只有你看得见。'), dlBtn(), OS === 'win' ? 'arm' : 'win', OS === 'win' ? t('Mac 版') : t('Windows 版'), RECOG_LANGS.length, RECOG_LANGS.length, langList(), HERO_B.replace('id="thesis"', 'id="thesis2"').replace('id="anscard"', 'id="anscard2"'), [['captions', t('悬浮双语字幕'), t('浮在所有窗口最上层，点击穿透不挡操作；放在屏幕上半就往下长，下半就往上长。')], ['message-square-text', t('AI 答题'), t('听出是在问你就给出能照着说的回答，带中文；没自动出来就按一下快捷键。')], ['notebook-pen', t('课堂笔记'), t('每两分钟整理一版实时笔记，截下网课课件，下课生成图文并茂的课堂笔记。')], ['fingerprint-pattern', t('分得清是谁在说'), t('录 12 秒声纹就能分清你和对方；外放时串进麦克风的声音也能滤掉。')], ['list-todo', t('会后纪要和待办'), t('一键整理要点、修改意见、待办和截止日期，「下周五」会换算成具体日期。')], ['eye-off', t('共享屏幕时隐藏'), t('对方看你的共享屏幕、录屏、截图，都看不到字幕和答题框。')]].map(([i, t, d]) => `<div class="feat"><div class="ic"><svg class="i"><use href="#i-${i}"/></svg></div><b>${t}</b><p>${d}</p></div>`).join(''), [t('本地识别时的声音'), t('会议记录、纪要、课堂笔记'), t('声纹'), t('你填的 API Key')].map((x) => `<li><svg class="i"><use href="#i-check"/></svg>${x}</li>`).join(''), plans(false), faqHome(), dlBtn());
+  <section class="sec" data-part="常见问题"><div class="wrap center"><span class="kicker">常见问题</span><h2 class="h2">常见问题</h2><div class="faq" style="text-align:left">{10}</div></div></section>
+  <section class="finale"><div class="wrap"><h2 class="h2">下次开会，<br>试试看。</h2><p class="hero-sub" style="margin-top:-6px">新用户送 1 场，不用填任何东西。</p><div class="hero-cta">{11}<a class="sbtn lg" data-go="pricing">看价格</a></div></div></section>`, DIR === 'A' ? HERO_A : HERO_B, DIR === 'A' ? t('开 Zoom、Teams、腾讯会议或者上网课，电脑里放出来的声音实时变成字幕，每句下面跟一句译文，同一个意思同一种颜色。支持 60 种语言的识别和翻译。') : t('开会、面试、上网课时，听出是在问你，屏幕角上马上给出能照着说的回答。字幕、中文、答案都只有你看得见。'), dlPair(), RECOG_LANGS.length, RECOG_LANGS.length, langList(), HERO_B.replace('id="thesis"', 'id="thesis2"').replace('id="anscard"', 'id="anscard2"'), [['captions', t('悬浮双语字幕'), t('浮在所有窗口最上层，点击穿透不挡操作；放在屏幕上半就往下长，下半就往上长。')], ['message-square-text', t('AI 答题'), t('听出是在问你就给出能照着说的回答，带中文；没自动出来就按一下快捷键。')], ['notebook-pen', t('课堂笔记'), t('每两分钟整理一版实时笔记，截下网课课件，下课生成图文并茂的课堂笔记。')], ['fingerprint-pattern', t('分得清是谁在说'), t('录 12 秒声纹就能分清你和对方；外放时串进麦克风的声音也能滤掉。')], ['list-todo', t('会后纪要和待办'), t('一键整理要点、修改意见、待办和截止日期，「下周五」会换算成具体日期。')], ['eye-off', t('共享屏幕时隐藏'), t('对方看你的共享屏幕、录屏、截图，都看不到字幕和答题框。')]].map(([i, t, d]) => `<div class="feat"><div class="ic"><svg class="i"><use href="#i-${i}"/></svg></div><b>${t}</b><p>${d}</p></div>`).join(''), [t('本地识别时的声音'), t('会议记录、纪要、课堂笔记'), t('声纹'), t('你填的 API Key')].map((x) => `<li><svg class="i"><use href="#i-check"/></svg>${x}</li>`).join(''), plans(false), faqHome(), dlPair());
 }
 function faqHome() {
   return [[t('对方不开字幕也行吗？'), t('行。它听的是你电脑里放出来的声音，Zoom、Teams、腾讯会议、网课网页都一样，不用对方做任何事。')], [t('不联网能用吗？'), t('字幕能：本地识别在你电脑上跑。翻译、AI 答题、笔记要联网。')], [t('怎么收费？'), t('新用户送 1 场，最长 1 小时，什么都不用填。之后两种选择：填你自己的 AI Key，永久免费；或者按场买会员，不用配任何 Key，¥12.8 一场起。详见 <a data-go="pricing" style="text-decoration:underline">价格</a>。')], [t('对方能看到字幕吗？'), t('看不到。共享屏幕、录屏、截图里都没有字幕和答题框。')], [t('它是开源的吗？'), t('是，GPL-3.0，代码在 GitHub。自己编译的版本填自己的 Key，功能一样。')], [t('Mac 打开时说「无法验证开发者」？'), t('去「系统设置 → 隐私与安全性」，拉到最下面点「仍要打开」，只要第一次。')]].map(([q, a]) => `<details><summary>${q}</summary><div class="ans">${a}</div></details>`).join('');
@@ -809,7 +811,7 @@ function pricing() {
   <section class="sec" style="padding-top:80px"><div class="wrap"><div class="center"><span class="kicker">对照</span><h2 class="h2">三种方式，差在哪。</h2></div>
     <table class="cmpt"><tr><th></th><th>免费试用</th><th>会员</th><th>自带 Key</th></tr>{1}</table></div></section>
   <section class="sec" id="faq" style="padding-top:80px"><div class="wrap center"><h2 class="h2">关于付费的问题</h2><div class="faq" style="text-align:left">{2}</div></div></section>
-  <section class="finale"><div class="wrap"><h2 class="h2">先用送的 1 场，不用填任何东西。</h2><div class="hero-cta">{3}</div></div></section>`, plans(true), [[t('要不要申请 Key'), t('不用'), t('不用'), t('要，教程 5 分钟')], [t('能用多少'), t('1 场，最长 1 小时'), t('买多少场用多少，不过期'), t('不限，按服务商计费')], [t('字幕'), t('云识别或本地识别'), t('云识别或本地识别'), t('本地识别免费，云识别自己填 Key')], [t('AI（翻译、答题、笔记）'), t('包含'), t('包含'), t('你自己的账户')], [t('谁付服务商的钱'), t('我们'), t('场次费里包含'), t('你自己')], [t('句子经过哪里'), t('我们转发，不保存'), t('我们转发，不保存'), t('直达服务商')], [t('一场用完以后'), t('字幕照常（本地识别）'), t('字幕照常（本地识别）'), '—']].map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join(''), [[t('一场怎么算？'), t('点「开始记录」算一场，最长 2 小时，到点自动接下一场。断网重连、暂停再继续、崩溃后 30 分钟内重开都算同一场；暂停的时间不计。不到 5 分钟就停止的不扣（一天最多 3 次）。')], [t('要注册账号吗？'), t('不用。没有账号系统，也不要手机号；付款时 Stripe 会要一个邮箱发收据。')], [t('场次用完会怎样？'), t('字幕不会断：自动换成本地识别接着记，翻译和答题先关着。买了场次马上恢复。')], [t('授权码在哪？丢了怎么办？'), t('在应用里买的会自动激活；官网买的在付款完成页显示。之后随时可以在应用的「设置 → 会员」里看到和复制。')], [t('一个授权码能用几台电脑？'), t('最多 2 台，Mac、Windows 都行。换电脑时在不用的那台上「解绑这台电脑」。')], [t('自带 Key 要花多少钱？'), t('按服务商的实际用量计费，直接走你自己的账户，我们不经手、不加价。DeepSeek 这类国内服务一场一小时的会大约几毛钱。')], [t('可以退款吗？'), t('买了没用过的场次，购买后 14 天内可以全额退款，见 <a data-go=\'refund\' style=\'text-decoration:underline\'>退款政策</a>。')]].map(([q, a]) => `<details><summary>${q}</summary><div class="ans">${a}</div></details>`).join(''), dlBtn());
+  <section class="finale"><div class="wrap"><h2 class="h2">先用送的 1 场，不用填任何东西。</h2><div class="hero-cta">{3}</div></div></section>`, plans(true), [[t('要不要申请 Key'), t('不用'), t('不用'), t('要，教程 5 分钟')], [t('能用多少'), t('1 场，最长 1 小时'), t('买多少场用多少，不过期'), t('不限，按服务商计费')], [t('字幕'), t('云识别或本地识别'), t('云识别或本地识别'), t('本地识别免费，云识别自己填 Key')], [t('AI（翻译、答题、笔记）'), t('包含'), t('包含'), t('你自己的账户')], [t('谁付服务商的钱'), t('我们'), t('场次费里包含'), t('你自己')], [t('句子经过哪里'), t('我们转发，不保存'), t('我们转发，不保存'), t('直达服务商')], [t('一场用完以后'), t('字幕照常（本地识别）'), t('字幕照常（本地识别）'), '—']].map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join(''), [[t('一场怎么算？'), t('点「开始记录」算一场，最长 2 小时，到点自动接下一场。断网重连、暂停再继续、崩溃后 30 分钟内重开都算同一场；暂停的时间不计。不到 5 分钟就停止的不扣（一天最多 3 次）。')], [t('要注册账号吗？'), t('不用。没有账号系统，也不要手机号；付款时 Stripe 会要一个邮箱发收据。')], [t('场次用完会怎样？'), t('字幕不会断：自动换成本地识别接着记，翻译和答题先关着。买了场次马上恢复。')], [t('授权码在哪？丢了怎么办？'), t('在应用里买的会自动激活；官网买的在付款完成页显示。之后随时可以在应用的「设置 → 会员」里看到和复制。')], [t('一个授权码能用几台电脑？'), t('最多 2 台，Mac、Windows 都行。换电脑时在不用的那台上「解绑这台电脑」。')], [t('自带 Key 要花多少钱？'), t('按服务商的实际用量计费，直接走你自己的账户，我们不经手、不加价。DeepSeek 这类国内服务一场一小时的会大约几毛钱。')], [t('可以退款吗？'), t('买了没用过的场次，购买后 14 天内可以全额退款，见 <a data-go=\'refund\' style=\'text-decoration:underline\'>退款政策</a>。')]].map(([q, a]) => `<details><summary>${q}</summary><div class="ans">${a}</div></details>`).join(''), dlPair());
 }
 function guide() {
   const prov = [['deepseek', 'DeepSeek', t('国内直连，便宜，中文好'), t('推荐国内')], ['openai', t('ChatGPT 账号'), t('有 Plus 或 Pro 就直接登录，不另外花钱'), t('有订阅的')], ['qwen', t('通义千问'), t('阿里云百炼，国内直连'), ''], ['kimi', 'Kimi', t('月之暗面，国内直连'), ''], ['doubao', t('豆包'), t('火山方舟，国内直连'), ''], ['openai', 'OpenAI API', t('按用量付费，要海外网络'), '']];

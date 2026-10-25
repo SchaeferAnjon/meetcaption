@@ -1309,7 +1309,7 @@
  "选本地识别，或填上 Soniox、豆包、OpenAI 的密钥，才能出字幕。": "Elige reconocimiento local o ingresa tu clave de Soniox, Doubao u OpenAI para obtener subtítulos.",
  "通用": "General",
  "逾期 {0} 天": "{0} {0|día|días} de retraso",
- "都是普通文件夹和 Markdown，Word、记事本都能打开。": "Todo son carpetas simples y Markdown—se pueden abrir en Word o Notepad.",
+ "都是普通文件夹和 Markdown，Word、记事本都能打开。": "Todo son carpetas simples y Markdown, se pueden abrir en Word o Notepad.",
  "都用「账号与 AI」里的服务，每说完一句翻一句，一般比原文晚 2 到 5 秒出现。对方提问时先出答案，这句的译文再晚一两秒。": "Usa los servicios en Cuenta e IA. Traduce oración por oración, generalmente apareciendo de 2 a 5 segundos después del original. Cuando la otra parte hace una pregunta, la respuesta aparece primero, y la traducción de esa oración sigue uno o dos segundos después.",
  "重做": "Rehacer",
  "重启": "Reiniciar",
