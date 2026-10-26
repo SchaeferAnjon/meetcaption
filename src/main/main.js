@@ -12,7 +12,7 @@ import { NOTES_HTML, Summarizer } from './summary.js'
 import { aggregateTodos, openTodoCounts, patchTodo } from './todos.js'
 import { searchLibrary } from './search.js'
 import { MeetingEngine } from './engine.js'
-import { Member, memberSettings, PACKS as MEMBER_PACKS } from './member/client.js'
+import { Member, memberSettings, withMemberAuth, PACKS as MEMBER_PACKS } from './member/client.js'
 import { RendererCapture } from './rendererCapture.js'
 import { ChatGPTAuth, complete, listModels, llmStatus, resolveModel, isAbort, PROVIDERS } from './llm/index.js'
 import { OpenAIRealtimeASR } from './asr/openai.js'
@@ -97,9 +97,13 @@ const senderWin = (e) => BrowserWindow.fromWebContents(e.sender) ?? controlWin
 // 实际用的设置：会员模式下识别和 AI 换成经我们服务器的通道（设置窗口看到的还是用户自己存的）
 const effective = (s = settings.get()) => (member ? memberSettings(s, member) : s)
 
-// 翻译、纪要、答题统一走 A 模块的 complete；每次取最新设置，切换 AI 服务不用重建什么
-const llm = (o) => complete(effective(), chatgptAuth, o)
-const aiStatus = (s = effective()) => llmStatus(s, chatgptAuth)
+// 翻译、纪要、答题统一走 A 模块的 complete；每次取最新设置，切换 AI 服务不用重建什么。会员通道回 401 换凭据再试一次
+const llm = (o) => withMemberAuth(member, effective, (s) => complete(s, chatgptAuth, o))
+const aiStatus = (s = effective()) => {
+  const st = llmStatus(s, chatgptAuth)
+  // 会员没有 Key 可填：AI 用不了时说是场次的事
+  return s.llmProvider === 'member' && member?.noAi ? { ...st, ready: false, reason: member.noAiReason() } : st
+}
 
 function vpProfile() {
   const p = vpStore.load()

@@ -124,21 +124,31 @@ export class Summarizer extends EventEmitter {
         content = user.content + answersNote(session)
       }
       // 全局约定不许破折号：prompt 里说了模型偶尔还是会写，流式和存盘前都换掉
-      const markdown = noDashes(
-        await this.llm({
-          model: 'smart',
-          effort: 'low',
-          signal: ctrl.signal,
-          system: system.content,
-          messages: [{ role: 'user', content }],
-          onDelta: (text) => this.emit('progress', { id, phase: 'summary', text: noDashes(text) }),
-        }),
-      )
+      let markdown
+      let cut = null
+      try {
+        markdown = noDashes(
+          await this.llm({
+            model: 'smart',
+            effort: 'low',
+            signal: ctrl.signal,
+            system: system.content,
+            messages: [{ role: 'user', content }],
+            onDelta: (text) => this.emit('progress', { id, phase: 'summary', text: noDashes(text) }),
+          }),
+        )
+      } catch (e) {
+        // 写到一半被截断：先存下这半截再报错，长课的笔记不至于一个字都没留下
+        if (ctrl.signal.aborted || !e?.partial?.trim()) throw e
+        markdown = noDashes(e.partial.trim())
+        cut = e
+      }
       // 先把纪要存下来：待办提取失败了纪要也不丢；旧的待办先留着，提取完再换
       this.store.mutate(id, (s) => {
         s.summary = { ...(s.summary ?? {}), markdown, model: this.modelName('smart'), createdAt: Date.now() }
       })
       this.emit('saved', { id, items: false })
+      if (cut) throw new Error(t(`{0}。前面写好的部分已经存下`, cut.message))
       if (!isClass) return { markdown, ...(await this.#extract(id, markdown, ctrl.signal)) }
       const [r, map] = await Promise.all([this.#extract(id, markdown, ctrl.signal), this.#slideMap(id, markdown, ctrl.signal)])
       return { markdown, ...r, ...this.#writeHtml(id, markdown, map) }
