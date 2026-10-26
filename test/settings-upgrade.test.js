@@ -37,7 +37,7 @@ test('upgrade: 自己填过别的资源 ID 的不动；没存过资源 ID 的本
 
   const fresh = launch({})
   assert.equal(fresh.volcResourceId, SEED)
-  assert.deepEqual(fresh.migrations, { projects: false, translateOn: true, volcSeed: true, localAsr: true, providers: true, plan: true })
+  assert.deepEqual(fresh.migrations, { projects: false, translateOn: true, volcSeed: true, localAsr: true, providers: true, plan: true, uiLang: true })
 })
 
 test('upgrade: 翻译只在还没迁过时打开一次；迁过以后自己关掉的保持关', () => {
@@ -49,7 +49,7 @@ test('upgrade: 翻译只在还没迁过时打开一次；迁过以后自己关�
   const off = launch({ translate: false, volcResourceId: OLD_VOLC_RESOURCE_ID, migrations: { translateOn: true } })
   assert.equal(off.translate, false)
   assert.equal(off.volcResourceId, SEED)
-  assert.deepEqual(upgradePatch({ translate: false, volcResourceId: OLD_VOLC_RESOURCE_ID, migrations: { translateOn: true } }), { volcResourceId: SEED, migrations: { volcSeed: true, localAsr: true, providers: true, plan: true } })
+  assert.deepEqual(upgradePatch({ translate: false, volcResourceId: OLD_VOLC_RESOURCE_ID, migrations: { translateOn: true } }), { volcResourceId: SEED, migrations: { volcSeed: true, localAsr: true, providers: true, plan: true, uiLang: true } })
 })
 
 test('upgrade: 识别服务没配好 Key 的换成本地识别，已经填了豆包或 OpenAI 的不动，只做一次', () => {
@@ -70,7 +70,7 @@ test('upgrade: 识别服务没配好 Key 的换成本地识别，已经填了豆
 })
 
 test('upgrade: 「其他兼容服务」填的是内置服务的地址就换成那一家，Key 挪过去；智谱 Coding Plan 这类认不出的不动', () => {
-  const base = { migrations: { translateOn: true, volcSeed: true, localAsr: true, plan: true } }
+  const base = { migrations: { translateOn: true, volcSeed: true, localAsr: true, plan: true, uiLang: true } }
   assert.deepEqual(upgradePatch({ ...base, llmProvider: 'custom', llmBaseUrl: 'https://api.deepseek.com/v1', llmKey: 'sk-1' }), { llmProvider: 'deepseek', llmKeys: { deepseek: 'sk-1' }, migrations: { providers: true } })
   assert.deepEqual(upgradePatch({ ...base, llmProvider: 'custom', llmBaseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4', llmKey: 'k' }), { migrations: { providers: true } })
   assert.deepEqual(upgradePatch({ ...base, llmProvider: 'openai', llmBaseUrl: 'https://api.deepseek.com' }), { migrations: { providers: true } })
@@ -100,4 +100,15 @@ test('upgrade: 加会员以后，已经走完引导的老用户定成自带 Key�
   assert.equal(old.plan, 'own')
   assert.equal(launch(applyPatch(old, { plan: 'member' })).plan, 'member', '迁过以后自己换成会员不再改回')
   assert.equal(launch({}).plan, 'member')
+})
+
+test('upgrade: 0.6 以前就在用的人界面保持中文；已经在 0.6 上的、新装的跟系统；只迁一次', () => {
+  assert.equal(DEFAULTS.uiLang, 'auto')
+  // 0.5.9 的设置：走完过引导，没有 uiLang，也没有 plan 标记
+  const old = launch({ onboarding: { done: true }, migrations: { projects: true, translateOn: true, volcSeed: true, localAsr: true, providers: true } })
+  assert.equal(old.uiLang, 'zh')
+  assert.equal(launch(applyPatch(old, { uiLang: 'auto' })).uiLang, 'auto', '迁过以后自己换回跟随系统不再改')
+  // 已经用过 0.6 开发版（plan 迁过）的不动
+  assert.equal(launch({ onboarding: { done: true }, migrations: { plan: true } }).uiLang, 'auto')
+  assert.equal(launch({}).uiLang, 'auto')
 })
