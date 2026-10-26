@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { accelLabel, patchFor, registerHotkey } from '../src/main/hotkeys.js'
+import { accelLabel, menuItemWithKey, patchFor, registerHotkey } from '../src/main/hotkeys.js'
 
 // 默认快捷键被别的程序占了：没改过的换成备选；改过的不动，照样报占用
 const fakeRegister = (taken) => (accel) => (taken.includes(accel) ? `快捷键 ${accel} 被别的程序占用了` : null)
@@ -25,4 +25,18 @@ test('hotkeys: 设置补丁和提示里的写法', () => {
   assert.equal(accelLabel('CommandOrControl+Alt+Shift+R', false), 'Ctrl+Alt+Shift+R')
   assert.equal(accelLabel('CommandOrControl+Alt+Shift+R', true), '⌥⇧⌘R')
   assert.equal(accelLabel('CommandOrControl+Alt+Enter', true), '⌥⌘Enter')
+})
+
+test('hotkeys: Windows 上快捷键一律写成 Ctrl+Alt+Shift+键 的顺序', () => {
+  assert.equal(accelLabel('Alt+Control+Shift+R', false), 'Ctrl+Alt+Shift+R')
+  assert.equal(accelLabel('Shift+Alt+CommandOrControl+S', false), 'Ctrl+Alt+Shift+S')
+  assert.equal(accelLabel('Super+Option+K', false), 'Alt+Win+K')
+  assert.equal(accelLabel('F8', false), 'F8')
+})
+
+test('hotkeys: 托盘菜单一项，Mac 交给系统画，Windows 把 Ctrl+Alt 顺序的文字写在名字后面（不能用 Tab，Windows 上画成 → ）', () => {
+  assert.deepEqual(menuItemWithKey('显示字幕', 'CommandOrControl+Alt+S', true), { label: '显示字幕', accelerator: 'CommandOrControl+Alt+S' })
+  assert.deepEqual(menuItemWithKey('显示字幕', 'CommandOrControl+Alt+S', false), { label: '显示字幕    Ctrl+Alt+S' })
+  assert.deepEqual(menuItemWithKey('显示字幕', '', false), { label: '显示字幕' })
+  assert.deepEqual(menuItemWithKey('显示字幕', undefined, true), { label: '显示字幕' })
 })

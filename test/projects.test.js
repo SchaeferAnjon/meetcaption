@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { INBOX_ID, INBOX_NAME, ProjectStore, migrateSettingsToInbox, projectSettings, safeFolderName } from '../src/main/projects.js'
+import { INBOX_ID, INBOX_NAME, ProjectStore, migrateSettingsToInbox, projectRow, projectSettings, safeFolderName } from '../src/main/projects.js'
 import { SessionStore } from '../src/main/sessions.js'
 import { searchLibrary } from '../src/main/search.js'
 import { applyPatch, DEFAULTS, merge } from '../src/main/defaults.js'
@@ -339,4 +339,16 @@ test('SessionStore：开会中途换了根目录，正在记录的这场继续�
   assert.equal(readJson(path.join(oldRoot, INBOX_NAME, s.id, 'session.json')).segments.length, 1)
   assert.equal(store.current, null)
   assert.throws(() => store.load(s.id), /找不到这场会议/)
+})
+
+test('projectRow：发给界面的项目行带默认模式和课堂声音来源', () => {
+  const { projects } = library()
+  const c = projects.create({ name: '网课', mode: 'class', classSource: 'system' })
+  const row = projectRow(projects.get(c.id))
+  assert.equal(row.mode, 'class')
+  assert.equal(row.classSource, 'system')
+  assert.equal(row.inbox, false)
+  const i = projects.create({ name: '面试', mode: 'interview' })
+  assert.equal(projectRow(projects.get(i.id)).mode, 'interview')
+  assert.equal(projectRow(projects.get(INBOX_ID)).inbox, true)
 })

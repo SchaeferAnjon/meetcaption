@@ -4,10 +4,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { SettingsStore, keywordList } from './settings.js'
-import { accelLabel, patchFor, registerHotkey } from './hotkeys.js'
+import { accelLabel, menuItemWithKey, patchFor, registerHotkey } from './hotkeys.js'
 import { upgradePatch } from './defaults.js'
 import { SessionStore } from './sessions.js'
-import { INBOX_ID, ProjectStore, migrateSettingsToInbox } from './projects.js'
+import { INBOX_ID, ProjectStore, migrateSettingsToInbox, projectRow } from './projects.js'
 import { NOTES_HTML, Summarizer } from './summary.js'
 import { aggregateTodos, openTodoCounts, patchTodo } from './todos.js'
 import { searchLibrary } from './search.js'
@@ -194,17 +194,7 @@ function projectStats() {
 
 function listProjects() {
   const stats = projectStats()
-  return projects.list().map((p) => ({
-    id: p.id,
-    name: p.name,
-    color: p.color,
-    icon: p.icon,
-    description: p.description,
-    archived: p.archived,
-    createdAt: p.createdAt,
-    inbox: p.id === INBOX_ID,
-    ...stats(p.id),
-  }))
+  return projects.list().map((p) => ({ ...projectRow(p), ...stats(p.id) }))
 }
 
 function getProject(id) {
@@ -684,13 +674,13 @@ function updateTrayMenu() {
     Menu.buildFromTemplate([
       ...(unfinished ? [{ label: t('继续设置…'), click: () => openOnboarding() }, { type: 'separator' }] : []),
       ...(updater?.status().phase === 'ready' ? [{ label: t('重启并更新到 {0}', updater.status().version), click: () => trayInstallUpdate() }, { type: 'separator' }] : []),
-      { label: running ? t(`停止记录{0}`, liveName ? t(`（{0}）`, liveName) : '') : t(`在「{0}」里开始记录`, curName), accelerator: s.hotkeyRecord || undefined, click: () => (running ? engine.stop() : startEngine()) },
+      { ...menuItemWithKey(running ? t(`停止记录{0}`, liveName ? t(`（{0}）`, liveName) : '') : t(`在「{0}」里开始记录`, curName), s.hotkeyRecord), click: () => (running ? engine.stop() : startEngine()) },
       ...(running ? [{ label: paused ? t('继续记录') : t('暂停记录'), click: () => togglePause() }] : []),
       { label: t('当前项目'), submenu: projectItems },
       { type: 'separator' },
-      { label: overlayWanted ? t('隐藏字幕') : t('显示字幕'), accelerator: s.hotkeyToggle || undefined, click: toggleOverlay },
-      ...(assistOn(s) ? [{ label: t('回答刚才的问题'), accelerator: s.assist.hotkeyAsk || undefined, click: () => askLast() }] : []),
-      ...(classRunning() ? [{ label: t('截取画面'), accelerator: s.class.hotkeySlide || undefined, click: () => slideFromHotkey() }] : []),
+      { ...menuItemWithKey(overlayWanted ? t('隐藏字幕') : t('显示字幕'), s.hotkeyToggle), click: toggleOverlay },
+      ...(assistOn(s) ? [{ ...menuItemWithKey(t('回答刚才的问题'), s.assist.hotkeyAsk), click: () => askLast() }] : []),
+      ...(classRunning() ? [{ ...menuItemWithKey(t('截取画面'), s.class.hotkeySlide), click: () => slideFromHotkey() }] : []),
       { label: assistOn(s) ? t('调整字幕和答题框位置') : t('调整字幕位置'), click: () => setEditMode(true) },
       { type: 'separator' },
       { label: t('打开主窗口'), click: showControl },

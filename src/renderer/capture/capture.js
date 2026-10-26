@@ -40,7 +40,8 @@ async function openMic() {
     }
   }
   stream ??= await navigator.mediaDevices.getUserMedia({ audio })
-  return { stream, fallback, followsDefault: !want || fallback, label: stream.getAudioTracks()[0]?.label ?? '' }
+  const track = stream.getAudioTracks()[0]
+  return { stream, fallback, followsDefault: !want || fallback, label: track?.label ?? '', deviceId: track?.getSettings().deviceId ?? '' }
 }
 
 async function openSystem() {
@@ -70,7 +71,7 @@ async function open(source) {
     got.stream.getTracks().forEach((t) => t.stop())
     throw e
   }
-  return { label: got.label, fallback: got.fallback }
+  return { label: got.label, deviceId: got.deviceId, fallback: got.fallback }
 }
 
 const errorText = (e) => `${e.name ?? ''} ${e.message ?? e}`.trim()

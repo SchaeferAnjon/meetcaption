@@ -1,5 +1,6 @@
 import { BrowserWindow, desktopCapturer, ipcMain, session, systemPreferences } from 'electron'
 import { t } from './i18n.js'
+import { micLabel } from './micLabel.js'
 
 // 在一个隐藏窗口里用 Web Audio 采集：Windows 的系统声音（Chromium 的 WASAPI loopback）和麦克风。
 // 页面用 AudioContext 直接按识别需要的采样率重采样，AudioWorklet 攒 100ms 一包 16 位 PCM 发回主进程。
@@ -67,6 +68,7 @@ export class RendererCapture {
       this.stop(token)
       throw new Error(result?.error || t('音频采集启动失败'))
     }
+    if (result.mic) result.mic.label = micLabel(result.mic.label, result.mic.deviceId)
     this.info = result
     return token
   }
@@ -75,6 +77,7 @@ export class RendererCapture {
   async restart(token, source, patch = {}) {
     if (token !== this.token || !this.win || this.win.isDestroyed()) return { ok: false, error: t('音频采集已停止'), stopped: true }
     const r = await this.win.webContents.executeJavaScript(`window.restartSource(${JSON.stringify(source)}, ${JSON.stringify(patch)})`, true)
+    if (r?.ok && source === 'mic') r.label = micLabel(r.label, r.deviceId)
     return token === this.token ? r : { ok: false, error: t('音频采集已停止'), stopped: true }
   }
 

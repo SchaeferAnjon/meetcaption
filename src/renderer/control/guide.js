@@ -7,7 +7,8 @@ let guide = null
 
 function tourSteps() {
   const s = state.settings ?? {}
-  const keyLine = (before, accel, after) => [before, accel ? el('span.nw', {}, kbd(accel, { size: 'sm' }), after) : after]
+  // 只有快捷键本身不换行；后面的整句话包在不换行里会超出卡片
+  const keyLine = (before, accel, after) => [before, accel ? el('span.nw', {}, kbd(accel, { size: 'sm' })) : null, after]
   return [
     {
       target: () => document.querySelector('.home-start-row .btn-group'),
@@ -80,6 +81,7 @@ async function openGuide() {
   function close() {
     document.removeEventListener('keydown', onKey, true)
     window.removeEventListener('resize', place)
+    relayout.disconnect()
     layer.remove()
     guide = null
     call('updateSettings', { onboarding: { demo: true } })
@@ -141,6 +143,17 @@ async function openGuide() {
     coach.querySelector('.btn-primary')?.focus({ preventScroll: true })
   }
 
+  // 提示条出现、首页重画、窗口变高矮都会让目标挪位置：版面一变就重新量，不只量一次
+  let queued = 0
+  const requeue = () => {
+    if (queued) return
+    queued = requestAnimationFrame(() => {
+      queued = 0
+      if (guide) place()
+    })
+  }
+  const relayout = new MutationObserver(requeue)
+  relayout.observe(document.getElementById('main'), { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class'] })
   document.addEventListener('keydown', onKey, true)
   window.addEventListener('resize', place)
   guide = { close, cap, ans }

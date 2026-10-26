@@ -42,8 +42,9 @@ VIEWS.project = {
     const hero = el('section.project-hero', {}, boxBtn, el('div.project-titles', {}, nameInput, descInput, stats))
 
     // 标签页
+    const tabLabel = el('span', { text: modeInfo(projectMode(id)).label }) // 课堂项目写「课堂」、面试项目写「面试」，renderHero 里跟着模式改
     const tabBtns = {
-      meetings: el('button.tab', { type: 'button', role: 'tab', dataset: { tab: 'meetings' } }, t('会议'), el('span.count.num')),
+      meetings: el('button.tab', { type: 'button', role: 'tab', dataset: { tab: 'meetings' } }, tabLabel, el('span.count.num')),
       todos: el('button.tab', { type: 'button', role: 'tab', dataset: { tab: 'todos' } }, t('待办与 DDL'), el('span.count.num')),
       info: el('button.tab', { type: 'button', role: 'tab', dataset: { tab: 'info' } }, t('资料')),
     }
@@ -77,7 +78,8 @@ VIEWS.project = {
       if (document.activeElement !== nameInput) nameInput.value = p.name
       if (document.activeElement !== descInput) descInput.value = p.description ?? ''
       const pm = projectMode(id)
-      const bits = [pm !== 'meeting' ? t(`默认{0}模式`, modeInfo(pm).label) : null, t(`{0} 场{1}`, p.meetings || 0, pm === 'class' ? t('课') : t('会议')), p.openTodos ? t(`{0} 条待办没做完`, p.openTodos) : t('没有待办'), p.lastMeetingAt ? t(`最近一次 {0}`, fmtDay(p.lastMeetingAt)) : null]
+      tabLabel.textContent = modeInfo(pm).label
+      const bits = [pm !== 'meeting' ? t(`默认{0}模式`, modeInfo(pm).label) : null, modeCopy(pm).count(p.meetings || 0), p.openTodos ? t(`{0} 条待办没做完`, p.openTodos) : t('没有待办'), p.lastMeetingAt ? t(`最近一次 {0}`, fmtDay(p.lastMeetingAt)) : null]
       if (inbox) bits.push(t('没分到项目的会议都在这里'))
       stats.textContent = bits.filter(Boolean).join(' · ')
       const st = state.engine.state
@@ -173,8 +175,8 @@ VIEWS.project = {
         list.replaceWith(
           ui.emptyState({
             icon: 'message-square-text',
-            title: t('这个项目里还没有会议'),
-            description: p.archived ? t('取消归档后就能在这里开会。') : t('点上面的「在这个项目里开始会议」，会议记录就存在这个项目里。'),
+            title: modeCopy(projectMode(id)).empty,
+            description: p.archived ? t('取消归档后就能在这里开会。') : t('点上面的「{0}」，记录就存在这个项目里。', t(`在这个项目里{0}`, startLabel(startChoice(id)))),
           }),
         )
         return
@@ -484,10 +486,10 @@ function colorIconPicker({ color, icon: iconName }, onChange) {
     onChange({ color: c, icon: ic })
   }
   for (const tv of ui.tints) {
-    swatches.append(el('button.swatch', { type: 'button', role: 'radio', dataset: { value: tv, tint: tv }, 'aria-label': tv, onClick: () => ((c = tv), sync()) }))
+    swatches.append(el('button.swatch', { type: 'button', role: 'radio', dataset: { value: tv, tint: tv }, 'aria-label': tintName(tv), onClick: () => ((c = tv), sync()) }))
   }
   for (const n of ui.projectIcons) {
-    icons.append(el('button.icon-choice', { type: 'button', role: 'radio', dataset: { value: n }, 'aria-label': n, onClick: () => ((ic = n), sync()) }, icon(n, 16)))
+    icons.append(el('button.icon-choice', { type: 'button', role: 'radio', dataset: { value: n }, 'aria-label': projectIconLabel(n), onClick: () => ((ic = n), sync()) }, icon(n, 16)))
   }
   sync()
   return el('div.picker', {}, preview, el('div.picker-body', {}, swatches, icons))

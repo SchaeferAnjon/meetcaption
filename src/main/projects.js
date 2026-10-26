@@ -37,6 +37,22 @@ function readJson(file) {
   }
 }
 
+/** 发给界面的项目列表里的一行：带上默认模式和课堂声音来源，重开应用后项目页才知道这是课堂还是面试项目。 */
+export function projectRow(p) {
+  return {
+    id: p.id,
+    name: p.name,
+    color: p.color,
+    icon: p.icon,
+    description: p.description,
+    archived: p.archived,
+    createdAt: p.createdAt,
+    mode: p.mode,
+    classSource: p.classSource,
+    inbox: p.id === INBOX_ID,
+  }
+}
+
 export const newId = (prefix) => prefix + crypto.randomBytes(6).toString('hex')
 
 /** 项目名 → 两个系统都能用的文件夹名（全角冒号这类照留，只换掉 Windows 不认的字符）。 */
