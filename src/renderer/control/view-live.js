@@ -322,7 +322,7 @@ VIEWS.live = {
       answerEmpty.hidden = cards.size > 0
       if (llm && !llm.ready) {
         answerEmpty.append(
-          el('div.callout.callout-warn', {}, icon('triangle-alert', 16), el('div.callout-body', {}, el('div.callout-title', { text: t('AI 答题用不了') }), el('div.callout-desc', { text: llm.reason || t('AI 服务还没设置好') })), el('button.btn.btn-sm', { type: 'button', onClick: () => openSettings('ai') }, t('去设置'))),
+          el('div.callout.callout-warn', {}, icon('triangle-alert', 16), el('div.callout-body', {}, el('div.callout-title', { text: t('AI 答题用不了') }), el('div.callout-desc', { text: llm.reason || t('AI 服务还没设置好') })), el('button.btn.btn-sm', { type: 'button', onClick: aiSettings }, t('去设置'))),
         )
         return
       }

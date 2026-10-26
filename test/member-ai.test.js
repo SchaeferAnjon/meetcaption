@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { AI_AFTER_END_MS, Member, memberSettings, withMemberAuth } from '../src/main/member/client.js'
 import { DEFAULTS, merge } from '../src/main/defaults.js'
-import { compatConfig, llmStatus } from '../src/main/llm/index.js'
+import { compatConfig, complete, llmStatus } from '../src/main/llm/index.js'
 import { LlmError } from '../src/main/llm/errors.js'
 
 // 会员通道的 AI 凭据：试用开完唯一一场后 24 小时内还能做纪要（重启也算），场次用完关 AI，401 换凭据再试一次。
@@ -182,4 +182,22 @@ test('withMemberAuth：会员通道 401 换凭据用新设置再试一次；别�
   n = 0
   await assert.rejects(withMemberAuth(m, current, fail(401)), (e) => e.status === 401)
   assert.equal(n, 2)
+})
+
+test('会员服务器一直连不上（没有任何凭据）：AI 的原因说连不上会员服务器，不说「没填 Key」；发请求也一样', async () => {
+  const down = async () => {
+    throw new TypeError('fetch failed')
+  }
+  const m = make(tmpFile(), down)
+  await m.refresh()
+  assert.equal(m.aiKey(), '')
+  const s = memberSettings(S, m)
+  const st = llmStatus(s)
+  assert.equal(st.ready, false)
+  assert.equal(st.provider, 'member')
+  assert.equal(st.reason, '连不上会员服务器，稍后再试，或在「设置 → 会员」里改用自带 Key')
+  assert.doesNotMatch(st.reason, /没填|账号与 AI/)
+  const err = await complete(s, null, { model: 'fast', messages: [{ role: 'user', content: 'hi' }] }).catch((e) => e)
+  assert.equal(err.code, 'not-logged-in')
+  assert.equal(err.message, st.reason)
 })

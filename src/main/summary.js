@@ -55,7 +55,8 @@ export class Summarizer extends EventEmitter {
 
   #ready() {
     const st = this.aiStatus()
-    if (!st.ready) throw new Error(t(`{0}（设置 → 账号与 AI）`, st.reason))
+    // 会员的原因里已经带了去哪改；没有 Key 可填，不能指到「账号与 AI」
+    if (!st.ready) throw new Error(st.provider === 'member' ? st.reason : t(`{0}（设置 → 账号与 AI）`, st.reason))
   }
 
   #begin(id) {

@@ -541,7 +541,7 @@ function onEngineNotice(n) {
     case 'mic-permission':
       return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('打开系统设置'), run: () => call('openPrivacy', 'microphone') }] })
     case 'assist-llm':
-      return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('去设置'), run: () => openSettings('ai') }] })
+      return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('去设置'), run: aiSettings }] })
     case 'asr-language':
       return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('去换识别服务'), run: () => openSettings('asr') }] })
     case 'voiceprint':
@@ -575,6 +575,9 @@ async function relaunchApp() {
 function openSettings(section) {
   return call('openSettings', section)
 }
+
+// AI 出问题时去哪改：会员没有 Key 可填，换用法在「会员」页，自带 Key 才去「账号与 AI」
+const aiSettings = () => openSettings(state.settings?.plan === 'member' ? 'member' : 'ai')
 
 /** 开始记录。choice 不给就用这个项目的默认模式（开始按钮下拉里换过就用换的）。 */
 async function startMeeting(projectId, choice) {

@@ -1416,6 +1416,7 @@
  "连不上 GitHub，过一会儿会再查": "No se puede conectar con GitHub; se volverá a comprobar más tarde",
  "连不上 {0}（网络或代理问题）：{1}": "No se puede conectar a {0} (problema de red o proxy): {1}",
  "连不上会员服务器，稍后再试": "No se puede conectar al servidor de membresía. Inténtalo más tarde",
+ "连不上会员服务器，稍后再试，或在「设置 → 会员」里改用自带 Key": "No se puede conectar al servidor de membresía. Inténtalo más tarde o cambia a tu propia clave en Ajustes → Membresía",
  "连不上会员服务器，这一场先用本地识别，AI 功能可能用不了。": "No se puede conectar al servidor de membresía. Esta sesión usa el reconocimiento local y las funciones de IA pueden no funcionar.",
  "连接 OpenAI 超时，检查网络或代理": "Se agotó el tiempo de conexión con OpenAI. Revisa tu red o proxy.",
  "连接 Soniox 失败（HTTP {0}）": "Error al conectar con Soniox (HTTP {0})",

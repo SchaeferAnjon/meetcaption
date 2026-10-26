@@ -1416,6 +1416,7 @@
  "连不上 GitHub，过一会儿会再查": "Can't reach GitHub; it will check again later",
  "连不上 {0}（网络或代理问题）：{1}": "Can't connect to {0} (network or proxy issue): {1}",
  "连不上会员服务器，稍后再试": "Can't connect to the membership server. Try again later",
+ "连不上会员服务器，稍后再试，或在「设置 → 会员」里改用自带 Key": "Can't connect to the membership server. Try again later, or switch to your own key in Settings → Membership",
  "连不上会员服务器，这一场先用本地识别，AI 功能可能用不了。": "Can't connect to the membership server. This session will use local recognition, and AI features may not work.",
  "连接 OpenAI 超时，检查网络或代理": "Connection to OpenAI timed out. Check your network or proxy.",
  "连接 Soniox 失败（HTTP {0}）": "Failed to connect to Soniox (HTTP {0})",

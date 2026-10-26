@@ -1,6 +1,6 @@
 // LLM 门面：所有调用方只用 complete() 和 llmStatus()，按 settings.llmProvider 分到 ChatGPT 订阅或 OpenAI 兼容接口。
 import { chatgptComplete } from './chatgpt.js'
-import { compatComplete, listModels as compatModels } from './openaiCompat.js'
+import { compatComplete, listModels as compatModels, memberOffline } from './openaiCompat.js'
 import { LlmError } from './errors.js'
 import { PRESET_IDS, PROVIDERS, providerOf } from './providers.js'
 import { t } from '../i18n.js'
@@ -43,7 +43,7 @@ export function compatConfig(s) {
     const legacy = !s.openaiKey && isOpenAIHost(s.llmBaseUrl) ? s.llmKey : ''
     return { baseUrl: s.openaiBaseUrl || OPENAI_BASE, key: s.openaiKey || legacy || '', openai: true }
   }
-  if (PRESET_IDS.includes(provider)) return { baseUrl: providerOf(provider).baseUrl, key: s.llmKeys?.[provider] ?? '', openai: false }
+  if (PRESET_IDS.includes(provider)) return { baseUrl: providerOf(provider).baseUrl, key: s.llmKeys?.[provider] ?? '', openai: false, ...(provider === 'member' ? { member: true } : {}) }
   return { baseUrl: s.llmBaseUrl, key: s.llmKey, openai: /api\.openai\.com/.test(s.llmBaseUrl ?? '') }
 }
 
@@ -108,6 +108,7 @@ export function llmStatus(settings, auth) {
   const cfg = compatConfig(settings)
   const label = provider === 'custom' ? hostOf(cfg.baseUrl) || '自定义 AI 服务' : providerOf(provider).name
   if (!cfg.baseUrl) return { provider, ready: false, label, reason: t('没填 AI 服务地址') }
+  if (!cfg.key && provider === 'member') return { provider, ready: false, label, reason: memberOffline() }
   if (!cfg.key) return { provider, ready: false, label, reason: provider === 'openai' ? t('没填 OpenAI Key') : provider === 'custom' ? t('没填 AI 服务的 Key') : t(`没填 {0} 的 Key`, label) }
   return { provider, ready: true, label, reason: null }
 }

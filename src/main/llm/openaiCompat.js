@@ -230,9 +230,12 @@ export async function chatStream({ baseUrl, key, openai, model, messages, effort
   }
 }
 
-/** 门面用：cfg = { baseUrl, key, openai }，给了 onDelta 就流式。 */
+// 会员没有 Key 可填：手上没有凭据说明会员服务器一直没连上，不能说「没填 Key」
+export const memberOffline = () => t('连不上会员服务器，稍后再试，或在「设置 → 会员」里改用自带 Key')
+
+/** 门面用：cfg = { baseUrl, key, openai, member }，给了 onDelta 就流式。 */
 export async function compatComplete(cfg, { model, system, messages = [], effort, maxOutputTokens, json, signal, timeoutMs, onDelta }) {
-  if (!cfg.key) throw new LlmError('not-logged-in', t('还没配置 AI 服务的 Key（设置 → AI 服务）'))
+  if (!cfg.key) throw new LlmError('not-logged-in', cfg.member ? memberOffline() : t('还没配置 AI 服务的 Key（设置 → AI 服务）'))
   const msgs = system ? [{ role: 'system', content: system }, ...messages] : messages
   const args = { ...cfg, model, messages: msgs, effort, signal, maxOutputTokens, json }
   if (onDelta) return (await chatStream({ ...args, timeoutMs, onDelta })).trim()
