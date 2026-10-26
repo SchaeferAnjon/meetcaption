@@ -79,6 +79,20 @@ test('官网的八张语言表覆盖页面脚本里所有 t() 的原文，占位
   }
 })
 
+test('日语、韩语：声纹、录音语境的「录制」是录音（録音、녹음），不是录像（録画、녹화）；只有屏幕录制、录屏可以用', () => {
+  const video = { ja: /録画/, ko: /녹화/ }
+  for (const lang of ['ja', 'ko']) {
+    const dict = JSON.parse(fs.readFileSync(path.join(ROOT, 'src/i18n', `${lang}.json`), 'utf8'))
+    const bad = Object.keys(dict).filter((k) => /录制|录像/.test(k) && !/屏幕|录屏|画面/.test(k) && video[lang].test(dict[k]))
+    assert.deepEqual(bad, [], `${lang} 把录音写成了录像`)
+  }
+  setUiLang('ja')
+  assert.equal(t('，{0} 录制', '10月26日 22:44'), '、10月26日 22:44 録音')
+  setUiLang('ko')
+  assert.equal(t('，{0} 录制', '10월 26일 22:44'), ', 10월 26일 22:44 녹음')
+  setUiLang('zh')
+})
+
 test('设置里 AI 服务卡片的名字和一行介绍（providers.js，渲染时走 t()）在八张表里都有译文', async () => {
   const { PROVIDERS } = await import('../src/main/llm/providers.js')
   const keys = PROVIDERS.filter((p) => !p.hidden).flatMap((p) => [p.name, p.blurb]).filter((s) => /[一-鿿]/.test(s))
