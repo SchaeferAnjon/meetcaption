@@ -10,6 +10,9 @@ import { t } from '../i18n.js'
 
 export const API = (process.env.MEETCAPTION_API ?? 'https://api.us-cloud.uk').replace(/\/+$/, '')
 
+// 场次结束后多久还能拿这一场的票用 AI（服务器的 aiAfterEndMs）
+export const AI_AFTER_END_MS = 24 * 3600_000
+
 export const PACKS = [
   { id: 'p1', sessions: 1, cny: 12.8, usd: 1.99 },
   { id: 'p10', sessions: 10, cny: 108, usd: 15 },
@@ -49,7 +52,8 @@ export class Member extends EventEmitter {
     this.state = this.#read()
     this.info = null // 服务器上的状态：{ kind, code, balance, devices, trialOnly, recent }
     this.session = null // 进行中的一场：{ token, sessionId, remainingMs, charged, exhausted, idle }
-    this.lastSessionToken = null // 刚结束那场的票：会后 24 小时内纪要、课堂笔记记在这一场上
+    // state.last：最近一场的票 { token, startedAt, endedAt }，存在 member.json 里：会后 24 小时内（重启应用也算）纪要、课堂笔记记在这一场上。
+    // 开始时就存（endedAt 为 null），没走到结束就退出的按开始时间算 24 小时，不会比服务器宽
     this.running = false
     this.fallback = false // 这一场场次不够、退回了本地识别（main.js 设）
     this.hb = null
@@ -189,7 +193,8 @@ export class Member extends EventEmitter {
     const token = await this.ensureDevice()
     const r = await this.#call('POST', '/v1/session/start', { token })
     this.session = { token: r.session, sessionId: r.sessionId, remainingMs: r.remainingMs, charged: r.charged, exhausted: false, idle: false }
-    this.lastSessionToken = r.session
+    this.state.last = { token: r.session, startedAt: Date.now(), endedAt: null }
+    this.#write()
     this.running = true
     this.info = this.info ? { ...this.info, balance: r.balance } : this.info
     clearInterval(this.hb)
@@ -246,12 +251,16 @@ export class Member extends EventEmitter {
 
   /** 停止记录：不到 5 分钟的服务器会退回这一场。 */
   async endSession() {
+    this.fallback = false
     const s = this.session
     if (!s) return null
     clearInterval(this.hb)
     this.hb = null
     this.session = null
     this.running = false
+    // 时间用完的场次服务器不再给 AI（402），这张票不留
+    this.state.last = s.exhausted ? null : { ...this.state.last, token: s.token, endedAt: Date.now() }
+    this.#write()
     try {
       const r = await this.#call('POST', '/v1/session/end', { token: s.token })
       if (this.info) this.info = { ...this.info, balance: r.balance }
@@ -263,14 +272,47 @@ export class Member extends EventEmitter {
     }
   }
 
-  /** AI 用哪个凭据：进行中或刚结束那场的票；没有就用设备令牌（服务器给每天的会后整理额度）。 */
-  aiKey() {
-    return this.session?.token ?? this.lastSessionToken ?? this.state.token ?? ''
+  // 最近一场的票，结束 24 小时内才给
+  #ticket(now = Date.now()) {
+    const l = this.state.last
+    return l?.token && now - (l.endedAt ?? l.startedAt) < AI_AFTER_END_MS ? l.token : null
   }
 
-  /** 试用用完、又没买过：AI 不能用。 */
+  /** AI 用哪个凭据：进行中或 24 小时内结束那场的票；没有就用设备令牌（服务器给每天的会后整理额度）。 */
+  aiKey() {
+    return this.session?.token ?? this.#ticket() ?? this.state.token ?? ''
+  }
+
+  /**
+   * AI 用不了：这一场的时间用完了；或者试用用完、没买过，手上又没有 24 小时内的场次票。
+   * 场次不够、这一场退回了本地识别（fallback）时也关着：上一场的票留给上一场做纪要，不拿来翻译这一场。
+   */
   get noAi() {
-    return Boolean(this.info && this.info.balance <= 0 && this.info.kind !== 'paid' && !this.session)
+    if (this.session) return Boolean(this.session.exhausted)
+    if (!this.info || this.info.balance > 0 || this.info.kind === 'paid') return false
+    return this.fallback || !this.#ticket()
+  }
+
+  /** AI 用不了时给用户看的原因（会员没有 Key 可填，不能说「没填 Key」）。 */
+  noAiReason() {
+    return this.session?.exhausted ? t('这一场的会员时间用完了，翻译和答题先关着') : t('试用场次用完了，买了场次 AI 才能用')
+  }
+
+  /**
+   * AI 请求回 401 之后换凭据：服务器不认会后的场次票（过了 24 小时）就不再用它，设备令牌失效就重新领一个。
+   * 进行中那一场的票不换（换成设备令牌会花掉会后整理的额度）。→ 换到了能再试一次的凭据没有。
+   */
+  async renewAiKey(used) {
+    if (!used || used === this.session?.token) return false
+    if (used === this.state.last?.token) {
+      this.state.last = null
+      this.#write()
+    } else if (used === this.state.token) {
+      this.state.token = null
+      await this.ensureDevice()
+    } else return false
+    const next = this.noAi ? '' : this.aiKey()
+    return Boolean(next) && next !== used
   }
 
   stop() {
@@ -296,5 +338,16 @@ export function memberSettings(s, m) {
     llmSummaryModel: 'deepseek-flash',
     llmAnswerModel: 'deepseek-flash',
     llmKeys: { ...s.llmKeys, member: m.noAi ? '' : m.aiKey() },
+  }
+}
+
+/** 一次 AI 调用：current() 取实际设置，run(设置) 发请求；会员通道回 401 就换凭据（renewAiKey）用新的设置再试一次。 */
+export async function withMemberAuth(m, current, run) {
+  const s = current()
+  try {
+    return await run(s)
+  } catch (e) {
+    if (s.llmProvider !== 'member' || e?.status !== 401 || !(await m.renewAiKey(s.llmKeys?.member))) throw e
+    return run(current())
   }
 }
