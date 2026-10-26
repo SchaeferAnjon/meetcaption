@@ -127,7 +127,11 @@ VIEWS.live = {
       meMeter.hidden = !(cls && src === 'mic') && s.captureMic === false
       const mic = state.devices?.mic
       micBtn.hidden = meMeter.hidden || !mic || state.engine.paused
-      if (!micBtn.hidden) fill(micBtn, el('span.truncate', { text: mic.label || t('系统默认麦克风') }), icon('chevron-down', 12))
+      if (!micBtn.hidden) {
+        const name = mic.label || t('系统默认麦克风')
+        micBtn.title = `${name}\n${t('换麦克风')}` // 名字被截断时悬停看全名
+        fill(micBtn, el('span.truncate', { text: name }), icon('chevron-down', 12))
+      }
     }
 
     function renderBar() {

@@ -1438,6 +1438,7 @@
  "选好了就继续，以后随时能改": "Continue when ready; you can change it any time",
  "选择文件夹…": "Choose folder…",
  "选本地识别，或填上 Soniox、豆包、OpenAI 的密钥，才能出字幕。": "Choose local recognition or enter your Soniox, Doubao, or OpenAI key to get captions.",
+ "通信": "Communications",
  "通用": "General",
  "逾期 {0} 天": "{0} {0|day|days} overdue",
  "都在系统设置里完成，MeetCaption 拿不到你的密码。按顺序点下面的按钮就行。": "Everything happens in System Settings; MeetCaption never sees your password. Just click the buttons below in order.",
