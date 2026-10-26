@@ -86,7 +86,7 @@
  "OpenAI：{0}": "OpenAI: {0}",
  "Soniox 好久没回音": "Soniox가 한동안 응답하지 않습니다",
  "Soniox 实时识别": "Soniox 실시간 인식",
- "Soniox 实时识别，60 种语言，中英文和外语都比豆包准，约 0.12 美元一小时，按连接时长计费。在 console.soniox.com 注册拿 API Key。": "Soniox 실시간 인식, 60개 언어, 중국어·영어·외국어 모두 Doubao보다 정확, 시간당 약 0.12달러, 연결 시간 기준 과금. console.soniox.com에서 가입해 API 키를 받으세요.",
+ "Soniox 实时识别，60 种语言，中英文和外语都比豆包准，按连接时长计费。在 console.soniox.com 注册拿 API Key。": "Soniox 실시간 인식, 60개 언어, 중국어·영어·외국어 모두 Doubao보다 정확하며 연결 시간 기준으로 과금됩니다. console.soniox.com에서 가입하고 API Key를 받으세요.",
  "Soniox 断开了连接（{0}）": "Soniox 연결이 끊겼습니다 ({0})",
  "Soniox、豆包、OpenAI、密钥、测试连接": "Soniox, Doubao, OpenAI, 키, 연결 테스트",
  "Windows 上电脑声音和屏幕截图不用单独授权，只有麦克风要。": "Windows에서는 컴퓨터 오디오와 화면 캡처에 별도 권한이 필요 없고 마이크만 필요합니다.",

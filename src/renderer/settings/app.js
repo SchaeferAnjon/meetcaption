@@ -192,7 +192,7 @@ function buildAsr() {
       s.engine === 'local'
         ? t('在这台电脑上识别，免费，不用联网，也不用填 Key。中文、英文和中英夹杂都能认，说完一个词约半秒出字。专有名词偶尔听错，AI 纠错会按项目术语改回来。')
         : s.engine === 'soniox'
-          ? t('Soniox 实时识别，60 种语言，中英文和外语都比豆包准，约 0.12 美元一小时，按连接时长计费。在 console.soniox.com 注册拿 API Key。')
+          ? t('Soniox 实时识别，60 种语言，中英文和外语都比豆包准，按连接时长计费。在 console.soniox.com 注册拿 API Key。')
           : s.engine === 'volc'
             ? t('豆包流式语音识别（火山引擎），只认中文和英文，国内网络可以直连，要自己开通、按小时付费。')
             : t('OpenAI 实时转写，要 API Key，约 1 美元一小时，只在有人说话时计费。')

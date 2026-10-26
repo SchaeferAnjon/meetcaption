@@ -86,7 +86,7 @@
  "OpenAI：{0}": "OpenAI : {0}",
  "Soniox 好久没回音": "Soniox ne répond pas depuis un moment",
  "Soniox 实时识别": "Reconnaissance en temps réel Soniox",
- "Soniox 实时识别，60 种语言，中英文和外语都比豆包准，约 0.12 美元一小时，按连接时长计费。在 console.soniox.com 注册拿 API Key。": "Reconnaissance en temps réel Soniox, 60 langues, plus précise que Doubao pour le chinois, l'anglais et les autres langues, environ 0,12 $ par heure, facturé au temps de connexion. Inscrivez-vous sur console.soniox.com pour obtenir une clé API.",
+ "Soniox 实时识别，60 种语言，中英文和外语都比豆包准，按连接时长计费。在 console.soniox.com 注册拿 API Key。": "Reconnaissance en temps réel Soniox, 60 langues, plus précise que Doubao en chinois, anglais et autres langues, facturée à la durée de connexion. Inscrivez-vous sur console.soniox.com pour obtenir une clé API.",
  "Soniox 断开了连接（{0}）": "Soniox s'est déconnecté ({0})",
  "Soniox、豆包、OpenAI、密钥、测试连接": "Soniox, Doubao, OpenAI, clé, tester la connexion",
  "Windows 上电脑声音和屏幕截图不用单独授权，只有麦克风要。": "Sur Windows, l'audio de l'ordinateur et les captures d'écran ne nécessitent pas d'autorisation séparée, seul le microphone en a besoin.",

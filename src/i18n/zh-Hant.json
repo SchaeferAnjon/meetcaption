@@ -86,7 +86,7 @@
  "OpenAI：{0}": "OpenAI：{0}",
  "Soniox 好久没回音": "Soniox 好久沒回音",
  "Soniox 实时识别": "Soniox 即時辨識",
- "Soniox 实时识别，60 种语言，中英文和外语都比豆包准，约 0.12 美元一小时，按连接时长计费。在 console.soniox.com 注册拿 API Key。": "Soniox 即時辨識，60 種語言，中英文和外語都比豆包準，約 0.12 美元一小時，按連線時長計費。在 console.soniox.com 註冊拿 API Key。",
+ "Soniox 实时识别，60 种语言，中英文和外语都比豆包准，按连接时长计费。在 console.soniox.com 注册拿 API Key。": "Soniox 即時辨識，支援 60 種語言，中英文與外語都比豆包準確，依連線時長計費。請至 console.soniox.com 註冊取得 API Key。",
  "Soniox 断开了连接（{0}）": "Soniox 斷開了連線（{0}）",
  "Soniox、豆包、OpenAI、密钥、测试连接": "Soniox、豆包、OpenAI、金鑰、測試連線",
  "Windows 上电脑声音和屏幕截图不用单独授权，只有麦克风要。": "Windows 上電腦聲音和螢幕截圖不用單獨授權，只有麥克風要。",
