@@ -73,7 +73,7 @@ export async function listModels(settings) {
   if (!cfg.baseUrl) return { ok: false, error: t('还没填接口地址') }
   if (!cfg.key) return { ok: false, error: t('还没填 API Key') }
   try {
-    return { ok: true, models: await compatModels(cfg), label: provider === 'custom' ? hostOf(cfg.baseUrl) || cfg.baseUrl : providerOf(provider).name }
+    return { ok: true, models: await compatModels(cfg), label: provider === 'custom' ? hostOf(cfg.baseUrl) || cfg.baseUrl : t(providerOf(provider).name) }
   } catch (e) {
     return { ok: false, error: e.message }
   }
@@ -106,7 +106,7 @@ export function llmStatus(settings, auth) {
     }
   }
   const cfg = compatConfig(settings)
-  const label = provider === 'custom' ? hostOf(cfg.baseUrl) || '自定义 AI 服务' : providerOf(provider).name
+  const label = provider === 'custom' ? hostOf(cfg.baseUrl) || t('自定义 AI 服务') : t(providerOf(provider).name)
   if (!cfg.baseUrl) return { provider, ready: false, label, reason: t('没填 AI 服务地址') }
   if (!cfg.key && provider === 'member') return { provider, ready: false, label, reason: memberOffline() }
   if (!cfg.key) return { provider, ready: false, label, reason: provider === 'openai' ? t('没填 OpenAI Key') : provider === 'custom' ? t('没填 AI 服务的 Key') : t(`没填 {0} 的 Key`, label) }
