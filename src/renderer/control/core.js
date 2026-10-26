@@ -189,6 +189,19 @@ const activeProjects = () => state.projects.filter((p) => !p.archived)
 const projectIconName = (p) => (p?.icon && ui.hasIcon(p.icon) ? p.icon : p?.id === INBOX ? 'inbox' : 'folder')
 const projectTint = (p) => (p?.color && ui.tints.includes(p.color) ? p.color : 'gray')
 
+/** 项目颜色和图标在读屏里的名字（按界面语言）；不认识的原样返回。 */
+function tintName(v) {
+  const names = { gray: t('灰色'), red: t('红色'), orange: t('橙色'), yellow: t('黄色'), green: t('绿色'), teal: t('青色'), blue: t('蓝色'), indigo: t('靛蓝'), purple: t('紫色'), pink: t('粉色') }
+  return names[v] ?? v
+}
+function projectIconLabel(v) {
+  const names = {
+    folder: t('文件夹'), briefcase: t('公文包'), 'graduation-cap': t('学士帽'), 'flask-conical': t('烧瓶'), code: t('代码'), 'book-open': t('书本'), lightbulb: t('灯泡'),
+    users: t('多人'), user: t('单人'), star: t('星标'), 'message-square-text': t('对话'), sparkles: t('闪光'), mic: t('麦克风'), monitor: t('显示器'), inbox: t('收件箱'),
+  }
+  return names[v] ?? v
+}
+
 function projectBox(p, size) {
   return ui.iconBox(projectIconName(p), projectTint(p), size ? { size } : {})
 }

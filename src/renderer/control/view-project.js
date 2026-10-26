@@ -486,10 +486,10 @@ function colorIconPicker({ color, icon: iconName }, onChange) {
     onChange({ color: c, icon: ic })
   }
   for (const tv of ui.tints) {
-    swatches.append(el('button.swatch', { type: 'button', role: 'radio', dataset: { value: tv, tint: tv }, 'aria-label': tv, onClick: () => ((c = tv), sync()) }))
+    swatches.append(el('button.swatch', { type: 'button', role: 'radio', dataset: { value: tv, tint: tv }, 'aria-label': tintName(tv), onClick: () => ((c = tv), sync()) }))
   }
   for (const n of ui.projectIcons) {
-    icons.append(el('button.icon-choice', { type: 'button', role: 'radio', dataset: { value: n }, 'aria-label': n, onClick: () => ((ic = n), sync()) }, icon(n, 16)))
+    icons.append(el('button.icon-choice', { type: 'button', role: 'radio', dataset: { value: n }, 'aria-label': projectIconLabel(n), onClick: () => ((ic = n), sync()) }, icon(n, 16)))
   }
   sync()
   return el('div.picker', {}, preview, el('div.picker-body', {}, swatches, icons))
