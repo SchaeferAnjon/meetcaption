@@ -13,12 +13,18 @@ import { t } from '../i18n.js'
 //
 // 断线不丢字：留最近 60 秒送出的音频；新连接从最后一个定稿的字的终点补发。这一句里已经定稿的字当这一句的定稿发出去，
 // 没定稿的尾巴新连接重新认；一个字都没定稿的这一句作废（'drop'）。
+// 断线要发现得快：每 2 秒 ping 一次，6 秒既没回消息也没回 pong 就当断了（送着音频时 Soniox 大约每秒回一条，静音也回）。
+//
+// 断线期间本地识别接手（fallback.js）：hold() 之后连上的连接先不送音频，只发 keepalive，发 'online'；
+// 本地识别交回时 resumeFrom(样本序号) 从那里补发，接着正常送。
 
 const RATE = 16000
 const KEEP_SAMPLES = RATE * 60
 const ROTATE_BEFORE_MS = 90_000 // 离 Key 到点不到这么久，就在下一个句末换连接
 const FORCE_BEFORE_MS = 20_000 // 到这时还没等到句末（一直有人在说）：让 Soniox 把手上的字都定稿（finalize），定完就换
 const DEAD_AFTER_MS = 20_000 // 送着音频、这么久一条回复都没有，当连接死了
+const SILENT_AFTER_MS = 6_000 // 这么久既没回消息也没回 pong：网断了
+const KEEPALIVE_MS = 5_000 // 挂着不送音频时隔多久发一次 keepalive（Soniox 20 秒收不到就断开）
 // 会员服务器不再给 Key 的几种情况（错误码 → 交给上层的类型）
 const MEMBER_STOPS = { exhausted: 'exhausted', idle: 'idle', ended: 'ended', 'bad-session': 'ended' }
 
@@ -48,7 +54,7 @@ export class SonioxStreamASR extends EventEmitter {
   constructor({ key = '', getKey = null, language = 'auto', context = '', hotwords = [], model = 'stt-rt-v5', url = 'wss://stt-rt.soniox.com/transcribe-websocket', timing = {} }) {
     super()
     this.opts = { key, getKey, language, context, hotwords, model, url }
-    this.tm = { rotateBeforeMs: ROTATE_BEFORE_MS, forceBeforeMs: FORCE_BEFORE_MS, deadAfterMs: DEAD_AFTER_MS, ...timing }
+    this.tm = { rotateBeforeMs: ROTATE_BEFORE_MS, forceBeforeMs: FORCE_BEFORE_MS, deadAfterMs: DEAD_AFTER_MS, silentAfterMs: SILENT_AFTER_MS, keepaliveMs: KEEPALIVE_MS, watchMs: 2000, ...timing }
     this.conn = null
     this.closing = false
     this.history = [] // [{ at: 这一路的样本序号, buf }]，最近 60 秒
@@ -57,6 +63,7 @@ export class SonioxStreamASR extends EventEmitter {
     this.retries = 0
     this.retryTimer = null
     this.seq = 0
+    this.standby = false // 本地识别接手中：新连接连上后先挂着
   }
 
   connect() {
@@ -68,7 +75,37 @@ export class SonioxStreamASR extends EventEmitter {
     this.sent += buf.length / 2
     while (this.history.length > 1 && this.sent - this.history[1].at > KEEP_SAMPLES) this.history.shift()
     const c = this.conn
-    if (c?.open && c.ws.readyState === WebSocket.OPEN) c.ws.send(buf)
+    if (c?.open && !c.held && c.ws.readyState === WebSocket.OPEN) c.ws.send(buf)
+  }
+
+  /** 连着、在正常送音频 */
+  get online() {
+    return Boolean(this.conn?.open && !this.conn.held && !this.conn.retired)
+  }
+
+  /** 本地识别接手：之后连上的连接先挂着不送音频，发 'online' 等 resumeFrom。 */
+  hold() {
+    this.standby = true
+  }
+
+  /** 还没认的音频：从最后一个定稿的字的终点（最多往回 60 秒）到现在。{ from: 样本序号, bufs } */
+  pendingAudio() {
+    const from = Math.max(this.finalEnd, this.history[0]?.at ?? this.sent)
+    return { from, bufs: this.#since(from) }
+  }
+
+  /** 本地识别交回：从样本序号 pos 起补发（之前的本地已经认了），之后照常送。连接还没连上的，连上后从这里补发。 */
+  resumeFrom(pos) {
+    this.standby = false
+    this.finalEnd = Math.min(this.sent, Math.max(this.finalEnd, pos, this.history[0]?.at ?? this.sent))
+    const c = this.conn
+    if (!c || c.retired) return
+    if (c.held) {
+      c.held = false
+      c.base = this.finalEnd
+      c.lastMsgAt = Date.now()
+      this.#replay(c)
+    } else if (!c.open) c.base = this.finalEnd
   }
 
   async close() {
@@ -84,7 +121,7 @@ export class SonioxStreamASR extends EventEmitter {
 
   // from：新连接从这一路音频的哪个样本开始补发
   #open(from) {
-    const conn = { id: ++this.seq, ws: null, open: false, base: from, seg: this.#newSeg(), lastMsgAt: Date.now(), rotateAt: Infinity, forceAt: Infinity, finalizing: false, retired: false }
+    const conn = { id: ++this.seq, ws: null, open: false, held: false, base: from, seg: this.#newSeg(), lastMsgAt: Date.now(), aliveAt: Date.now(), keptAt: 0, rotateAt: Infinity, forceAt: Infinity, finalizing: false, retired: false }
     this.conn = conn
     conn.ready = (async () => {
       let key = this.opts.key
@@ -104,20 +141,29 @@ export class SonioxStreamASR extends EventEmitter {
         ws.on('open', () => {
           ws.send(JSON.stringify(this.#config(conn)))
           conn.open = true
-          conn.lastMsgAt = Date.now()
-          this.#replay(conn)
+          conn.lastMsgAt = conn.aliveAt = conn.keptAt = Date.now()
+          if (this.standby) conn.held = true
+          else this.#replay(conn)
           resolve()
         })
         ws.on('message', (m) => this.#onMessage(conn, m))
+        ws.on('pong', () => (conn.aliveAt = Date.now()))
         ws.on('close', (code) => {
           if (!conn.open) reject(new Error(t(`Soniox 断开了连接（{0}）`, code)))
           else this.#lost(conn, new Error(t(`连接断开（{0}）`, code)))
         })
       })
       conn.watch = setInterval(() => {
-        if (conn.retired || !conn.open) return
-        if (Date.now() - conn.lastMsgAt > this.tm.deadAfterMs) this.#lost(conn, new Error(t('Soniox 好久没回音')))
-      }, 2000)
+        if (conn.retired || !conn.open || conn.ws.readyState !== WebSocket.OPEN) return
+        const now = Date.now()
+        if (now - conn.aliveAt > this.tm.silentAfterMs) return this.#lost(conn, new Error(t('网络断了，Soniox 没有回应')))
+        if (!conn.held && now - conn.lastMsgAt > this.tm.deadAfterMs) return this.#lost(conn, new Error(t('Soniox 好久没回音')))
+        conn.ws.ping()
+        if (conn.held && now - conn.keptAt >= this.tm.keepaliveMs) {
+          conn.keptAt = now
+          conn.ws.send(JSON.stringify({ type: 'keepalive' }))
+        }
+      }, this.tm.watchMs)
       this.retries = 0
     })()
     return conn
@@ -141,14 +187,21 @@ export class SonioxStreamASR extends EventEmitter {
     return cfg
   }
 
-  // 从 conn.base 起补发还留着的音频（新连接接着上一条没认完的地方）
-  #replay(conn) {
+  // 还留着的音频里从样本序号 pos 起的部分
+  #since(pos) {
+    const bufs = []
     for (const h of this.history) {
       const end = h.at + h.buf.length / 2
-      if (end <= conn.base) continue
-      const skip = Math.max(0, conn.base - h.at)
-      conn.ws.send(skip ? h.buf.subarray(skip * 2) : h.buf)
+      if (end <= pos) continue
+      const skip = Math.max(0, pos - h.at)
+      bufs.push(skip ? h.buf.subarray(skip * 2) : h.buf)
     }
+    return bufs
+  }
+
+  // 从 conn.base 起补发还留着的音频（新连接接着上一条没认完的地方）
+  #replay(conn) {
+    for (const b of this.#since(conn.base)) conn.ws.send(b)
   }
 
   // 这条连接没了（断网、Key 到点、服务端出错）：定稿的字先发出去，从最后一个定稿的字的终点开新连接
@@ -157,7 +210,8 @@ export class SonioxStreamASR extends EventEmitter {
     this.#drop(conn)
     if (err instanceof FatalError) return this.emit('fatal', err)
     this.emit('status', 'reconnecting')
-    const delay = this.retries === 0 ? 0 : Math.min(15_000, 1000 * 2 ** (this.retries - 1))
+    // 本地识别接手时最多 5 秒试一次：网络一好就能尽快换回云端
+    const delay = this.retries === 0 ? 0 : Math.min(this.standby ? 5000 : 15_000, 1000 * 2 ** (this.retries - 1))
     this.retries++
     clearTimeout(this.retryTimer)
     this.retryTimer = setTimeout(() => this.#reconnect(), delay)
@@ -168,7 +222,7 @@ export class SonioxStreamASR extends EventEmitter {
     const oldest = this.history[0]?.at ?? this.sent
     const next = this.#open(Math.max(this.finalEnd, oldest))
     next.ready.then(
-      () => this.emit('status', 'ready'),
+      () => this.emit('status', next.held ? 'online' : 'ready'),
       (e) => {
         if (MEMBER_STOPS[e.code]) return this.#memberStop(next, MEMBER_STOPS[e.code])
         if (e instanceof FatalError) return this.emit('fatal', e)
@@ -220,7 +274,7 @@ export class SonioxStreamASR extends EventEmitter {
   }
 
   #onMessage(conn, raw) {
-    conn.lastMsgAt = Date.now()
+    conn.lastMsgAt = conn.aliveAt = Date.now()
     let m
     try {
       m = JSON.parse(raw)

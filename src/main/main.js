@@ -1660,6 +1660,8 @@ function wireIpc() {
 function wireEngine() {
   engine.on('state', (st) => {
     if (st.state === 'idle') member?.endSession()
+    // 云识别断线时临时开起来的本地识别进程（常驻约 250 MB）：这一场结束就关掉，没选本地识别的人平时不占内存
+    if (st.state === 'idle' && settings.get().engine !== 'local') stopLocalAsr()
     toUi('engine:state', { ...st, dir: sessionDir(st.sessionId ?? st.lastSessionId) })
     if (st.state === 'running') {
       heardAt = Date.now()

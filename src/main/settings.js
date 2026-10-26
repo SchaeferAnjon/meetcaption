@@ -61,6 +61,7 @@ export class SettingsStore extends EventEmitter {
     if (!d.openaiKey && env.OPENAI_API_KEY) d.openaiKey = env.OPENAI_API_KEY
     if (!d.volcAppId && env.VOLC_ASR_APP_ID) d.volcAppId = env.VOLC_ASR_APP_ID
     if (!d.volcAccessToken && env.VOLC_ASR_ACCESS_TOKEN) d.volcAccessToken = env.VOLC_ASR_ACCESS_TOKEN
+    if (!d.sonioxKey && env.SONIOX_API_KEY) d.sonioxKey = env.SONIOX_API_KEY
     return d
   }
 

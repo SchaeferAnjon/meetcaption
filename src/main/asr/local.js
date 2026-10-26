@@ -197,6 +197,7 @@ export class LocalStreamASR extends EventEmitter {
     this.total = 0 // 送出去的样本数
     this.chanStart = 0 // 这条识别通道从第几个样本开始（进程重开后换新通道，span 要加上它）
     this.warned = false
+    this.backlog = 0 // 接手时一次补进来的样本数（云识别断线期间的音频）：这部分本来就要追，不算跟不上
     this.closed = false
     this.open = null // 最后一个还没定稿的段 { key, text, span }：进程崩了就把它当定稿，字不丢
     this.crashes = []
@@ -216,7 +217,7 @@ export class LocalStreamASR extends EventEmitter {
       keyPrefix: `${this.ch}-`,
       onEvents: (events, samples) => {
         for (const e of events) this.#emit(e)
-        if (!this.warned && samples != null && this.total - this.chanStart - samples > LAG_WARN_SAMPLES) {
+        if (!this.warned && samples != null && this.total - this.chanStart - samples > LAG_WARN_SAMPLES + this.backlog) {
           this.warned = true
           this.emit('warn', '电脑太忙，本地识别跟不上，字幕会慢一些。可以关掉别的程序，或者在「设置 → 语音识别」里换成豆包或 OpenAI。')
         }
@@ -264,6 +265,14 @@ export class LocalStreamASR extends EventEmitter {
     if (this.closed || !buf?.length) return
     this.total += buf.length >> 1
     this.host.audio(this.ch, buf)
+  }
+
+  /** 先补一段积下来的音频（云识别断线期间的），再接着 sendAudio。 */
+  catchUp(bufs) {
+    for (const b of bufs) {
+      this.backlog += b.length >> 1
+      this.sendAudio(b)
+    }
   }
 
   endTurn() {}

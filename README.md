@@ -12,6 +12,7 @@ Download: [latest release](https://github.com/SchaeferAnjon/meetcaption/releases
 
 - **Recognition and translation in 60 languages**: English, Chinese, Japanese, Korean, German, French, Spanish, Italian, Portuguese, Russian and 50 more. Captions can be translated into any of them, plus Traditional Chinese.
 - **Local recognition** (free, offline, runs on your computer) understands Chinese, English and a mix of both. Other languages use cloud recognition.
+- **When the network drops** during a Chinese or English meeting with cloud recognition, local recognition carries on from where the cloud stopped, and the cloud takes over again a few seconds after the network is back. Other languages wait for the network; the last 60 seconds are filled in once it reconnects.
 - **The interface comes in 9 languages**: 简体中文, 繁體中文, English, 日本語, 한국어, Deutsch, Français, Español, Italiano. It follows your system language; change it in **Settings**, page **General**, item **Interface language**.
 - Minutes, notes, to-dos, term explanations and the key point of each AI answer are written in the language you translate into. The answer itself follows the language of the question, so you can say it out loud.
 
@@ -111,6 +112,7 @@ Useful environment variables:
 
 - `MEETCAPTION_USERDATA=<folder>`: keep settings, voiceprint and sign-ins in a test folder instead of your own data.
 - `MEETCAPTION_API=<url>`: point the membership client at another backend.
+- `MEETCAPTION_SONIOX_URL=<ws url>`: connect Soniox recognition through another address (for testing network drops through a local relay).
 - `MEETCAPTION_NO_EXTERNAL=1`: do not open the system browser (for tests).
 - `MEETCAPTION_DEBUG=1`: print recognition events, audio positions and the me/other decisions.
 

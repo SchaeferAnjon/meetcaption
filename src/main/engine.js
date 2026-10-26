@@ -6,8 +6,9 @@ import { WavCapture } from './audio/wav.js'
 import { pcm16ToFloat32, resample, scoreSegment } from './audio/voiceprint.js'
 import { OpenAIRealtimeASR } from './asr/openai.js'
 import { VolcStreamASR } from './asr/volc.js'
-import { LocalStreamASR } from './asr/local.js'
+import { LocalStreamASR, localAsrAvailable } from './asr/local.js'
 import { SonioxStreamASR } from './asr/soniox.js'
+import { LocalFallbackASR } from './asr/fallback.js'
 import { isQuestion, pickLastQuestion } from './assist/question.js'
 import { splitAnswer } from './assist/answerPrompt.js'
 import { checkFix, chunkCoverage, enhanceMessages, noDashes, parseEnhance, streamedHead, translateMessages } from './prompts.js'
@@ -18,7 +19,7 @@ import { joinFixed, splitSentences } from './text.js'
 import { LANG_NAMES, needsMultilingual, needsTranslation } from './languages.js'
 import { modeSettings, speakerLabel } from './modes.js'
 import { LiveNotes } from './class/liveNotes.js'
-import { t } from './i18n.js'
+import { t, uiLang } from './i18n.js'
 
 // 一场会议的运行时：采集 → 门限切句 → 识别 → 分句 → 判断是谁说的 → 译文、意群对齐和术语 → 存档，对方的提问交给答题助手。
 // 电脑声音（system）是对方。麦克风（mic）的每段定稿先看是不是外放漏进来的对方声音（和对方最近 10 秒的字幕比词重合），是就丢掉；
@@ -74,7 +75,10 @@ function createProvider(s) {
   }
   if (s.engine === 'soniox') {
     if (!s.sonioxKey && !s.sonioxGetKey) throw new Error(t('还没填 Soniox 的 API Key，去「设置」里填'))
-    return new SonioxStreamASR({ key: s.sonioxKey, getKey: s.sonioxGetKey, language: s.language, context: s.context, hotwords })
+    const cloud = new SonioxStreamASR({ key: s.sonioxKey, getKey: s.sonioxGetKey, language: s.language, context: s.context, hotwords, url: process.env.MEETCAPTION_SONIOX_URL || undefined })
+    // 断线时本地识别接着认（只认中英文）
+    if (needsMultilingual(s.language) || !localAsrAvailable()) return cloud
+    return new LocalFallbackASR({ cloud, makeLocal: () => new LocalStreamASR() })
   }
   if (!s.openaiKey) throw new Error(t('还没填 OpenAI API Key，去「设置」里填'))
   return new OpenAIRealtimeASR({
@@ -87,6 +91,9 @@ function createProvider(s) {
     keywords: hotwords,
   })
 }
+
+// 提示里的语言名按界面语言写（界面是英文就写 Japanese，不写日语）
+const shownLang = (code) => (uiLang() === 'zh' ? LANG_NAMES[code] : new Intl.DisplayNames([uiLang()], { type: 'language' }).of(code)) ?? code
 
 // 译文请求的超时：一般 20 秒，长句多给一点（一个字 30 毫秒，最多再加 20 秒）
 const enhanceTimeout = (text) => 20_000 + Math.min(20_000, text.length * 30)
@@ -351,7 +358,7 @@ export class MeetingEngine extends EventEmitter {
       this.hotwords = hotwordList(s, extraKeywords)
       this.#buildPipelines(s)
       if (needsMultilingual(s.language) && s.engine !== 'openai' && s.engine !== 'soniox')
-        warnings.push({ text: t(`{0}只认中文和英文，听不懂{1}。在「设置 → 语音识别」里换成 Soniox 或 OpenAI 再开始。`, s.engine === 'local' ? t('本地识别') : t('豆包'), LANG_NAMES[s.language]), code: 'asr-language' })
+        warnings.push({ text: t(`{0}只认中文和英文，听不懂{1}。在「设置 → 语音识别」里换成 Soniox 或 OpenAI 再开始。`, s.engine === 'local' ? t('本地识别') : t('豆包'), shownLang(s.language)), code: 'asr-language' })
       const vpLoad = withMic ? this.#loadVoiceprint(warnings) : null
       await Promise.all([...this.pipelines.values()].map((p) => p.provider.connect()))
       await vpLoad
@@ -687,8 +694,15 @@ export class MeetingEngine extends EventEmitter {
     // 识别服务改了断句，之前的未定稿句子作废（豆包）：从实时记录里拿掉
     provider.on('drop', ({ key }) => this.#dropStale(`${source}:${key}`))
     provider.on('status', (st) => {
-      if (st === 'reconnecting' && this.state === 'running') this.notice('warn', t('识别连接断了，正在重连…'), 'reconnecting')
-      if (st === 'ready' && this.state === 'running') this.notice('info', t('识别已重新连上'), 'reconnected')
+      if (this.state !== 'running') return
+      if (st === 'reconnecting') {
+        const lang = this.cfg?.language
+        const why = this.cfg?.engine === 'soniox' && needsMultilingual(lang) ? t('识别连接断了，正在重连。本地识别只认中英文，{0}要等网络恢复，最近 60 秒的话连上后会补出来。', shownLang(lang)) : t('识别连接断了，正在重连…')
+        this.notice('warn', why, 'reconnecting')
+      }
+      if (st === 'fallback') this.notice('warn', t('网络断了，先用本地识别接着记。网络好了会自动换回云识别。'), 'reconnecting')
+      if (st === 'ready') this.notice('info', t('识别已重新连上'), 'reconnected')
+      if (st === 'back') this.notice('info', t('网络恢复了，已换回云识别'), 'reconnected')
     })
     provider.on('warn', (msg) => this.notice('warn', msg))
     // 会员服务器停了识别（场次用完、没说话自动暂停）：主进程决定暂停还是换本地识别
