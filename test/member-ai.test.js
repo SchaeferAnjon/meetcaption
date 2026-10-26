@@ -88,7 +88,7 @@ test('没走到结束就退出（崩溃）：按开始时间算 24 小时', asyn
   assert.equal(late.noAi, true)
 })
 
-test('场次时间用完（换成本地识别）：AI 状态变成不可用，不再每句发请求；结束后这张票不留', async () => {
+test('场次时间用完（换成本地识别）：会中 AI 状态变成不可用，不再每句发请求；结束后 24 小时内用这张票做纪要', async () => {
   const { f } = trialServer()
   const m = make(tmpFile(), f)
   await m.refresh()
@@ -100,10 +100,10 @@ test('场次时间用完（换成本地识别）：AI 状态变成不可用，�
   assert.equal(llmStatus(memberSettings(S, m)).ready, false)
   assert.match(m.noAiReason(), /时间用完/)
   await m.endSession()
-  assert.equal(m.state.last, null, '用完的场次服务器回 402，不再拿它的票')
-  assert.equal(m.noAi, true, '试用：没有别的凭据')
+  assert.equal(m.noAi, false, '结束了：服务器 24 小时内让这一场做纪要')
+  assert.equal(m.aiKey(), m.state.last.token)
 
-  // 买过的：用完的那场结束后改用设备令牌（会后整理额度）
+  // 买过的：一样用这一场的票
   const paid = trialServer({ kind: 'paid' })
   const p = make(tmpFile(), paid.f)
   await p.refresh()
@@ -112,7 +112,7 @@ test('场次时间用完（换成本地识别）：AI 状态变成不可用，�
   assert.equal(p.noAi, true)
   await p.endSession()
   assert.equal(p.noAi, false)
-  assert.equal(p.aiKey(), 'mcd_1')
+  assert.equal(p.aiKey(), p.state.last.token)
 })
 
 test('试用余额 0、这一场没开成（退回本地识别）：AI 关着，上一场的票不拿来翻译这一场；这一场结束后照常给上一场做纪要', async () => {

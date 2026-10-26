@@ -258,8 +258,8 @@ export class Member extends EventEmitter {
     this.hb = null
     this.session = null
     this.running = false
-    // 时间用完的场次服务器不再给 AI（402），这张票不留
-    this.state.last = s.exhausted ? null : { ...this.state.last, token: s.token, endedAt: Date.now() }
+    // 时间用完的场次也留着票：结束后 24 小时内服务器照样让它做纪要、课堂笔记（会中用完那段时间不给）
+    this.state.last = { ...this.state.last, token: s.token, endedAt: Date.now() }
     this.#write()
     try {
       const r = await this.#call('POST', '/v1/session/end', { token: s.token })

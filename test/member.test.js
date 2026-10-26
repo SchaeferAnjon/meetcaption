@@ -70,7 +70,7 @@ test('一场：开始拿到票，心跳带着是否在记录，用完、自动�
   const r = await m.endSession()
   assert.equal(r.refunded, true)
   assert.equal(m.session, null)
-  assert.equal(m.aiKey(), 'mcd_x', '时间用完的那场服务器不再给 AI，会后改用设备令牌（没用完的见 member-ai.test.js）')
+  assert.equal(m.aiKey(), 'mcs_1', '时间用完的那场结束后 24 小时内还用它的票做纪要')
   m.stop()
 })
 
