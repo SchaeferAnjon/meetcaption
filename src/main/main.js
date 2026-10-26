@@ -30,6 +30,7 @@ import { Assistant } from './assist/assistant.js'
 import { captureScreen, screenPermission } from './assist/screen.js'
 import { createAnswerWindow, keepFrontApp, resetAnswerBounds, setAnswerEditMode, showAnswerWindow } from './assist/answerWindow.js'
 import { centeredIn } from './assist/answerBounds.js'
+import { dragBounds, getBoundsKept, gesture, keepSize, setBoundsKept } from './windowBounds.js'
 import { applyTheme, chromeInfo, chromeOptions } from './windows.js'
 import { runSelfTest } from './selftest.js'
 import { resolveMode } from './modes.js'
@@ -333,7 +334,7 @@ function defaultOverlayBounds(o) {
 
 // 默认位置在屏幕下方，往上长
 function resetOverlayBounds() {
-  overlayWin.setBounds(defaultOverlayBounds(settings.get().overlay))
+  setBoundsKept(overlayWin, defaultOverlayBounds(settings.get().overlay))
   if (overlayAnchor() !== 'bottom') {
     settings.update({ overlay: { anchor: 'bottom' } })
     toOverlay('overlay:config', overlayConfig())
@@ -362,7 +363,7 @@ function resized(b, height, anchor = overlayAnchor()) {
  * 拖动中不换，不然字幕条会从鼠标底下跳走。
  */
 function settleOverlayAnchor() {
-  const b = overlayWin.getBounds()
+  const b = getBoundsKept(overlayWin)
   const cur = overlayAnchor()
   const tip = tipSpace()
   const areaTop = b.y + (cur === 'top' ? OVERLAY_EDGE : tip)
@@ -371,8 +372,8 @@ function settleOverlayAnchor() {
   const next = areaMid < d.y + d.height / 2 ? 'top' : 'bottom'
   if (next === cur) return
   const shift = tip - OVERLAY_EDGE
-  overlayWin.setBounds({ ...b, y: Math.round(next === 'top' ? b.y + shift : b.y - shift) })
-  settings.update({ overlay: { anchor: next, bounds: overlayWin.getBounds() } })
+  setBoundsKept(overlayWin, { ...b, y: Math.round(next === 'top' ? b.y + shift : b.y - shift) })
+  settings.update({ overlay: { anchor: next, bounds: getBoundsKept(overlayWin) } })
   toOverlay('overlay:config', overlayConfig())
 }
 
@@ -410,6 +411,7 @@ function createOverlay() {
     ...(isMac ? { type: 'panel' } : {}),
     webPreferences: { preload: path.join(root, 'preload/overlay.cjs'), backgroundThrottling: false },
   })
+  keepSize(overlayWin, bounds)
   overlayFront = isMac ? keepFrontApp(overlayWin) : null
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
   overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
@@ -430,7 +432,7 @@ function createOverlay() {
 
 function saveOverlayBounds() {
   if (!overlayWin || overlayWin.isDestroyed()) return
-  settings.update({ overlay: { bounds: overlayWin.getBounds() } })
+  settings.update({ overlay: { bounds: getBoundsKept(overlayWin) } })
 }
 
 function overlayConfig() {
@@ -538,9 +540,9 @@ function setEditMode(on) {
 
 function applyOverlayAppearance() {
   const s = settings.get()
-  const b = overlayWin.getBounds()
+  const b = getBoundsKept(overlayWin)
   const height = overlayHeight(s.overlay)
-  if (b.height !== height) overlayWin.setBounds(resized(b, height))
+  if (b.height !== height) setBoundsKept(overlayWin, resized(b, height))
   overlayWin.setContentProtection(s.hideFromScreenShare)
   if (answerWin && !answerWin.isDestroyed()) answerWin.setContentProtection(s.hideFromScreenShare)
   refreshOverlay()
@@ -1831,10 +1833,12 @@ function wireIpc() {
     if (e.sender !== overlayWin?.webContents) return
     overlayHit = r && [r.x, r.y, r.width, r.height].every(Number.isFinite) && r.width > 0 && r.height > 0 ? r : null
   })
+  const movingOverlay = gesture(() => getBoundsKept(overlayWin), () => screen.getCursorScreenPoint())
   ipcMain.on('overlay:moveTo', (e, p) => {
-    if (e.sender !== overlayWin?.webContents || editMode || !p || ![p.x, p.y].every(Number.isFinite)) return
-    const { width, height } = overlayWin.getBounds()
-    overlayWin.setBounds({ x: Math.round(p.x), y: Math.round(clampOverlayY(p.x, p.y, width, height)), width, height })
+    if (e.sender !== overlayWin?.webContents || editMode) return
+    const g = movingOverlay(Boolean(p?.first))
+    const b = dragBounds(g.start, g.from, g.now)
+    setBoundsKept(overlayWin, { ...b, y: Math.round(clampOverlayY(b.x, b.y, b.width, b.height)) })
   })
   ipcMain.on('overlay:released', (e) => {
     if (e.sender !== overlayWin?.webContents) return
@@ -2120,7 +2124,7 @@ app.whenReady().then(async () => {
     } else setTimeout(() => exitNow(0), uiSelfTest * 1000)
   }
   screen.on('display-removed', () => {
-    const b = overlayWin.getBounds()
+    const b = getBoundsKept(overlayWin)
     if (!visibleOnSomeDisplay(b)) resetOverlayBounds()
     if (answerWin && !answerWin.isDestroyed() && !visibleOnSomeDisplay(answerWin.getBounds())) {
       const nb = resetAnswerBounds(answerWin)

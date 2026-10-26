@@ -1,6 +1,7 @@
 import { BrowserWindow, clipboard, screen } from 'electron'
 import { execFile } from 'node:child_process'
 import { MIN_SIZE, placeAnswer } from './answerBounds.js'
+import { dragBounds, getBoundsKept, gesture, keepSize, setBoundsKept } from '../windowBounds.js'
 
 // 答题框：独立的置顶窗口，默认在主屏右侧、字幕上方。不抢焦点，但按钮能点。
 // 窗口平时鼠标穿透。鼠标移到面板上时接管点击：Mac 靠 forward 转来的 mousemove，渲染进程发 answer:setIgnoreMouse(false)；
@@ -148,6 +149,7 @@ export function createAnswerWindow({ preload, page, bounds, contentProtection = 
   win.setContentProtection(contentProtection)
   win.setIgnoreMouseEvents(true, { forward: true })
   win.loadFile(page)
+  keepSize(win, b)
   if (avoid) avoiders.set(win, avoid)
 
   // 这几个通道只跟本窗口有关，直接在这里处理；answer:ready / regenerate / doneEditing 由主进程接
@@ -161,11 +163,12 @@ export function createAnswerWindow({ preload, page, bounds, contentProtection = 
   })
   ipc.on('answer:hitRect', (_e, r) => hover?.setRect(r))
   ipc.on('answer:clicked', () => front?.clicked())
-  // 随时拖动：页面按住面板拖时发窗口左上角的新位置，大小不变
+  // 随时拖动：页面只说「开始了 / 还在拖」，位置由这里按鼠标走了多远算（见 windowBounds.js）
+  const cursor = () => screen.getCursorScreenPoint()
+  const moving = gesture(() => getBoundsKept(win), cursor)
   ipc.on('answer:moveTo', (_e, p) => {
-    if (!p || ![p.x, p.y].every(Number.isFinite)) return
-    const { width, height } = win.getBounds()
-    win.setBounds({ x: Math.round(p.x), y: Math.round(p.y), width, height })
+    const g = moving(Boolean(p?.first))
+    setBoundsKept(win, dragBounds(g.start, g.from, g.now))
   })
   ipc.on('answer:setBounds', (_e, nb) => {
     if (nb && [nb.x, nb.y, nb.width, nb.height].every(Number.isFinite)) win.setBounds(sanitize(nb))
@@ -178,11 +181,11 @@ export function createAnswerWindow({ preload, page, bounds, contentProtection = 
   const changed = () => {
     clearTimeout(timer)
     timer = setTimeout(() => {
-      if (!win.isDestroyed()) onBoundsChange?.(win.getBounds())
+      if (!win.isDestroyed()) onBoundsChange?.(getBoundsKept(win))
     }, 400)
   }
   win.on('moved', changed)
-  win.on('move', changed) // 页面里拖动是 setBounds 挪的，Mac 上不发 moved
+  win.on('move', changed) // 拖动是 setBounds 挪的，Mac 上不发 moved
   win.on('resize', changed)
   win.on('closed', () => clearTimeout(timer))
   return win
@@ -207,6 +210,6 @@ export function setAnswerEditMode(win, on) {
 export function resetAnswerBounds(win) {
   if (!win || win.isDestroyed()) return null
   const b = defaultAnswerBounds(undefined, avoiders.get(win)?.())
-  win.setBounds(b)
+  setBoundsKept(win, b)
   return b
 }
