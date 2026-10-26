@@ -73,6 +73,7 @@
  "Codex CLI 的登录已过期，在终端运行一次 codex 让它刷新": "Codex CLI のサインインが期限切れです。ターミナルで codex を一度実行して更新してください",
  "DeepSeek、通义、Kimi、豆包、智谱、OpenAI 等 10 家": "DeepSeek、Qwen、Kimi、Doubao、Zhipu、OpenAI など 10 社",
  "Esc 或 {0}": "Esc または {0}",
+ "GitHub 上还没有能自动更新的新版本": "GitHub にはまだ自動アップデートに対応した新しいバージョンがありません",
  "MeetCaption · 外语会议和课堂，听得懂、答得上": "MeetCaption · 外国語の会議や授業で、聞き取れて答えられる",
  "MeetCaption 住在任务栏右边的托盘里，点图标能开主窗口和设置。": "MeetCaption はタスクバー右側のトレイにいます。アイコンからメインウィンドウと設定を開けます。",
  "MeetCaption 住在屏幕右上角的菜单栏里，点兔子图标能开主窗口和设置。": "MeetCaption は画面右上のメニューバーにいます。ウサギのアイコンからメインウィンドウと設定を開けます。",

@@ -110,6 +110,8 @@ function buildGeneral() {
 function updateError(msg) {
   const m = String(msg ?? '')
   if (/code signature|code requirement/i.test(m)) return t('新版本的签名和装着的这一版对不上，没有装')
+  // GitHub 上最新的那一版没带 latest-mac.yml / latest.yml（0.5.9 就没有）
+  if (/Cannot find channel|404/i.test(m)) return t('GitHub 上还没有能自动更新的新版本')
   if (/read-only/i.test(m)) return t('应用在只读的位置（比如直接从安装包里打开），装不上新版本')
   if (/net::|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed|getaddrinfo|socket hang up/i.test(m)) return t('连不上 GitHub，过一会儿会再查')
   return m
