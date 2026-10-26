@@ -6,6 +6,12 @@
 
 const ANSWERS_SHOWN = 12
 
+// 点的这一句自己的回答：segIds 最后一段是被问的那句，前面是带进去的铺垫。
+// 按快捷键答的那次可能把前一个问题也带上（Bob 那句 + 最大风险那句），不能当成 Bob 那句的回答。多条取最新的
+function answerOfSeg(answers, segId) {
+  return answers.filter((a) => a.segIds?.at(-1) === segId).sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0] ?? null
+}
+
 VIEWS.live = {
   mount(ctx) {
     const header = () => renderLiveHeader(ctx)
@@ -197,10 +203,7 @@ VIEWS.live = {
     // 框挂在句子节点里，字幕滚动不受影响；句子节点被换掉（译文到了、重画）时挪到新节点上。
     const qBoxes = new Map() // segId → { root, body, card }
 
-    function answerFor(segId) {
-      const all = state.live ? [...state.live.answers.values()] : []
-      return all.filter((a) => a.segIds?.includes(segId)).sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0] ?? null
-    }
+    const answerFor = (segId) => answerOfSeg(state.live ? [...state.live.answers.values()] : [], segId)
 
     function attachQBox(segId) {
       const b = qBoxes.get(segId)
@@ -392,10 +395,8 @@ VIEWS.live = {
     ctx.on('slide', onSlide)
     ctx.on('notes', renderNotes)
     ctx.on('answer', (a) => {
-      for (const id of a?.segIds ?? []) {
-        const b = qBoxes.get(id)
-        if (b) fillQBox(b, a)
-      }
+      const box = qBoxes.get(a?.segIds?.at(-1))
+      if (box) fillQBox(box, a)
       const fresh = a?.id && !cards.has(a.id) && a.reason !== 'click'
       renderAnswers()
       if (fresh && sideTab !== 'answers') {
