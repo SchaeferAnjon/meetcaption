@@ -7,7 +7,8 @@ let guide = null
 
 function tourSteps() {
   const s = state.settings ?? {}
-  const keyLine = (before, accel, after) => [before, accel ? el('span.nw', {}, kbd(accel, { size: 'sm' }), after) : after]
+  // 只有快捷键本身不换行；后面的整句话包在不换行里会超出卡片
+  const keyLine = (before, accel, after) => [before, accel ? el('span.nw', {}, kbd(accel, { size: 'sm' })) : null, after]
   return [
     {
       target: () => document.querySelector('.home-start-row .btn-group'),
