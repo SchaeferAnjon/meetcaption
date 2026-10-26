@@ -146,10 +146,16 @@ test('AI 写给用户看的东西跟这一场「翻译成」的语言：纪要�
   assert.equal(writeLang(old, { target: 'fr' }), 'fr')
   const sum = summaryMessages({ session: de })[0].content
   assert.match(sum, /请用德语（Deutsch）写会议纪要/)
-  assert.match(sum, /小节标题、表头.*都换成德语/)
-  assert.match(sum, /截止日期照样写成 YYYY-MM-DD/)
-  assert.doesNotMatch(summaryMessages({ session: old })[0].content, /都换成/, '简体中文照旧，不加规则')
-  assert.match(summaryMessages({ session: { ...de, target: 'zh-Hant' } })[0].content, /都换成繁体中文/)
+  assert.match(sum, /固定的字已经是德语（Deutsch），照着写/)
+  assert.match(sum, /截止日期写成 YYYY-MM-DD/)
+  assert.doesNotMatch(summaryMessages({ session: old })[0].content, /已经是|都换成/, '简体中文照旧，不加规则')
+  const hant = summaryMessages({ session: { ...de, target: 'zh-Hant' } })[0].content
+  assert.match(hant, /不要夹简体字/)
+  assert.match(hant, /## 一句話總結/)
+  // 没手写模板的语言：给英文的结构，让模型把固定的字换成那种语言
+  const th = summaryMessages({ session: { ...de, target: 'th' } })[0].content
+  assert.match(th, /## One-line summary/)
+  assert.match(th, /结构是用英语写的：.*都换成泰语/)
   assert.match(classNotesMessages({ session: de })[0].content, /请用德语（Deutsch）写一份课堂笔记/)
   assert.match(classTodoMessages({ session: de, summary: '' })[0].content, /text：一句德语（Deutsch）/)
   assert.match(todoMessages({ session: de, summary: '', project: null, projects: [] })[0].content, /德语（Deutsch）标题/)
@@ -157,6 +163,46 @@ test('AI 写给用户看的东西跟这一场「翻译成」的语言：纪要�
   assert.match(live, /用日语（日本語）写/)
   assert.match(live, /日语（日本語）译名、一句日语（日本語）解释/)
   assert.match(enhanceMessages({ sentence: 'x', target: 'ko' })[0].content, /explain 是一句韩语（한국어）/)
+})
+
+test('模板的固定字按笔记的语言写好：日语的纪要、课堂笔记、实时笔记前缀里没有中文的「原话」「截止」「我：」', async () => {
+  const { summaryMessages } = await import('../src/main/prompts.js')
+  const { classNotesMessages, notesMessages, classTodoMessages } = await import('../src/main/class/prompts.js')
+  const { summaryDeadlines } = await import('../src/main/todos.js')
+  const ja = { startedAt: Date.now(), segments: [], target: 'ja' }
+  const template = (s) => s.slice(s.indexOf('按下面的 Markdown 结构输出'))
+  const sum = template(summaryMessages({ session: ja })[0].content)
+  assert.match(sum, /没有内容的小节写「なし」/)
+  assert.match(sum, /## 自分のやること\n- \[ \] 項目（期限：YYYY-MM-DD \/ 明確な期限なし）  発言："…" \[mm:ss\]/)
+  assert.match(sum, /\| 日時 \| 項目 \| 発言 \|/)
+  const cls = template(classNotesMessages({ session: ja })[0].content)
+  assert.match(cls, /## 構成と要点\n### \[mm:ss\] 小見出し/)
+  assert.match(cls, /\| 原語 \| 日本語 \| 説明 \|/)
+  for (const s of [sum, cls]) assert.doesNotMatch(s.replace(/^按下面的 Markdown 结构输出，没有内容的小节写/, ''), /原话|截止|无明确截止|待确认|小节标题|事项|作业/)
+  assert.match(classNotesMessages({ session: ja })[0].content, /每道后面另起一行写「答え：…」/)
+  assert.match(classTodoMessages({ session: ja, summary: '' })[0].content, /考试写成「中間試験の準備をする（範囲：…）」/)
+  // 实时笔记：待办写「自分：」「相手：」，面试的追问写「追加質問：」；英语是 Me: / Follow-up:
+  assert.match(notesMessages({ lines: [], lang: 'ja', mode: 'meeting' })[0].content, /（「自分：…」或「相手：…」）/)
+  assert.match(notesMessages({ lines: [], lang: 'ja', mode: 'interview' })[0].content, /以「追加質問：」开头/)
+  assert.match(notesMessages({ lines: [], lang: 'en', mode: 'interview' })[0].content, /以「Follow-up:」开头/)
+  assert.match(notesMessages({ lines: [], mode: 'meeting' })[0].content, /（「我：…」或「对方：…」）/, '中文照旧')
+  // 没手写的语言：英文前缀，让模型换成那种语言
+  assert.match(notesMessages({ lines: [], lang: 'th', mode: 'meeting' })[0].content, /「Me: …」或「Them: …」[\s\S]*英文的前缀.*换成泰语/)
+  // 照模板写出来的截止，程序都认得
+  const md = ['- [ ] 原稿を直す（期限：2026-10-30 / 明確な期限なし）  発言："by Friday" [00:10]', '- [ ] 과제 (마감: 2026-10-30)  발언: "by Friday" [00:10]', '- [ ] Devoir (Échéance : 2026-10-30)  Citation : « by Friday » [00:10]', '- [ ] Задача (Срок: 2026-10-30)  Цитата: «by Friday» [00:10]']
+  assert.deepEqual(summaryDeadlines(md.join('\n')).map((x) => [x.due, x.quote]), md.map(() => ['2026-10-30', 'by Friday']))
+})
+
+test('图文版课堂笔记认别的语言写的小节：日语的大纲、自测题的「答え：」', async () => {
+  const { outlineSections } = await import('../src/main/class/slideMap.js')
+  const { renderNotesHtml } = await import('../src/main/class/notesHtml.js')
+  const md = '## 今回の概要\n精度と再現率。\n## 構成と要点\n### [00:00] 医療検査\n- がん検査の例\n## 確認テスト\n1. Precision の分母は？\n答え：$TP+FP$\n'
+  assert.deepEqual(outlineSections(md), ['[00:00] 医療検査'])
+  assert.deepEqual(outlineSections(md.replaceAll('構成と要点', 'Outline and key points')), ['[00:00] 医療検査'])
+  const html = renderNotesHtml({ session: { startedAt: Date.now(), segments: [] }, markdown: md, sessionDir: '/nonexistent' })
+  assert.match(html, /<section class="sec quiz"/)
+  assert.match(html, /<details class="ans"><summary>看答案<\/summary>/)
+  assert.match(html, /<div class="lead"><p>精度と再現率。<\/p>/, '概要放在页头')
 })
 
 test('纪要里的截止认任何语言的截止词：德语、日语、英语写的纪要也能提出待办的日期', async () => {

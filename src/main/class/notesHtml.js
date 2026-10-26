@@ -7,6 +7,7 @@ import { clock, ymd } from '../prompts.js'
 import { parseAt } from '../todos.js'
 import { jpegSize, pageRef } from './materials.js'
 import { t } from '../i18n.js'
+import { ANSWER_WORDS, classHeadRe } from '../templateWords.js'
 
 // 图文版课堂笔记（课堂笔记.html）：照 Dispatch 交付页的样子（左边目录、看图器：点一条放大到图上那个框、自动 / 浅色 / 深色），
 // 一个文件，图片和公式字体都内嵌，拷给别人、放进笔记库都能直接打开。
@@ -236,8 +237,8 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
   const body = (lines) => render(withFigs(lines.join('\n'))).replace(new RegExp(`<p>${FIG_OPEN}(\\d+)${FIG_CLOSE}</p>`, 'g'), (_, i) => figs[i])
 
   const sections = splitSections(markdown)
-  const overview = sections.find((s) => /概览/.test(s.title))
-  const outline = sections.find((s) => /大纲|知识点/.test(s.title))
+  const overview = sections.find((s) => classHeadRe(0).test(s.title))
+  const outline = sections.find((s) => classHeadRe(1).test(s.title))
   const rendered = sections.map((s) => (s === outline ? lesson(s) : { s, html: body(s.body), subs: [] }))
   const toc = []
   const parts = []
@@ -246,7 +247,7 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
     const id = `s${i + 1}`
     const subs = r.subs.map((x, j) => ({ id: `${id}-${j + 1}`, ...x }))
     toc.push(`<li><a href="#${id}" data-t="${id}">${esc(plain(r.s.title))}</a>${subs.length ? `<ol class="toc-sub">${subs.map((x) => `<li><a class="s" href="#${x.id}" data-t="${x.id}">${esc(plain(x.title))}</a></li>`).join('')}</ol>` : ''}</li>`)
-    const quiz = /自测/.test(r.s.title)
+    const quiz = classHeadRe(7).test(r.s.title)
     const fix = (h) => (quiz ? foldAnswers(h) : h)
     parts.push(
       `<section class="sec${quiz ? ' quiz' : ''}" id="${id}"><h2>${render(r.s.title, { inline: true })}</h2>${fix(r.html)}${subs.map((x) => `<h3 id="${x.id}">${heading(x.title)}</h3>${fix(x.html)}`).join('')}</section>`,
@@ -295,9 +296,10 @@ function plain(s) {
   return String(s).replace(/[*_`$]/g, '')
 }
 
-// 自测题的「答案：…」折起来，先想再看
+// 自测题的「答案：…」折起来，先想再看（笔记是别的语言写的也认：Answer:、答え：…）
+const ANSWER = new RegExp(`(?:<br>\\s*)?(?:${ANSWER_WORDS.join('|')})\\s*[：:]\\s*([\\s\\S]*?)(?=<\\/p>|<\\/li>)`, 'g')
 function foldAnswers(html) {
-  return html.replace(/(?:<br>\s*)?答案[：:]\s*([\s\S]*?)(?=<\/p>|<\/li>)/g, (_, a) => `<details class="ans"><summary>看答案</summary><div>${a}</div></details>`)
+  return html.replace(ANSWER, (_, a) => `<details class="ans"><summary>看答案</summary><div>${a}</div></details>`)
 }
 
 let katexCssCache = null

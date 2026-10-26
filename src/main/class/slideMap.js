@@ -2,6 +2,7 @@ import { cleanText, extractJson } from '../prompts.js'
 import { parseAt } from '../todos.js'
 import '../../renderer/shared/texfix.js'
 import { t } from '../i18n.js'
+import { classHeadRe } from '../templateWords.js'
 
 const { repair } = globalThis.texfix
 
@@ -12,13 +13,13 @@ const { repair } = globalThis.texfix
 const MAX_POINTS = 6
 const MAX_LINES = 4
 
-/** 笔记「## 大纲…」下面的 ### 小节标题，按顺序。 */
+/** 笔记「## 大纲…」（别的语言写的也认）下面的 ### 小节标题，按顺序。 */
 export function outlineSections(markdown) {
   const out = []
   let inOutline = false
   for (const line of String(markdown).split('\n')) {
     const h2 = line.match(/^##\s+(.+)/)
-    if (h2) inOutline = /大纲|知识点/.test(h2[1])
+    if (h2) inOutline = classHeadRe(1).test(h2[1])
     const h3 = inOutline && line.match(/^###\s+(.+)/)
     if (h3) out.push(h3[1].trim())
   }
