@@ -106,6 +106,15 @@ function buildGeneral() {
   ]
 }
 
+// electron-updater / Squirrel 的原文报错换成看得懂的话，认不出的原样给
+function updateError(msg) {
+  const m = String(msg ?? '')
+  if (/code signature|code requirement/i.test(m)) return t('新版本的签名和装着的这一版对不上，没有装')
+  if (/read-only/i.test(m)) return t('应用在只读的位置（比如直接从安装包里打开），装不上新版本')
+  if (/net::|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed|getaddrinfo|socket hang up/i.test(m)) return t('连不上 GitHub，过一会儿会再查')
+  return m
+}
+
 /* 通用 → 更新：自动检查的开关、现在的状态（main/updater.js 的 phase）、检查更新、下好了重启更新 */
 function buildUpdate() {
   const line = el('span.text-2.plain-line')
@@ -122,7 +131,7 @@ function buildUpdate() {
       downloading: t('正在下载新版本 {0}，{1}%', st.version, st.percent ?? 0),
       ready: t('新版本 {0} 已下载好，重启就能用。', st.version),
       latest: t('已是最新版本 {0}，{1} 查过', init.version, when(st.checkedAt)),
-      error: t('更新出错：{0}', manualError || st.error),
+      error: t('更新出错：{0}', updateError(manualError || st.error)),
     }[st.phase]
     // Squirrel 要把新版换到应用所在的位置：从下载文件夹、dmg 里直接打开的（只读）装不上
     line.textContent = [text, st.inApps === false && st.phase !== 'off' ? t('会议字幕不在「应用程序」文件夹里，可能装不上更新：把它拖进「应用程序」后再打开。') : ''].filter(Boolean).join(' ')
