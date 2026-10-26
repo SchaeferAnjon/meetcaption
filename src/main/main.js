@@ -1678,7 +1678,7 @@ function wireIpc() {
   ipcMain.handle('onboarding:helper', (_e, kind) => {
     if (!kind) return dragHelper.hide()
     if (!['sys', 'scr', 'mic'].includes(kind)) throw new Error(`unknown helper ${kind}`)
-    shell.openExternal(privacyUrl(kind === 'mic' ? 'microphone' : 'screen'))
+    if (!process.env.MEETCAPTION_NO_EXTERNAL) shell.openExternal(privacyUrl(kind === 'mic' ? 'microphone' : 'screen'))
     if (isMac) dragHelper.show(kind)
   })
   ipcMain.handle('listen:start', () => startListen())
