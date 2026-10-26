@@ -107,14 +107,23 @@ function buildGeneral() {
 }
 
 // electron-updater / Squirrel 的原文报错换成看得懂的话，认不出的原样给
-function updateError(msg) {
+function updateError(msg, version = '') {
   const m = String(msg ?? '')
   if (/code signature|code requirement/i.test(m)) return t('新版本的签名和装着的这一版对不上，没有装')
+  // 查到了新版（latest-mac.yml 在），但它的安装包（zip）下载不到：不是「没有新版」
+  const down = m.match(/Cannot download .*status (\d{3})/i)
+  if (down) return version ? t('新版本 {0} 的安装包下载不到（{1}），过一会儿再试', version, down[1]) : t('新版本的安装包下载不到（{0}），过一会儿再试', down[1])
   // GitHub 上最新的那一版没带 latest-mac.yml / latest.yml（0.5.9 就没有）
-  if (/Cannot find channel|404/i.test(m)) return t('GitHub 上还没有能自动更新的新版本')
+  if (/Cannot find channel/i.test(m)) return t('GitHub 上还没有能自动更新的新版本')
   if (/read-only/i.test(m)) return t('应用在只读的位置（比如直接从安装包里打开），装不上新版本')
   if (/net::|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|fetch failed|getaddrinfo|socket hang up/i.test(m)) return t('连不上 GitHub，过一会儿会再查')
   return m
+}
+
+// 两句话排成一行：前一句没有句末标点就补上（状态句本身都不带句号）
+function joinSentences(first, next) {
+  if (!next) return first
+  return `${/[.。!！?？…]$/.test(first) ? first : t('{0}。', first)} ${next}`
 }
 
 /* 通用 → 更新：自动检查的开关、现在的状态（main/updater.js 的 phase）、检查更新、下好了重启更新 */
@@ -133,10 +142,11 @@ function buildUpdate() {
       downloading: t('正在下载新版本 {0}，{1}%', st.version, st.percent ?? 0),
       ready: t('新版本 {0} 已下载好，重启就能用。', st.version),
       latest: t('已是最新版本 {0}，{1} 查过', init.version, when(st.checkedAt)),
-      error: t('更新出错：{0}', updateError(manualError || st.error)),
+      error: t('更新出错：{0}', updateError(manualError || st.error, st.version)),
     }[st.phase]
-    // Squirrel 要把新版换到应用所在的位置：从下载文件夹、dmg 里直接打开的（只读）装不上
-    line.textContent = [text, st.inApps === false && st.phase !== 'off' ? t('会议字幕不在「应用程序」文件夹里，可能装不上更新：把它拖进「应用程序」后再打开。') : ''].filter(Boolean).join(' ')
+    // Squirrel 要把新版换到应用所在的位置：从下载文件夹、dmg 里直接打开的（只读）装不上。两句之间补上句末标点
+    const apps = st.inApps === false && st.phase !== 'off' ? t('会议字幕不在「应用程序」文件夹里，可能装不上更新：把它拖进「应用程序」后再打开。') : ''
+    line.textContent = joinSentences(text, apps)
     check.disabled = ['off', 'checking', 'downloading', 'ready'].includes(st.phase)
     install.hidden = st.phase !== 'ready'
   }

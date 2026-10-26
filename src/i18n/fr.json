@@ -844,6 +844,8 @@
  "新建项目并复制这里的资料…": "Nouveau projet et copier les éléments ici…",
  "新版本": "nouvelle version",
  "新版本 {0} 已下载好，重启就能用。": "La version {0} est téléchargée. Redémarrez pour l'utiliser.",
+ "新版本 {0} 的安装包下载不到（{1}），过一会儿再试": "Le programme d'installation de la version {0} est introuvable ({1}). Réessayez dans un moment",
+ "新版本的安装包下载不到（{0}），过一会儿再试": "Le programme d'installation de la nouvelle version est introuvable ({0}). Réessayez dans un moment",
  "新版本的签名和装着的这一版对不上，没有装": "La signature de la nouvelle version ne correspond pas à celle installée : elle n'a pas été installée",
  "新版本还没下载好": "La nouvelle version n'est pas encore téléchargée",
  "新用户": "Nouvel utilisateur",
