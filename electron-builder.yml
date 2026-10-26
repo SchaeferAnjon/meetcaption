@@ -26,6 +26,9 @@ files:
   # 课件 PDF 渲染只用 build 里的两个压缩版、cmaps（中日韩字体编码）、standard_fonts、wasm（JPX / JBIG2 图片解码）、iccs
   - "!node_modules/pdfjs-dist/{legacy,web,types,image_decoders}/**"
   - "!node_modules/pdfjs-dist/build/{pdf.mjs,pdf.worker.mjs,pdf.sandbox*}"
+  # @napi-rs/canvas 是 pdfjs-dist 的可选依赖，只有 pdf.js 在 Node 里跑才会加载；应用里 PDF 在网页环境里渲染（renderer/pdf/pdf.js）。
+  # 带上它每个包白多 25 MB（Mac 上只有 arm64 的 .node，Intel 包里加载不了）
+  - "!node_modules/@napi-rs/**"
   # 声纹：sherpa-onnx 的原生库不进 asar，按目标架构放到 Resources/sherpa-onnx（见 mac/win 的 extraResources）
   - "!node_modules/sherpa-onnx-*/**"
 asarUnpack:
@@ -85,6 +88,9 @@ win:
     - "!node_modules/katex/dist/{contrib/**,katex.js,katex.css,katex-swap.css,katex-swap.min.css}"
     - "!node_modules/katex/dist/fonts/*.{ttf,woff}"
     - "!node_modules/commander/**"
+    - "!node_modules/pdfjs-dist/{legacy,web,types,image_decoders}/**"
+    - "!node_modules/pdfjs-dist/build/{pdf.mjs,pdf.worker.mjs,pdf.sandbox*}"
+    - "!node_modules/@napi-rs/**"
     - "!node_modules/sherpa-onnx-*/**"
     - "!node_modules/audiotee/**"
   extraResources:
