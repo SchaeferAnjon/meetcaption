@@ -78,3 +78,15 @@ test('官网的八张语言表覆盖页面脚本里所有 t() 的原文，占位
     assert.deepEqual(broken.slice(0, 5), [], `${lang} 占位符或链接对不上`)
   }
 })
+
+test('设置里 AI 服务卡片的名字和一行介绍（providers.js，渲染时走 t()）在八张表里都有译文', async () => {
+  const { PROVIDERS } = await import('../src/main/llm/providers.js')
+  const keys = PROVIDERS.filter((p) => !p.hidden).flatMap((p) => [p.name, p.blurb]).filter((s) => /[一-鿿]/.test(s))
+  assert.ok(keys.length >= 12, `只找到 ${keys.length} 条`)
+  for (const lang of UI_LANGS.filter((l) => l !== 'zh')) {
+    const dict = JSON.parse(fs.readFileSync(path.join(ROOT, 'src/i18n', `${lang}.json`), 'utf8'))
+    const missing = keys.filter((k) => typeof dict[k] !== 'string')
+    assert.deepEqual(missing, [], `${lang} 缺 ${missing.length} 条`)
+    if (!['zh-Hant', 'ja'].includes(lang)) assert.deepEqual(keys.filter((k) => /[一-鿿]/.test(dict[k])), [], `${lang} 的译文里还有中文`)
+  }
+})

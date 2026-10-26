@@ -530,7 +530,7 @@
               'button.choice.provider-choice',
               { type: 'button', role: 'radio', dataset: { id: p.id }, onClick: () => (set('llmProvider', p.id, 0), onPick?.(p.id)) },
               providerLogo(p),
-              el('span.choice-main', {}, el('span.choice-title', {}, el('span', { text: p.name }), p.id === recommend ? el('span.tag.tag-accent', { text: t('推荐') }) : null), el('span.choice-desc', { text: p.blurb })),
+              el('span.choice-main', {}, el('span.choice-title', {}, el('span', { text: t(p.name) }), p.id === recommend ? el('span.tag.tag-accent', { text: t('推荐') }) : null), el('span.choice-desc', { text: t(p.blurb) })),
             )
             cards.push(b)
             return b
@@ -547,7 +547,7 @@
    * row(label, control, hint)：设置窗口用 row，引导用它自己的 field。
    */
   function providerSetup({ row: line = row } = {}) {
-    const keyLink = (p) => el('button.link-btn', { type: 'button', onClick: () => api.openExternal(p.keyPage) }, el('span', { text: t(`去 {0} 创建 Key`, p.name) }), icon('external-link', 12))
+    const keyLink = (p) => el('button.link-btn', { type: 'button', onClick: () => api.openExternal(p.keyPage) }, el('span', { text: t(`去 {0} 创建 Key`, t(p.name)) }), icon('external-link', 12))
     const parts = []
     const chat = el('div.provider-setup', {}, chatgptPanel())
     showWhen(chat, (st) => st.llmProvider === 'chatgpt')
@@ -555,7 +555,7 @@
     for (const p of providers.filter((x) => x.keyPage)) {
       const key = p.id === 'openai' ? 'openaiKey' : `llmKeys.${p.id}`
       const hint = el('div.form-hint', {}, p.id === 'openai' ? el('span', { text: t('按用量付费。语音识别选 OpenAI 时也用这个 Key。') }) : null, keyLink(p))
-      const node = el('div.provider-setup', {}, line(`${p.name} Key`, textInput(key, { secret: true, trim: true, placeholder: t('粘贴 API Key'), label: `${p.name} API Key` }), hint))
+      const node = el('div.provider-setup', {}, line(`${t(p.name)} Key`, textInput(key, { secret: true, trim: true, placeholder: t('粘贴 API Key'), label: `${t(p.name)} API Key` }), hint))
       showWhen(node, (st) => st.llmProvider === p.id)
       parts.push(node)
     }
