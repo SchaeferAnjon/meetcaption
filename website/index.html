@@ -700,7 +700,7 @@ const money = (p) => (st.cur === 'usd' ? `$${p.usd}` : `¥${p.cny}`);
 const per = (p) => (st.cur === 'usd' ? `$${(p.usd / p.n).toFixed(2)}` : `¥${(p.cny / p.n).toFixed(1)}`);
 let stops = [];
 const LOGO = 'icon.png';
-let REL = null; // 最新一版的文件：{ arm, intel, win: 下载地址, version, date }，从 GitHub 取，取不到就去发布页
+let REL = null; // 最新一版的文件：{ arm, win: 下载地址, version, date }，从 GitHub 取，取不到就去发布页
 // 识别和翻译支持的语言（和软件 src/main/languages.js 同一份：Soniox 实时识别的 60 种）
 const RECOG_LANGS = ['en', 'zh', 'ja', 'ko', 'de', 'fr', 'es', 'it', 'pt', 'ru', ...'af sq ar az eu be bn bs bg ca hr cs da nl et fi gl el gu he hi hu id kn kk lv lt mk ms ml mr no fa pl pa ro sr sk sl sw sv tl ta te th tr uk ur vi cy'.split(' ')];
 // 每种语言用它自己的写法（Deutsch、日本語），悬停看页面语言里的叫法；上面一个搜索框，母语名、页面语言名、英文名都能搜
@@ -724,7 +724,7 @@ function initLangSearch() {
     $('.langs60 .lnone').hidden = n > 0;
   };
 }
-const FILES = { arm: ['MeetCaption-mac-arm64.dmg', t('Mac · Apple 芯片（M1 到 M4）')], intel: ['MeetCaption-mac-x64.dmg', 'Mac · Intel'], win: ['MeetCaption-win-x64.exe', 'Windows 10 / 11'] };
+const FILES = { arm: ['MeetCaption-mac-arm64.dmg', t('Mac · Apple 芯片（M1 到 M4）')], win: ['MeetCaption-win-x64.exe', 'Windows 10 / 11'] };
 let OS = /Win/.test(navigator.platform) ? 'win' : 'mac';
 const st = { cur: LANG.startsWith('zh') ? 'cny' : 'usd', pack: 'p10' };
 const ck = (t) => `<li><svg class="i"><use href="#i-check"/></svg><span>${t}</span></li>`;
@@ -779,8 +779,8 @@ function home() {
     {0}
     <p class="hero-sub">{1}</p>
     <div class="hero-cta">{2}<a class="sbtn lg" href="https://github.com/SchaeferAnjon/meetcaption" target="_blank" rel="noopener"><svg><use href="#i-github"/></svg>在 GitHub 看源码</a></div>
-    <p class="hero-meta"><b>不用注册，不用登录</b> · 新用户送 1 场 · macOS 14.2+ · Windows 10+ · 开源 GPL-3.0</p>
-    <p class="hero-alt"><a data-dl="intel">Intel 芯片的 Mac</a> · <span id="verline"></span></p>
+    <p class="hero-meta"><b>不用注册，不用登录</b> · 新用户送 1 场 · Apple 芯片 Mac（macOS 14.2+） · Windows 10+ · 开源 GPL-3.0</p>
+    <p class="hero-alt"><span id="verline"></span></p>
   </div>
   <div class="stagewrap" id="how" data-part="演示舞台"><div id="stage"></div><div class="stabs" id="stabs"></div><p class="stage-note">界面演示动画</p></div>
   <div class="wrap"><dl class="facts"><div class="fact"><dt>开源</dt><dd class="v">GPL-3.0</dd><dd>代码全部公开，可以自己编译</dd></div><div class="fact"><dt>账号</dt><dd class="v">不需要</dd><dd>不用手机号、不用邮箱，打开就能用</dd></div><div class="fact"><dt>字幕</dt><dd class="v">本地识别</dd><dd>在你电脑上跑，永久免费，断网也行</dd></div><div class="fact"><dt>隐私</dt><dd class="v">只在你电脑上</dd><dd>会议记录、声纹、Key 都不上传</dd></div></dl></div></section>
@@ -908,7 +908,7 @@ function download(kind) {
   const url = REL?.[k];
   const sh = $('#dlsheet');
   sh.innerHTML = `<button class="x">✕</button><h4><svg class="i"><use href="#i-${mac ? 'apple' : 'windows'}"/></svg>${url ? t('开始下载') : t('去下载')} ${label}</h4><div style="color:var(--lead);font-size:13px;margin-top:6px">${url ? t(`约 300 MB · {0}`, REL.version) : t('在 GitHub 发布页里选对应的文件')}</div>
-    ${mac ? t(`<ol><li>打开下载的 dmg，把 {{名}} 拖进 <b>应用程序</b> 文件夹</li><li>第一次打开时如果提示无法验证开发者：打开 <b>系统设置</b> 里的 <b>隐私与安全性</b>，拉到最下面，点 <b>仍要打开</b></li><li>不知道是哪种芯片：点屏幕左上角的苹果菜单，选 <b>关于本机</b>，<b>芯片</b> 那一行写 Apple M 就选 Apple 芯片{0}</li></ol>`, k === 'arm' ? t('，写 Intel 就 <a data-dl="intel" style="text-decoration:underline">下载 Intel 版</a>') : '') : t(`<ol><li>运行下载的 exe，一路点下一步</li><li>如果弹出 <b>Windows 已保护你的电脑</b>，先点 <b>更多信息</b>，再点 <b>仍要运行</b></li></ol>`)}`;
+    ${mac ? t(`<ol><li>打开下载的 dmg，把 {{名}} 拖进 <b>应用程序</b> 文件夹</li><li>第一次打开时如果提示无法验证开发者：打开 <b>系统设置</b> 里的 <b>隐私与安全性</b>，拉到最下面，点 <b>仍要打开</b></li><li>只支持 Apple 芯片的 Mac：点屏幕左上角的苹果菜单，选 <b>关于本机</b>，<b>芯片</b> 那一行写 Apple M 就能用</li></ol>`) : t(`<ol><li>运行下载的 exe，一路点下一步</li><li>如果弹出 <b>Windows 已保护你的电脑</b>，先点 <b>更多信息</b>，再点 <b>仍要运行</b></li></ol>`)}`;
   fillName(sh); sh.classList.add('show'); sh.querySelector('.x').onclick = () => sh.classList.remove('show');
   if (url) location.href = url;
   else open(`${GH}/releases/latest`, '_blank', 'noopener');
@@ -918,7 +918,7 @@ fetch('https://api.github.com/repos/SchaeferAnjon/meetcaption/releases/latest').
   if (!j) return;
   const find = (re) => j.assets?.find((a) => re.test(a.name))?.browser_download_url;
   const d = new Date(j.published_at);
-  REL = { arm: find(/mac-arm64\.dmg$/), intel: find(/mac-x64\.dmg$/), win: find(/\.exe$/), version: j.tag_name, date: t(`{0} 月 {1} 日`, d.getMonth() + 1, d.getDate()) };
+  REL = { arm: find(/mac-arm64\.dmg$/), win: find(/\.exe$/), version: j.tag_name, date: t(`{0} 月 {1} 日`, d.getMonth() + 1, d.getDate()) };
   showVersion();
 }).catch(() => {});
 function showVersion() {
