@@ -8,7 +8,8 @@ import { t } from '../i18n.js'
 // status 多两种：'fallback'（本地接手了）和 'back'（换回云端了）。
 // 本地识别只认中英文：别的语言不用这一层（engine.js 决定）。
 
-// 重连在断开后 0、1、3 秒各试一次：闪断两三秒的，第 3 秒那次就连上了，不用换本地
+// 重连在断开后 0、1、3 秒各试一次：闪断两三秒的，第 3 秒那次就连上了，不用换本地。
+// 接上又马上断的不算连上（soniox.js 的 STABLE_MS）：同样 4 秒后换本地
 const AFTER_MS = 4000
 const HANDOVER_WAIT_MS = 4000
 // 本地给的一句的终点是最后一个字的起点加 0.25 秒，长一点的字还没说完：交回时再往后让一点，免得云端把这个字的尾巴再认一遍
@@ -72,7 +73,7 @@ export class LocalFallbackASR extends EventEmitter {
 
   async #toLocal() {
     this.timer = null
-    if (this.closed || this.local || this.cloud.online) return
+    if (this.closed || this.local || this.cloud.steady) return
     this.cloud.hold()
     const l = { asr: this.makeLocal(), from: 0, live: false, retired: false, openKey: null, openStart: null, lastEnd: 0 }
     this.local = l

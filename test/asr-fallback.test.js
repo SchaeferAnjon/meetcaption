@@ -21,11 +21,13 @@ async function until(check, ms = 5000) {
 
 async function fakeSoniox(t) {
   const conns = []
+  const mode = { flap: false } // flap：接受握手后立刻断开（故障、限流时的样子）
   const server = http.createServer()
   const wss = new WebSocketServer({ server })
   wss.on('connection', (ws) => {
-    const c = { ws, config: null, bytes: 0, keepalive: 0 }
+    const c = { ws, config: null, bytes: 0, keepalive: 0, at: Date.now() }
     conns.push(c)
+    if (mode.flap) return ws.terminate()
     ws.on('message', (d, binary) => {
       if (binary) return (c.bytes += d.length)
       const s = String(d)
@@ -37,7 +39,7 @@ async function fakeSoniox(t) {
   })
   await new Promise((r) => server.listen(0, '127.0.0.1', r))
   t.after(() => (wss.close(), server.close()))
-  return { conns, url: `ws://127.0.0.1:${server.address().port}/`, send: (c, tokens) => c.ws.send(JSON.stringify({ tokens })) }
+  return { conns, mode, url: `ws://127.0.0.1:${server.address().port}/`, send: (c, tokens) => c.ws.send(JSON.stringify({ tokens })) }
 }
 
 class FakeLocal extends EventEmitter {
@@ -76,7 +78,7 @@ function setup(f, opts = {}) {
     return { key: 'tmp', maxMs: 600_000 }
   }
   const locals = []
-  const cloud = new SonioxStreamASR({ getKey, url: f.url, timing: { watchMs: 50, silentAfterMs: 400, keepaliveMs: 100 } })
+  const cloud = new SonioxStreamASR({ getKey, url: f.url, timing: { watchMs: 50, silentAfterMs: 400, keepaliveMs: 100, stableMs: 150 } })
   const asr = new LocalFallbackASR({ cloud, makeLocal: () => (locals.push(new FakeLocal()), locals.at(-1)), afterMs: 100, handoverWaitMs: 400, ...opts })
   return { asr, net, locals, ev: collect(asr) }
 }
@@ -210,4 +212,52 @@ test('网断了但连接没报错：6 秒（这里 0.4 秒）既没回消息也�
   await until(() => ev.some((e) => e.value === 'reconnecting'))
   assert.ok(Date.now() - t0 < 1500)
   await cloud.close()
+})
+
+test('握手成功又马上断开：重连间隔照样往上退，不是每秒几百次；4 秒（这里 0.1 秒）后换本地识别并提示，服务器好了再换回', async (t) => {
+  const f = await fakeSoniox(t)
+  const { asr, locals, ev } = setup(f)
+  await asr.connect()
+  const c0 = f.conns[0]
+  asr.sendAudio(second)
+  await until(() => c0.bytes === 32000)
+  f.send(c0, [tok('Hello.', 0, 500), { text: '<end>', is_final: true }])
+  await until(() => ev.some((e) => e.name === 'final'))
+
+  f.mode.flap = true
+  const t0 = Date.now()
+  const before = f.conns.length
+  c0.ws.terminate()
+  await until(() => ev.some((e) => e.value === 'fallback'))
+  assert.equal(locals.length, 1, '换成了本地识别')
+  assert.ok(!ev.some((e) => e.value === 'ready'), '接上又断的不算重新连上')
+  await sleep(2500)
+  // 间隔 0、1、2 秒…往上退：2.5 秒里最多再试三四次（以前是每秒几百次）
+  const tries = f.conns.length - before
+  assert.ok(tries >= 2 && tries <= 5, `重连了 ${tries} 次`)
+  assert.ok(Date.now() - t0 >= 2500)
+  asr.sendAudio(second)
+  assert.ok(locals[0].bytes > 0, '本地接着出字')
+
+  // 服务器好了：新连接连够 stableMs 才算数，再交回云端
+  f.mode.flap = false
+  await until(() => ev.some((e) => e.value === 'back'), 8000)
+  assert.equal(locals.length, 1)
+  assert.ok(locals[0].closed)
+  assert.deepEqual(ev.filter((e) => e.name === 'status').map((e) => e.value).filter((v, i, a) => v !== a[i - 1]), ['reconnecting', 'fallback', 'back'])
+  await asr.close()
+})
+
+test('握手后马上断开，但只断一次：下一条连够 stableMs 就算连上，不换本地识别', async (t) => {
+  const f = await fakeSoniox(t)
+  const { asr, locals, ev } = setup(f, { afterMs: 3000 })
+  await asr.connect()
+  f.mode.flap = true
+  f.conns[0].ws.terminate()
+  await until(() => f.conns.length >= 2) // 第一次重连被马上断开
+  f.mode.flap = false
+  await until(() => ev.some((e) => e.value === 'ready'), 5000)
+  assert.equal(locals.length, 0)
+  assert.ok(asr.cloud.steady)
+  await asr.close()
 })
