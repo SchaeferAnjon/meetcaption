@@ -215,6 +215,18 @@ const modeOf = (m) => (MODES[m] ? m : 'meeting')
 const sourceOf = (v) => (CLASS_SOURCES[v] ? v : 'mic')
 const modeInfo = (m) => MODES[modeOf(m)]
 
+/** 项目页里按项目默认模式说的话：课堂项目说「课」，面试项目说「面试」，不说「会议」。 */
+function modeCopy(m) {
+  switch (modeOf(m)) {
+    case 'class':
+      return { count: (n) => t(`{0} 场课`, n), empty: t('这个项目里还没有课') }
+    case 'interview':
+      return { count: (n) => t(`{0} 场面试`, n), empty: t('这个项目里还没有面试') }
+    default:
+      return { count: (n) => t(`{0} 场会议`, n), empty: t('这个项目里还没有会议') }
+  }
+}
+
 /** 项目的默认模式：project.mode；列表里没带就看 getProject 补回来的。 */
 function projectMode(id) {
   const p = projectOf(id)
