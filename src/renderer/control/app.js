@@ -125,6 +125,7 @@ function wireEvents() {
   subscribe('engine:segment', onSegment)
   subscribe('engine:level', (lv) => emit('level', lv))
   subscribe('engine:notice', onEngineNotice)
+  subscribe('update:state', onUpdateState)
   subscribe('engine:pause', (p) => {
     state.engine = { ...state.engine, paused: p.paused }
     emit('engine', state.engine)
@@ -253,6 +254,7 @@ async function boot() {
   state.projects = init.projects ?? []
   state.currentProjectId = init.currentProjectId ?? INBOX
   state.onboarding = init.onboarding ?? {}
+  onUpdateState(init.update)
   state.llm = init.llm ?? null
   state.chatgpt = init.chatgpt ?? null
   state.hotkey = init.hotkey ?? state.hotkey

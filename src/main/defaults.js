@@ -51,6 +51,7 @@ export const DEFAULTS = {
   theme: 'system', // system | dark | light
   sidebarOpacity: 0.85, // Mac 毛玻璃、Windows 11 云母上侧栏底色有多实：1 不透明，太低了深色桌面前看不清字
   launchAtLogin: false,
+  autoUpdate: true, // 正式版自动查 GitHub 上的新版、在后台下载（updater.js）
   currentProjectId: 'inbox', // 主窗口和托盘里选中的项目，开会就开在它里面
   onboarding: { done: false, shownAt: 0, demo: false, resume: false, step: '', inList: [] }, // 首次引导：done 走完引导窗口；shownAt 自动弹过一次；resume 引导开着时应用退出了（系统授权要「退出并重新打开」），下次启动接着出；step 走到哪一步；inList 拖进了系统设置列表、等重开生效的（'sys' 电脑声音、'scr' 录屏）；demo 看过（或跳过）主窗口上的导览
   migrations: { projects: false, translateOn: false, volcSeed: false, localAsr: false, providers: false, plan: false, uiLang: false }, // uiLang：0.6 以前就在用的人界面定成过中文；providers：「其他兼容服务」填的是内置的那几家地址的，换成那一家；projects：v2 的全局会议背景等已经迁进「未归类」；translateOn：升级时打开过一次翻译；volcSeed：豆包资源 ID 从旧默认 1.0 换成过 2.0；localAsr：没配好识别 Key 的换成过本地识别；plan：0.6 以前就在用的人（走完过引导）定成自带 Key

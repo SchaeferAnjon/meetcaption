@@ -97,12 +97,61 @@ function buildGeneral() {
       ),
     ),
     P.section(t('隐私'), null, P.row(t('屏幕共享'), toggleLine('hideFromScreenShare', t('共享屏幕时隐藏字幕和答题框')), t('对方看你的共享屏幕、录屏或截图时都看不到这两个窗口，只有你自己看得见。'))),
+    buildUpdate(),
     P.section(
       t('首次引导'),
       null,
       P.row('', el('div.form-inline', {}, el('button.btn', { type: 'button', onClick: () => api.openOnboarding() }, icon('play', 14), el('span', { text: t('再走一遍引导') })), el('button.btn.btn-ghost', { type: 'button', onClick: () => api.openGuide() }, el('span', { text: t('看主窗口导览') }))), t('引导：授权、语言、试听、声纹再走一遍。导览：在主窗口上指一遍开始会议、字幕、答题卡和语言按钮。')),
     ),
   ]
+}
+
+/* 通用 → 更新：自动检查的开关、现在的状态（main/updater.js 的 phase）、检查更新、下好了重启更新 */
+function buildUpdate() {
+  const line = el('span.text-2.plain-line')
+  const check = el('button.btn.btn-sm', { type: 'button' }, icon('refresh-cw', 13), el('span', { text: t('检查更新') }))
+  const install = el('button.btn.btn-sm.btn-primary', { type: 'button', hidden: true }, el('span', { text: t('重启更新') }))
+  let st = init.update ?? { phase: 'off' }
+  let manualError = ''
+  const when = (ms) => (ms ? fmtDate(ms, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) : '')
+  function render() {
+    const text = {
+      off: t('开发版和从源码运行时不自动更新。'),
+      idle: t('当前版本 {0}', init.version),
+      checking: t('正在检查…'),
+      downloading: t('正在下载新版本 {0}，{1}%', st.version, st.percent ?? 0),
+      ready: t('新版本 {0} 已下载好，重启就能用。', st.version),
+      latest: t('已是最新版本 {0}，{1} 查过', init.version, when(st.checkedAt)),
+      error: t('没查到：{0}', manualError || st.error),
+    }[st.phase]
+    line.textContent = text ?? ''
+    check.disabled = ['off', 'checking', 'downloading', 'ready'].includes(st.phase)
+    install.hidden = st.phase !== 'ready'
+  }
+  check.addEventListener('click', async () => {
+    manualError = ''
+    st = { ...st, phase: 'checking' }
+    render()
+    const r = await api.checkUpdate()
+    if (r?.ok === false) manualError = r.error
+    st = r?.state ?? st
+    render()
+  })
+  install.addEventListener('click', async () => {
+    const r = await api.installUpdate()
+    if (r?.ok === false) ui.toast({ title: t('现在不能重启更新'), message: r.error, type: 'error' })
+  })
+  api.on('update:state', (next) => {
+    st = next
+    render()
+  })
+  render()
+  return P.section(
+    t('更新'),
+    null,
+    P.row(t('自动更新'), toggleLine('autoUpdate', t('自动检查并下载新版本')), t('有新版本时在后台下载，下好后提示你重启；正在记录时不会重启。不点重启也行，下次退出时自动装上。')),
+    P.row('', [line, el('div.form-inline', {}, check, install)]),
+  )
 }
 
 async function pickDir() {

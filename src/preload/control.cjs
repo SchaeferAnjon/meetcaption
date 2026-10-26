@@ -33,6 +33,7 @@ const EVENTS = new Set([
   'settings:section', // 设置窗口已开着时又要求打开某个分区
   'audio:level', // 声音测试、试听时的音量 { source, db }
   'listen:text', // 引导试听时本地识别出的字 { key, text, final } | { error }
+  'update:state', // 自动更新 { phase: off|idle|checking|downloading|ready|latest|error, version, percent, error, checkedAt }
   'onboarding:helper', // 系统设置旁的拖图标面板 { kind: 'sys'|'scr'|'mic', dragged | closed }
   // v4 课堂
   'notes:update', // 实时笔记 { sessionId, notes: { sections, emphasis, homework, terms }, updatedAt, error }，error 非空时 notes 是上一版
@@ -100,6 +101,9 @@ contextBridge.exposeInMainWorld('app', {
   openOnboarding: invoke('window:openOnboarding'),
   finishOnboarding: invoke('onboarding:finish'), // finishOnboarding({ tour })：tour 为真时进主窗口后导览四处
   showDragHelper: invoke('onboarding:helper'), // ('sys' | 'scr' | 'mic')：打开系统设置，旁边浮出能拖的兔子图标；不给参数就收起
+  updateStatus: invoke('update:status'),
+  checkUpdate: invoke('update:check'), // → { ok, state } | { ok: false, error, state }
+  installUpdate: invoke('update:install'), // 已下载好的新版：退出、装上、重新打开；正在记录时 → { ok: false, error }
   listenStart: invoke('listen:start'), // 引导试听：电脑声音和麦克风一起开，电脑声音走本地识别
   listenStop: invoke('listen:stop'),
   saveOnboardingStep: invoke('onboarding:step'), // 引导走到哪一步（被系统授权重启打断后从这里接着来）

@@ -548,12 +548,24 @@ function onEngineNotice(n) {
       return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('声纹设置'), run: () => openSettings('voiceprint') }] })
     case 'save-dir':
       return addNotice(n.level, n.text, { code: n.code, actions: [{ label: t('去设置'), run: () => openSettings('general') }] })
+    case 'update-ready':
+      return addNotice('info', n.text, { code: n.code, actions: [{ label: t('重启更新'), run: installUpdate }] })
     default:
       return addNotice(n.level === 'error' ? 'error' : n.level === 'info' ? 'info' : 'warn', n.text, { code: n.code })
   }
 }
 
 /* ---------------- 常用操作 ---------------- */
+
+// 新版本下好了：主窗口的提示条（主窗口后打开的，启动时按 init.update 补一条）
+function onUpdateState(st) {
+  if (st?.phase === 'ready') onEngineNotice({ level: 'info', text: t('新版本 {0} 已下载好，重启就能用。', st.version), code: 'update-ready' })
+}
+
+async function installUpdate() {
+  const r = await call('installUpdate')
+  if (failed(r)) ui.toast({ title: t('现在不能重启更新'), message: r?.error, type: 'error' })
+}
 
 async function relaunchApp() {
   const r = await call('relaunch')

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, screen, shell, systemPreferences, Tray, dialog } from 'electron'
+import { app, autoUpdater as nativeUpdater, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, screen, shell, systemPreferences, Tray, dialog } from 'electron'
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -25,6 +25,7 @@ import { MacSystemAudio, macTapSupported } from './audio/macTap.js'
 import { dbfs } from './audio/gate.js'
 import { recordVoiceprint } from './enroll.js'
 import { DragHelper } from './dragHelper.js'
+import { Updater } from './updater.js'
 import { Assistant } from './assist/assistant.js'
 import { captureScreen, screenPermission } from './assist/screen.js'
 import { createAnswerWindow, keepFrontApp, resetAnswerBounds, setAnswerEditMode, showAnswerWindow } from './assist/answerWindow.js'
@@ -75,6 +76,7 @@ let audioTest = null
 let listening = null // 引导里的试听：{ stop }
 let onboardingResumed = false // 这次启动是引导被系统授权的「退出并重新打开」打断后接着出的
 let dragHelper = null
+let updater = null
 let pointerLast = null
 let overlayHit = null // 字幕框在字幕窗里的位置（页面报），鼠标在上面时接管点击，可以拖
 let overlayGrab = false
@@ -660,6 +662,7 @@ function updateTrayMenu() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       ...(unfinished ? [{ label: t('继续设置…'), click: () => openOnboarding() }, { type: 'separator' }] : []),
+      ...(updater?.status().phase === 'ready' ? [{ label: t('重启并更新到 {0}', updater.status().version), enabled: !running, click: () => installUpdate() }, { type: 'separator' }] : []),
       { label: running ? t(`停止记录{0}`, liveName ? t(`（{0}）`, liveName) : '') : t(`在「{0}」里开始记录`, curName), accelerator: s.hotkeyRecord || undefined, click: () => (running ? engine.stop() : startEngine()) },
       ...(running ? [{ label: paused ? t('继续记录') : t('暂停记录'), click: () => togglePause() }] : []),
       { label: t('当前项目'), submenu: projectItems },
@@ -1418,6 +1421,30 @@ function relaunchApp() {
   return { ok: true }
 }
 
+/* ---------------- 自动更新 ---------------- */
+
+// 开发版（打包时 appId 换成 com.jiazonghan.meetcaption.dev、名字叫「MeetCaption 开发版」）不跟正式版更新，不然会被正式版盖掉
+function isDevBuild() {
+  if (/开发版/.test(app.getName())) return true
+  if (!isMac || !app.isPackaged) return false
+  try {
+    return execFileSync('plutil', ['-extract', 'CFBundleIdentifier', 'raw', '-o', '-', path.resolve(process.execPath, '../../Info.plist')], { timeout: 3000, encoding: 'utf8' }).trim().endsWith('.dev')
+  } catch {
+    return false
+  }
+}
+
+// 已经下好的新版：退出、装上、重新打开。正在记录或者课堂笔记还在整理时不重启
+function installUpdate() {
+  if (engine.state !== 'idle') return { ok: false, error: t('正在记录，停止后再重启更新') }
+  if (engine.notesFlush) return { ok: false, error: t('正在整理最后一段实时笔记，整理完再重启更新') }
+  if (updater?.status().phase !== 'ready') return { ok: false, error: t('新版本还没下载好') }
+  // 主窗口点关闭只是藏起来：先标上 quitting，退出时窗口才关得掉
+  quitting = true
+  updater.install()
+  return { ok: true }
+}
+
 // 系统设置里「录屏与系统录音」「仅系统录音」两个列表和「退出并重新打开」「以后」两个按钮的原文：按系统语言显示，
 // 和界面语言可能不一样（英文系统、中文界面）。读系统设置隐私面板自己的本地化表；读不到（macOS 14 没有「仅系统录音」）的项留空，界面用自己的译文
 let sysNames = null
@@ -1528,6 +1555,7 @@ function wireIpc() {
     onboardingResumed,
     appName: systemListName(),
     sysNames: systemSettingsNames(),
+    update: updater?.status() ?? null,
     theme: themeInfo(),
     chrome: chromeInfo(),
   }))
@@ -1681,6 +1709,15 @@ function wireIpc() {
     if (!process.env.MEETCAPTION_NO_EXTERNAL) shell.openExternal(privacyUrl(kind === 'mic' ? 'microphone' : 'screen'))
     if (isMac) dragHelper.show(kind)
   })
+  ipcMain.handle('update:status', () => updater.status())
+  ipcMain.handle('update:check', async () => {
+    try {
+      return { ok: true, state: await updater.check() }
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e).split('\n')[0], state: updater.status() }
+    }
+  })
+  ipcMain.handle('update:install', () => installUpdate())
   ipcMain.handle('listen:start', () => startListen())
   ipcMain.handle('listen:stop', () => stopListen())
   ipcMain.handle('onboarding:step', (_e, key) => settings.update({ onboarding: { step: String(key ?? '') } }) && null)
@@ -2030,6 +2067,16 @@ app.whenReady().then(async () => {
   wireEngine()
   createOverlay()
   createAnswer()
+  // 正式版打包后才自动更新；开发版、源码运行、自测不更新。MEETCAPTION_UPDATE_URL：测试时指向本机的更新服务器
+  updater = new Updater({ supported: app.isPackaged && !selfTest && !isDevBuild(), enabled: () => settings.get().autoUpdate !== false, feedUrl: process.env.MEETCAPTION_UPDATE_URL || '' })
+  updater.on('state', (st) => {
+    toUi('update:state', st)
+    if (st.phase === 'ready') toUi('engine:notice', { level: 'info', text: t('新版本 {0} 已下载好，重启就能用。', st.version), code: 'update-ready' })
+    updateTrayMenu()
+  })
+  // Mac 上装新版时 Squirrel 先关窗口再退出：主窗口关闭只是藏起来，这时要真关
+  nativeUpdater.on('before-quit-for-update', () => (quitting = true))
+  updater.start()
   createTray()
   registerHotkeys()
   // 第一次启动：先出引导，完成后再开主窗口。没走完就被系统授权重启打断的，接着出（从同一步）；自己关掉的以后从设置里再打开

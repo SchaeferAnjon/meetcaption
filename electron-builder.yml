@@ -2,6 +2,12 @@ appId: com.jiazonghan.meetcaption
 productName: 会议字幕
 artifactName: MeetCaption-${version}-${os}-${arch}.${ext}
 copyright: Copyright © 2026 Jia Zonghan
+# 自动更新（src/main/updater.js）查这个仓库的 Release：安装包之外，latest-mac.yml、latest.yml、Mac 的 zip 和 blockmap 也要传上去（scripts/release.mjs）
+publish:
+  provider: github
+  owner: SchaeferAnjon
+  repo: meetcaption
+  releaseType: release
 directories:
   output: dist
   buildResources: build
@@ -38,8 +44,10 @@ beforePack: ./scripts/sherpa-native.mjs
 mac:
   category: public.app-category.productivity
   icon: build/icon.icns
+  # zip 给自动更新用（Squirrel.Mac 只认 zip），dmg 给第一次下载安装
   target:
     - dmg
+    - zip
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist

@@ -59,6 +59,7 @@ function commandItems() {
   for (const [sec, label, desc, ic] of SETTINGS_SECTIONS)
     items.push({ id: `settings:${sec}`, title: t(`设置：{0}`, label), subtitle: desc, icon: ic, tint: 'gray', searchOnly: true, keywords: ['settings', t('设置'), desc], onSelect: () => openSettings(sec) })
   items.push({ id: 'onboarding', title: t('打开首次引导'), subtitle: t('授权、语言、试听、声纹'), icon: 'sparkles', tint: 'purple', searchOnly: true, keywords: ['onboarding', 'guide', t('引导'), t('向导')], onSelect: () => call('openOnboarding') })
+  items.push({ id: 'update', title: t('检查更新'), subtitle: t('设置 → 通用 → 更新'), icon: 'refresh-cw', tint: 'gray', searchOnly: true, keywords: ['update', t('更新'), t('新版本')], onSelect: () => openSettings('general') })
   items.push({ id: 'tour', title: t('看主窗口导览'), subtitle: t('开始会议、字幕、答题卡、语言按钮在哪'), icon: 'play', tint: 'purple', searchOnly: true, keywords: ['tour', t('导览'), t('引导')], onSelect: () => openGuide() })
   items.push({ id: 'open-root', title: t('打开保存位置'), subtitle: t('会议字幕的根文件夹'), icon: 'folder', tint: 'gray', searchOnly: true, keywords: ['folder', 'finder', t('文件夹')], onSelect: () => call('openFolder', null) })
   return items
