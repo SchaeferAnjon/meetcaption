@@ -134,3 +134,22 @@ test('识别：会员服务器用关闭码 4008 停掉（没说话自动暂停�
   wss.close()
   srv.close()
 })
+
+test('连不上会员服务器：给用户一句中文，不带 fetch failed 和错误码，原始报错留在 detail', async () => {
+  const down = async () => {
+    throw Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9'), { code: 'ECONNREFUSED' }) })
+  }
+  const m = new Member({ file: tmpFile(), fetch: down, fingerprint: async () => 'ab'.repeat(32), api: 'http://127.0.0.1:9' })
+  const snap = await m.refresh()
+  assert.equal(snap.error, '连不上会员服务器，稍后再试')
+  assert.equal(snap.info, null)
+  // 买、激活这些按钮下面显示的就是 error.message，同一句
+  const e = await m.buy('p1', 'cny').then(() => null, (x) => x)
+  assert.equal(e.code, 'network')
+  assert.equal(e.message, '连不上会员服务器，稍后再试')
+  assert.equal(e.detail, 'ECONNREFUSED')
+  const noCause = new Member({ file: tmpFile(), fetch: async () => { throw new TypeError('fetch failed') }, fingerprint: async () => 'cd'.repeat(32), api: 'http://127.0.0.1:9' })
+  const e2 = await noCause.activate('MC-X').then(() => null, (x) => x)
+  assert.equal(e2.message, '连不上会员服务器，稍后再试')
+  assert.equal(e2.detail, 'fetch failed')
+})

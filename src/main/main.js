@@ -973,7 +973,9 @@ async function startMemberSession() {
       showPricing({ pack: 'p1' })
       return '会员场次用完了：这一场用本地识别，翻译和答题这些 AI 功能先关着。买了场次，下一场就能用。'
     }
-    return `连不上会员服务器（${e.message}），这一场先用本地识别，AI 功能可能用不了。`
+    return e.code === 'network'
+      ? t('连不上会员服务器，这一场先用本地识别，AI 功能可能用不了。')
+      : t(`会员服务器没能开始这一场（{0}），这一场先用本地识别，AI 功能可能用不了。`, e.message)
   }
 }
 

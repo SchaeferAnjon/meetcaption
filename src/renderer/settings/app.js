@@ -711,7 +711,7 @@ function buildMember() {
     const info = memberSnap?.info
     const rows = []
     if (!info) {
-      rows.push(el('div.form-hint', { text: memberSnap?.error ? t(`连不上会员服务器：{0}`, memberSnap.error) : t('正在连接会员服务器…') }))
+      rows.push(el('div.form-hint', { text: memberSnap?.error || t('正在连接会员服务器…') }))
     } else {
       const trial = info.kind !== 'paid'
       rows.push(
