@@ -32,6 +32,8 @@ Mac needs macOS 14.2 or later. If macOS says the developer cannot be verified th
 
 On Windows, if **Windows protected your PC** appears, click **More info**, then **Run anyway**.
 
+After that, MeetCaption updates itself. Each time it starts, and every 6 hours after that, it checks GitHub for a new version, downloads it in the background and shows **Restart to update** in the main window when it is ready. It never restarts while you are recording; if you do not click, the update installs the next time you quit. Your meetings and settings stay as they are. To turn this off, open **Settings**, page **General**, and switch off **Automatic updates**.
+
 ## First run
 
 The first time you open MeetCaption, a setup window walks you through six steps: welcome, permissions, languages, a listening test, your voiceprint (optional; you can record it later in **Settings**, page **Voiceprint**) and start. It asks for two permissions: the microphone, and on Mac the recording of system audio. Click **Open System Settings** and a rabbit icon appears next to System Settings; drag it into the **System Audio Recording Only** list. If macOS asks you to quit and reopen the app, the guide comes back at the step where you stopped. The listening test uses local recognition and does not use up a session. At the end it can point out where Start meeting, the captions, the answer card and the language button are in the main window.
@@ -93,6 +95,8 @@ npm run dist:mac          # build the Mac packages (dist/), on a Mac
 npm run dist:win          # build the Windows installer, on Windows
 ```
 
+Releasing a version (the app's automatic updates read the GitHub release): bump `version` in `package.json`, push to `main`, then push a tag `v<version>` so CI builds the Windows installer. Then run `node scripts/release.mjs` on a Mac that has the Developer ID certificate: it builds the Mac dmg and zip (automatic updates on Mac need the same certificate as the installed app, so the CI Mac build cannot be used), downloads the Windows files from CI, checks the signature and that `latest-mac.yml` and `latest.yml` are complete, and leaves everything in `release/<version>/`. Write the release notes in `release/<version>/notes.md`, then `node scripts/release.mjs --publish` uploads exactly those files and creates the release.
+
 GitHub Actions (`.github/workflows/build.yml`) builds on Windows and Mac and checks with a VB-CABLE virtual sound card that loopback capture works. The website in `website/` is published to GitHub Pages by `.github/workflows/pages.yml`.
 
 Self-tests (no window; results go to `MEETCAPTION_SELFTEST_OUT`, or the terminal):
@@ -112,6 +116,7 @@ Useful environment variables:
 
 - `MEETCAPTION_USERDATA=<folder>`: keep settings, voiceprint and sign-ins in a test folder instead of your own data.
 - `MEETCAPTION_API=<url>`: point the membership client at another backend.
+- `MEETCAPTION_UPDATE_URL=<url>`: check a local update server (a folder with `latest-mac.yml` and the zip) instead of GitHub, to test automatic updates with a packaged build.
 - `MEETCAPTION_SONIOX_URL=<ws url>`: connect Soniox recognition through another address (for testing network drops through a local relay).
 - `MEETCAPTION_NO_EXTERNAL=1`: do not open the system browser (for tests).
 - `MEETCAPTION_DEBUG=1`: print recognition events, audio positions and the me/other decisions.

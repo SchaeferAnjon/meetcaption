@@ -139,10 +139,11 @@ jobs:
       - run: npm ci
       - run: npm test
 
+      # 只打 dmg：临时签名的包不能给自动更新用，zip 由本机发版时打（scripts/release.mjs）
       - name: Build dmgs (arm64 + x64, ad-hoc signed)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --mac --arm64 --x64 -c.mac.identity=- --publish never
+        run: npx electron-builder --mac dmg --arm64 --x64 -c.mac.identity=- --publish never
 
       - name: Voiceprint self-test (packaged arm64)
         run: |

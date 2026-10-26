@@ -662,7 +662,7 @@ function updateTrayMenu() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       ...(unfinished ? [{ label: t('继续设置…'), click: () => openOnboarding() }, { type: 'separator' }] : []),
-      ...(updater?.status().phase === 'ready' ? [{ label: t('重启并更新到 {0}', updater.status().version), enabled: !running, click: () => installUpdate() }, { type: 'separator' }] : []),
+      ...(updater?.status().phase === 'ready' ? [{ label: t('重启并更新到 {0}', updater.status().version), click: () => trayInstallUpdate() }, { type: 'separator' }] : []),
       { label: running ? t(`停止记录{0}`, liveName ? t(`（{0}）`, liveName) : '') : t(`在「{0}」里开始记录`, curName), accelerator: s.hotkeyRecord || undefined, click: () => (running ? engine.stop() : startEngine()) },
       ...(running ? [{ label: paused ? t('继续记录') : t('暂停记录'), click: () => togglePause() }] : []),
       { label: t('当前项目'), submenu: projectItems },
@@ -1434,14 +1434,17 @@ function isDevBuild() {
   }
 }
 
+// 托盘里点「重启并更新」：正在记录时不能重启，在主窗口说一声
+function trayInstallUpdate() {
+  const r = installUpdate()
+  if (!r.ok) toUi('engine:notice', { level: 'warn', text: r.error, code: 'update-busy' })
+}
+
 // 已经下好的新版：退出、装上、重新打开。正在记录或者课堂笔记还在整理时不重启
 function installUpdate() {
   if (engine.state !== 'idle') return { ok: false, error: t('正在记录，停止后再重启更新') }
   if (engine.notesFlush) return { ok: false, error: t('正在整理最后一段实时笔记，整理完再重启更新') }
-  if (updater?.status().phase !== 'ready') return { ok: false, error: t('新版本还没下载好') }
-  // 主窗口点关闭只是藏起来：先标上 quitting，退出时窗口才关得掉
-  quitting = true
-  updater.install()
+  if (updater?.status().phase !== 'ready' || !updater.install()) return { ok: false, error: t('新版本还没下载好') }
   return { ok: true }
 }
 
@@ -2068,13 +2071,23 @@ app.whenReady().then(async () => {
   createOverlay()
   createAnswer()
   // 正式版打包后才自动更新；开发版、源码运行、自测不更新。MEETCAPTION_UPDATE_URL：测试时指向本机的更新服务器
-  updater = new Updater({ supported: app.isPackaged && !selfTest && !isDevBuild(), enabled: () => settings.get().autoUpdate !== false, feedUrl: process.env.MEETCAPTION_UPDATE_URL || '' })
+  updater = new Updater({
+    supported: app.isPackaged && !selfTest && !isDevBuild(),
+    enabled: () => settings.get().autoUpdate !== false,
+    feedUrl: process.env.MEETCAPTION_UPDATE_URL || '',
+    native: isMac ? nativeUpdater : null,
+    inApps: !isMac || !app.isPackaged || app.isInApplicationsFolder(),
+  })
+  let updatePhase = ''
   updater.on('state', (st) => {
     toUi('update:state', st)
+    if (st.phase === updatePhase) return // 下载进度每秒一次，托盘菜单只在阶段变了时重建
+    updatePhase = st.phase
     if (st.phase === 'ready') toUi('engine:notice', { level: 'info', text: t('新版本 {0} 已下载好，重启就能用。', st.version), code: 'update-ready' })
     updateTrayMenu()
   })
-  // Mac 上装新版时 Squirrel 先关窗口再退出：主窗口关闭只是藏起来，这时要真关
+  // 装新版时先关窗口再退出（Mac 上连 before-quit 都在窗口关完以后才发）：主窗口点关闭只是藏起来，这时要真关
+  updater.on('quitting', () => (quitting = true))
   nativeUpdater.on('before-quit-for-update', () => (quitting = true))
   updater.start()
   createTray()

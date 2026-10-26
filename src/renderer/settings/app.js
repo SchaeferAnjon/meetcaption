@@ -122,9 +122,10 @@ function buildUpdate() {
       downloading: t('正在下载新版本 {0}，{1}%', st.version, st.percent ?? 0),
       ready: t('新版本 {0} 已下载好，重启就能用。', st.version),
       latest: t('已是最新版本 {0}，{1} 查过', init.version, when(st.checkedAt)),
-      error: t('没查到：{0}', manualError || st.error),
+      error: t('更新出错：{0}', manualError || st.error),
     }[st.phase]
-    line.textContent = text ?? ''
+    // Squirrel 要把新版换到应用所在的位置：从下载文件夹、dmg 里直接打开的（只读）装不上
+    line.textContent = [text, st.inApps === false && st.phase !== 'off' ? t('会议字幕不在「应用程序」文件夹里，可能装不上更新：把它拖进「应用程序」后再打开。') : ''].filter(Boolean).join(' ')
     check.disabled = ['off', 'checking', 'downloading', 'ready'].includes(st.phase)
     install.hidden = st.phase !== 'ready'
   }
