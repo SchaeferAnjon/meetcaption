@@ -466,6 +466,21 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
 .foot .g { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 24px; font-size: 14px; }
 .foot h4 { margin: 0 0 10px; font-size: 13.5px; } .foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; color: var(--lead); }
 .foot ul a:hover { color: var(--ink); }
+/* 页尾回总站的小条：谁做的、其他软件的图标、全部软件（apps.us-cloud.uk） */
+.xstrip { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--line); display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; font-size: 13px; color: var(--lead); }
+.xstrip .by:hover u { text-decoration-color: currentColor; color: var(--ink); }
+.xstrip .by u { text-underline-offset: 3px; text-decoration-color: var(--line2); }
+.xstrip .sep { color: var(--faint); }
+.xstrip .icons { display: flex; gap: 8px; }
+.xstrip .icons a { position: relative; display: block; width: 22px; height: 22px; }
+.xstrip .icons img { width: 22px; height: 22px; border-radius: 5px; box-shadow: 0 0 0 1px var(--line); transition: transform .15s; }
+.xstrip .icons a:hover img { transform: translateY(-1px); }
+.xstrip .icons a.cur::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--faint); }
+.xstrip .icons .xtip { position: absolute; width: auto; top: auto; line-height: 1.5; box-shadow: none; left: 50%; bottom: 30px; transform: translateX(-50%); padding: 3px 8px; border-radius: 6px; background: var(--ink); color: var(--paper); font-size: 11.5px; white-space: nowrap; pointer-events: none; display: none; }
+.xstrip .icons a:hover .xtip { display: block; }
+/* 最后一个图标贴着右边时，提示往左展开，不撑出横向滚动 */
+.xstrip .icons a:last-child .xtip { left: auto; right: 0; transform: none; }
+.xstrip + .cp { margin-top: 10px; }
 .foot .cp { margin-top: 36px; font-size: 12.5px; color: var(--faint); display: flex; justify-content: space-between; }
 /* 文档页（教程、隐私） */
 .doc { display: grid; grid-template-columns: 220px 1fr; gap: 56px; padding-top: 50px; }
@@ -555,7 +570,7 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
   <div><h4>帮助</h4><ul><li><a data-go="guide">配置教程</a></li><li><a data-go="pricing#faq">找回授权码</a></li><li><a href="https://github.com/SchaeferAnjon/meetcaption/issues" target="_blank" rel="noopener">联系我们</a></li></ul></div>
   <div><h4>开源</h4><ul><li><a href="https://github.com/SchaeferAnjon/meetcaption" target="_blank" rel="noopener">GitHub 源码</a></li><li><a href="https://github.com/SchaeferAnjon/meetcaption/issues" target="_blank" rel="noopener">提问题</a></li><li><a href="https://github.com/SchaeferAnjon/meetcaption/blob/main/LICENSE" target="_blank" rel="noopener">GPL-3.0</a></li></ul></div>
   <div><h4>条款</h4><ul><li><a data-go="privacy">隐私政策</a></li><li><a data-go="terms">服务条款</a></li><li><a data-go="refund">退款政策</a></li></ul></div>
-</div><div class="cp"><span>© 2026 {{名}}</span><span>macOS 14.2+ · Windows 10 / 11 · <span id="ver">v0.5.9</span></span></div></div></footer>
+</div><div class="xstrip"><a class="by" href="https://apps.us-cloud.uk"><span>SchaeferAnjon 出品</span> <span class="sep">·</span> <u>全部软件</u></a><span class="icons"><a class="cur" data-go="home" aria-label="MeetCaption"><img data-logo alt=""><span class="xtip">MeetCaption · <span>你在这里</span></span></a><a href="https://github.com/SchaeferAnjon/askfree" target="_blank" rel="noopener" aria-label="Ask Free"><img src="askfree.png" alt=""><span class="xtip">Ask Free</span></a><a href="https://apps.us-cloud.uk/#app-gnw" aria-label="GetNewWord"><img src="getnewword.png" alt=""><span class="xtip">GetNewWord</span></a></span></div><div class="cp"><span>© 2026 {{名}}</span><span>macOS 14.2+ · Windows 10 / 11 · <span id="ver">v0.5.9</span></span></div></div></footer>
 <div class="dlsheet" id="dlsheet"></div>
 <script>
 // 页面语言：地址里的 ?lang= > 上次选的 > 浏览器语言（九种以外用英语）。表在 i18n/<语言>.json，以简体中文原文为键，
