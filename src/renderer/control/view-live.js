@@ -310,7 +310,7 @@ VIEWS.live = {
       notesLine.hidden = !err
       notesLine.className = 'notes-line is-warn'
       // 主进程的 error 已经是完整的一句（实时笔记这次没更新：原因 / 实时笔记暂停了：原因），这里只补后半句
-      const msg = err ? t(`{0}。先保留上一版，稍后再试。`, String(err).replace(/[。.，,\s]+$/, '')) : ''
+      const msg = err ? `${String(err).replace(/[。.，,\s]+$/, '')}。${live.notes ? t('先保留上一版。') : ''}` : ''
       fill(notesLine, err ? [icon('triangle-alert', 13), el('span', { text: msg })] : [])
       renderSide()
     }

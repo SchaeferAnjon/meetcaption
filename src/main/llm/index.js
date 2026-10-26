@@ -57,7 +57,7 @@ export async function complete(settings, auth, o) {
   const provider = settings.llmProvider ?? 'openai'
   const model = resolveModel(settings, o.model)
   if (provider === 'chatgpt') {
-    if (!auth) throw new LlmError('not-logged-in', t('还没用 ChatGPT 账号登录（设置 → AI 服务）'))
+    if (!auth) throw new LlmError('not-logged-in', t('还没用 ChatGPT 账号登录（设置 → 账号与 AI）'))
     return chatgptComplete(auth, { ...o, model })
   }
   const cfg = compatConfig(settings)

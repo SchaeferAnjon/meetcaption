@@ -201,3 +201,9 @@ test('会员服务器一直连不上（没有任何凭据）：AI 的原因说�
   assert.equal(err.code, 'not-logged-in')
   assert.equal(err.message, st.reason)
 })
+
+test('自带 Key 没填：说没填 Key，指到「设置 → 账号与 AI」（设置里没有「AI 服务」这一页）', async () => {
+  const e = await complete({ ...S, plan: 'own', llmProvider: 'deepseek', llmKeys: {} }, null, { model: 'fast', messages: [{ role: 'user', content: 'hi' }] }).catch((x) => x)
+  assert.equal(e.code, 'not-logged-in')
+  assert.equal(e.message, '还没配置 AI 服务的 Key（设置 → 账号与 AI）')
+})
