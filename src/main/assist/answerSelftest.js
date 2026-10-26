@@ -25,8 +25,8 @@ const ANSWER = {
   timing: { screen: null, firstToken: 900, total: 1800 },
 }
 const CONFIG = { fontSize: 16, bgOpacity: 0.9, hotkeyAsk: 'CommandOrControl+Alt+A', mode: 'meeting' }
-const REGEN = '.card .meta button' // 第一个是「重新回答」
-const COPY = '.card .meta button + button'
+const REGEN = '.card .meta .regen'
+const COPY = '.card .meta .copy'
 
 /* ---------------- Windows：常驻的 PowerShell，按行收命令、按行回结果 ---------------- */
 

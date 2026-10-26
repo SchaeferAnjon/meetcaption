@@ -15,11 +15,18 @@ let ignoring = true // 窗口创建时是穿透的
 
 const REASON = { auto: t('自动'), hotkey: t('快捷键'), manual: t('手动'), regenerate: t('重答') }
 const now = Date.now()
+// 调整位置时的示例：回答每句前面带标签，和真回答一样的排法
+const SENTENCES = [
+  [t('产品要实时，研究要准'), 'In my last project, the product team wanted real time results, but the research side needed accuracy.'],
+  [t('先用数字看取舍'), 'I set up a quick benchmark so we could see the trade-off in numbers.'],
+  [t('先上快速模式，准的留给报告'), 'We shipped a fast mode first, and kept the accurate path for the final report.'],
+]
 const SAMPLE = [
   {
     id: 'sample-1',
     question: 'Can you tell me about a project where you had to deal with conflicting requirements?',
-    text: t('要点：讲清冲突、取舍依据和结果\nIn my last project, the product team wanted real time results, but the research side needed accuracy. I set up a quick benchmark so we could see the trade-off in numbers. We shipped a fast mode first, and kept the accurate path for the final report.'),
+    text: `要点：${t('讲清冲突、取舍依据和结果')}\n${SENTENCES.map((x) => x[1]).join(' ')}`,
+    hints: SENTENCES.map((x, i) => ({ at: SENTENCES.slice(0, i).reduce((n, y) => n + y[1].length + 1, 0), text: x[0] })),
     done: true,
     reason: 'auto',
     withScreen: false,
@@ -91,23 +98,35 @@ function el(tag, cls, text) {
   return e
 }
 
+const expanded = new Set() // 点了「全部译文」的卡片
+let pinned = null // 点一下钉住的那一句 { id, i }
+let hover = null // 现在浮着的译文对着谁 { anchor, nodes }
+
+const clearPin = () => list.querySelectorAll('.s.pin').forEach((n) => n.classList.remove('pin'))
+
 function createCard(id) {
   const root = el('article', 'card')
   const q = el('div', 'q')
   const tag = el('span', 'tag')
+  const qZh = el('span', 'q-zh')
+  const qHead = el('span', 'q-head', t('问：'))
   const qText = el('span')
-  q.append(tag, qText)
+  qZh.append(qHead, qText)
+  q.append(tag, qZh)
   const gist = el('div', 'gist')
   const body = el('div', 'body')
   const warn = el('div', 'note warn')
   const error = el('div', 'note error')
   const meta = el('div', 'meta')
   const timing = el('span', 'timing')
-  const regen = el('button', 'ghost', t('重新回答'))
-  const copy = el('button', 'ghost', t('复制'))
-  regen.type = copy.type = 'button'
-  meta.append(timing, regen, copy)
+  const all = el('button', 'ghost all', t('全部译文'))
+  const regen = el('button', 'ghost regen', t('重新回答'))
+  const copy = el('button', 'ghost copy', t('复制'))
+  all.type = regen.type = copy.type = 'button'
+  all.hidden = true
+  meta.append(timing, all, regen, copy)
   root.append(q, gist, body, warn, error, meta)
+  const c = { root, tag, q, qZh, qText, gist, body, warn, error, timing, all, regen, copy, units: [] }
   regen.addEventListener('click', () => {
     if (!id.startsWith('sample-')) api.regenerate(id)
   })
@@ -119,36 +138,157 @@ function createCard(id) {
     copy.textContent = t('已复制')
     setTimeout(() => (copy.textContent = t('复制')), 1200)
   })
-  // 旧卡片默认只露两行，点一下展开
+  all.addEventListener('click', () => {
+    if (expanded.has(id)) expanded.delete(id)
+    else expanded.add(id)
+    pinned = null
+    clearPin()
+    hidePop()
+    syncBody(c, id)
+  })
+  // 旧卡片默认只露两行，点一下展开（点展开后正文里的句子是钉住用的，不收回）
   root.addEventListener('click', (e) => {
     if (e.target.closest('button') || !root.classList.contains('old')) return
+    if (opened.has(id) && e.target.closest('.s.has-tr')) return
     if (opened.has(id)) opened.delete(id)
     else opened.add(id)
     root.classList.toggle('open', opened.has(id))
+    hidePop()
   })
-  return { root, tag, qText, gist, body, warn, error, timing, regen, copy }
+  // 提问行：指上去看原文全文和彩色对照
+  qZh.addEventListener('mouseenter', () => {
+    const a = answers.get(id) ?? SAMPLE.find((s) => s.id === id)
+    if (a && (a.trans?.question?.length || qZh.scrollWidth > qZh.clientWidth)) showPop(qZh, questionPop(a))
+  })
+  qZh.addEventListener('mouseleave', backToPinned)
+  return c
 }
 
-// 答完后的中外对照：一句原文，下面一句彩色译文（意群颜色同字幕）
-function pairs(list) {
-  const bi = window.bilingual
-  const pr = bi.prefs(config)
-  return list.map((sen) => {
-    const r = bi.render(sen, { colors: pr.colors })
-    const row = el('div', 'pair')
-    row.append(el('div', 'src'))
-    row.firstChild.append(r.en)
-    if (r.zh && sen.tr) {
-      const tr = el('div', 'tr')
-      tr.append(r.zh)
-      row.append(tr)
+/* ---------------- 浮出的整句译文：盖在下面的字上，不占版面 ---------------- */
+
+const pop = document.getElementById('pop')
+
+function showPop(anchor, nodes) {
+  hover = { anchor, nodes }
+  pop.replaceChildren(...nodes)
+  placePop()
+}
+
+function hidePop() {
+  hover = null
+  pop.classList.remove('on')
+}
+
+// 指着的字之后放得下就放下面，放不下放上面；字滚出可视区了就收起
+function placePop() {
+  if (!hover) return
+  const rects = hover.anchor.getClientRects()
+  if (!rects.length) return hidePop()
+  const first = rects[0]
+  const last = rects[rects.length - 1]
+  const view = list.getBoundingClientRect()
+  if (last.bottom < view.top || first.top > view.bottom) return pop.classList.remove('on')
+  const box = panel.getBoundingClientRect()
+  pop.classList.add('on')
+  const h = pop.offsetHeight
+  let top = last.bottom - box.top + 6
+  if (top + h > box.height - 8) top = first.top - box.top - h - 6
+  pop.style.top = `${Math.max(view.top - box.top, top)}px`
+}
+
+// 移开以后：有钉住的就回到钉住的那句，没有就收起
+function backToPinned() {
+  const node = pinned && cards.get(pinned.id)?.body.querySelector(`.s[data-i="${pinned.i}"]`)
+  if (node) showPop(node, sentencePop(cards.get(pinned.id), pinned.i))
+  else hidePop()
+}
+
+const bi = () => window.bilingual
+const colorsOn = () => bi().prefs(config).colors
+
+function sentencePop(c, i) {
+  const sen = c.units[i]?.sen
+  const r = bi().render(sen, { colors: colorsOn(), terms: false })
+  const zh = el('span', 'cols')
+  zh.append(r.zh ?? sen.tr)
+  return [el('span', 'pop-k', t('整句译文')), zh]
+}
+
+function questionPop(a) {
+  const qs = a.trans?.question ?? []
+  const last = qs.at(-1)
+  const nodes = [el('span', 'pop-k', t('提问原文'))]
+  if (!last) return [...nodes, el('span', 'plain', a.question)]
+  const r = bi().render(last, { colors: colorsOn(), terms: false })
+  const en = el('span', 'bars')
+  en.append(r.en)
+  nodes.push(en)
+  if (r.zh && last.tr) {
+    const zh = el('span', 'cols')
+    zh.append(r.zh)
+    nodes.push(el('br'), zh)
+  }
+  const before = qs.slice(0, -1).map((x) => x.text).join(' ')
+  if (before) nodes.push(el('span', 'pop-src', t(`前面还说了：{0}`, before)))
+  return nodes
+}
+
+// 最后一句才是真正问的；译文回来之前先显示它，回来以后换成中文，一行高度不变
+const lastSentence = (q) => String(q ?? '').split(/(?<=[.?!。？！])\s*/).filter((x) => x.trim()).at(-1) ?? ''
+
+// 指上去、点一下钉住都只在答完、没展开「全部译文」、不是收着的旧卡片时有用
+function canPeek(c, id) {
+  const a = answers.get(id) ?? SAMPLE.find((s) => s.id === id)
+  return Boolean(a?.done) && !expanded.has(id) && (!c.root.classList.contains('old') || opened.has(id))
+}
+
+// 正文：一句一个单元，标签在句首；有译文的句子能指上去看整句
+function buildBody(c, a) {
+  const { body } = split(a.text)
+  c.units = window.answerUnits.build(body, a.hints, a.trans)
+  const nodes = []
+  c.units.forEach((u, i) => {
+    if (i) nodes.push(' ')
+    const s = el('span', 's')
+    s.dataset.i = i
+    if (u.hint) s.append(el('span', 'hint', u.hint))
+    const en = el('span', 'en')
+    if (u.sen?.tr) {
+      const r = bi().render(u.sen, { colors: colorsOn(), terms: false })
+      en.append(r.en)
+      s.classList.add('has-tr')
+      const zh = el('span', 'zh cols')
+      zh.append(r.zh)
+      s.append(en, zh)
+      s.addEventListener('mouseenter', () => canPeek(c, a.id) && showPop(s, sentencePop(c, i)))
+      s.addEventListener('mouseleave', backToPinned)
+      s.addEventListener('click', () => {
+        if (!canPeek(c, a.id) || String(getSelection()).trim()) return
+        pinned = pinned?.id === a.id && pinned.i === i ? null : { id: a.id, i }
+        clearPin()
+        if (pinned) s.classList.add('pin')
+        showPop(s, sentencePop(c, i))
+      })
+    } else {
+      en.textContent = u.text
+      s.append(en)
     }
-    return row
+    nodes.push(s)
   })
+  if (!a.done) nodes.push(el('span', 'caret'))
+  c.body.replaceChildren(...nodes)
+  if (pinned?.id === a.id) c.body.querySelector(`.s[data-i="${pinned.i}"]`)?.classList.add('pin')
+}
+
+// 「全部译文」按钮和展开状态：没有译文的回答不显示按钮
+function syncBody(c, id) {
+  const on = expanded.has(id)
+  c.body.classList.toggle('all', on)
+  c.all.setAttribute('aria-pressed', String(on))
 }
 
 function fillCard(c, a, latest) {
-  const { gist, body } = split(a.text)
+  const { gist } = split(a.text)
   const tr = a.trans
   c.root.classList.toggle('latest', latest)
   c.root.classList.toggle('old', !latest)
@@ -156,17 +296,18 @@ function fillCard(c, a, latest) {
   c.root.classList.toggle('live', !a.done)
   c.tag.textContent = REASON[a.reason] ?? t('提问')
   c.gist.textContent = gist
-  if (tr !== c.shownTrans || !tr) {
-    c.shownTrans = tr
-    for (const k of ['bi-text', 'bi-bar', 'bi-mono']) c.root.classList.toggle(k, Boolean(tr) && k === window.bilingual.prefs(config).className)
-    // 悬浮框地方小：提问只放最后一句（真正问的那句）和它的译文，回答留在第一屏；主窗口的卡片里是整段
-    if (tr?.question?.length) c.qText.replaceChildren(...pairs(tr.question.slice(-1)))
-    else c.qText.textContent = a.question
-    if (tr?.body?.length) c.body.replaceChildren(...pairs(tr.body))
-    else c.body.textContent = body
-    c.root.classList.toggle('has-pairs', Boolean(tr))
+  const last = tr?.question?.at(-1)
+  c.qText.textContent = last?.tr || last?.text || lastSentence(a.question)
+  c.q.classList.toggle('has-tr', Boolean(last?.tr))
+  const key = JSON.stringify([a.text, a.hints, tr?.body, a.done])
+  if (key !== c.shownKey) {
+    c.shownKey = key
+    buildBody(c, a)
+    // 译文回来以后浮着的那句要换成新的节点，钉住的也一样
+    if (hover && !hover.anchor.isConnected) backToPinned()
   }
-  if (!a.done) c.body.append(el('span', 'caret'))
+  c.all.hidden = !tr?.body?.some((x) => x.tr)
+  syncBody(c, a.id)
   c.warn.textContent = a.warning ?? ''
   c.error.textContent = a.error ?? ''
   c.timing.textContent = timingText(a)
@@ -204,6 +345,7 @@ function render() {
   collapseBtn.textContent = collapsed ? t('展开') : t('收起')
   collapseBtn.hidden = Boolean(config.editMode)
   reportHit()
+  placePop()
 }
 
 // 标题条右边：收起时显示条数，平时用快捷键徽标提示「回答刚才的问题」
@@ -247,6 +389,9 @@ api.onUpdate((a) => {
 api.onClear(() => {
   answers.clear()
   opened.clear()
+  expanded.clear()
+  pinned = null
+  hidePop()
   render()
 })
 
@@ -299,6 +444,8 @@ function reportHit() {
   api.setHitRect(hit)
 }
 new ResizeObserver(reportHit).observe(panel)
+new ResizeObserver(placePop).observe(panel)
+list.addEventListener('scroll', placePop, { passive: true })
 
 // 随时拖动：按住面板（按钮和回答正文以外）拖就移动答题框；调整位置模式下由 -webkit-app-region 负责
 window.dragWindow(panel, { moveTo: (p) => api.moveTo(p), enabled: () => !config.editMode, ignore: '.body' })

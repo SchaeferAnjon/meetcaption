@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Assistant } from '../src/main/assist/assistant.js'
-import { answerLanguage, answerMessages, answerSystem, recentTranscript, splitAnswer, withImage } from '../src/main/assist/answerPrompt.js'
+import { answerLanguage, answerMessages, answerSystem, parseAnswer, recentTranscript, splitAnswer, wantsHints, withImage } from '../src/main/assist/answerPrompt.js'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -275,4 +275,106 @@ test('assistant: warmUp sends one tiny request to the answer model, stops at the
   const rc = await c.warmUp()
   assert.equal(rc.ok, false)
   assert.match(rc.error, /ChatGPT/)
+})
+
+/* ---------------- 句首标签 ---------------- */
+
+const TAGGED = '要点：先说原因\n【标签有噪声】Because the labels are noisy. 【所以先清洗】So I cleaned them first. 【效果提升两成】It lifted accuracy by two percent.'
+
+test('parseAnswer: without tags the text stays exactly as the model wrote it', () => {
+  for (const raw of ['', '要点：', '要点：先说结论\nI led it.', 'No gist here.', '要点：只有要点']) {
+    const p = parseAnswer(raw)
+    assert.equal(p.text, raw)
+    assert.deepEqual(p.hints, [])
+    assert.deepEqual({ gist: p.gist, body: p.body }, splitAnswer(raw))
+  }
+})
+
+test('parseAnswer: tags are taken out of the text and kept apart with the place of the sentence they belong to', () => {
+  const p = parseAnswer(TAGGED)
+  assert.equal(p.gist, '先说原因')
+  assert.equal(p.body, 'Because the labels are noisy. So I cleaned them first. It lifted accuracy by two percent.')
+  assert.equal(p.text, `要点：先说原因\n${p.body}`)
+  assert.deepEqual(
+    p.hints.map((h) => h.text),
+    ['标签有噪声', '所以先清洗', '效果提升两成'],
+  )
+  // at 指向标签后面那句的第一个字；splitAnswer 拆出来的正文和它对得上
+  const body = splitAnswer(p.text).body
+  assert.deepEqual(
+    p.hints.map((h) => body.slice(h.at, h.at + 7)),
+    ['Because', 'So I cl', 'It lift'],
+  )
+  assert.doesNotMatch(p.text, /[【】]/)
+})
+
+test('parseAnswer: while streaming, a half-written tag is never shown and a finished tag shows up before its sentence', () => {
+  const finalBody = parseAnswer(TAGGED).body
+  let seen = 0
+  for (let n = 3; n <= TAGGED.length; n++) {
+    const p = parseAnswer(TAGGED.slice(0, n))
+    assert.doesNotMatch(p.text, /[【】]/, `第 ${n} 个字：${p.text}`)
+    assert.ok(finalBody.startsWith(p.body), `第 ${n} 个字：正文是最终正文的开头`)
+    assert.ok(p.hints.length >= seen, '标签只增不减')
+    seen = p.hints.length
+    for (const h of p.hints) assert.ok(h.at <= p.body.length)
+  }
+  // 标签刚写完、那句话还没出第一个字
+  const p = parseAnswer('要点：先说原因\n【标签有噪声】')
+  assert.deepEqual(p.hints, [{ at: 0, text: '标签有噪声' }])
+  assert.equal(p.body, '')
+  assert.equal(parseAnswer('要点：先说原因\n【标签有').text, '要点：先说原因\n')
+  assert.equal(parseAnswer('要点：先说原因\n【标签有噪声】Because the labels are noisy. 【所以').body, 'Because the labels are noisy. ')
+})
+
+test('parseAnswer: a tag written before the gist line, odd spacing and markdown do not leak markers or shift the places', () => {
+  const p = parseAnswer('\n 要点：先说\n\n【一】 **Yes**, I did. 【二】So what?')
+  assert.equal(p.gist, '先说')
+  assert.equal(p.body, 'Yes, I did. So what?')
+  assert.deepEqual(p.hints, [{ at: 0, text: '一' }, { at: 12, text: '二' }])
+  // 第一个标签之前就有字：那一段没有标签
+  assert.deepEqual(parseAnswer('Well. 【二】So what?').hints, [{ at: 6, text: '二' }])
+  // 空标签不算
+  assert.deepEqual(parseAnswer('【 】Yes.').hints, [])
+})
+
+test('assistant: streamed tags never reach the card as text and are stored apart; the final text is the plain answer', async () => {
+  const chunks = []
+  for (let n = 5; n < TAGGED.length; n += 6) chunks.push(TAGGED.slice(0, n))
+  chunks.push(TAGGED)
+  const a = new Assistant({ complete: fakeComplete({ chunks, delay: 1 }) })
+  const events = collect(a)
+  const final = await a.ask({ question: 'Why did the labels matter?', reason: 'auto' })
+  assert.ok(events.length > 5)
+  for (const e of events) assert.doesNotMatch(e.text, /[【】]/)
+  assert.equal(final.text, '要点：先说原因\nBecause the labels are noisy. So I cleaned them first. It lifted accuracy by two percent.')
+  assert.equal(final.hints.length, 3)
+  assert.ok(events.some((e) => !e.done && e.hints?.length === 1), '第一句的标签先到')
+  // 没有标签的回答没有 hints 字段
+  const plain = new Assistant({ complete: fakeComplete() })
+  assert.equal('hints' in (await plain.ask({ question: 'Tell me about yourself.' })), false)
+})
+
+test('answer prompt: tags in the language it is translated into, short, one per sentence; none when the answer is already in that language', () => {
+  const en = answerSystem({ answerLang: 'en', noteLang: 'zh' })
+  assert.match(en, /每句话的前面先写一个简体中文标签：用【】括起来/)
+  assert.match(en, /10 个字以内/)
+  assert.match(en, /不加这句话里没有的数字和名字/)
+  assert.match(answerSystem({ answerLang: 'zh', noteLang: 'de' }), /德语（Deutsch）标签[^\n]*4 个词以内/)
+  assert.match(answerSystem({ answerLang: 'en', noteLang: 'ja' }), /日语（日本語）标签[^\n]*10 个字以内/)
+  // 回答和翻成的语言一样：不要标签
+  assert.doesNotMatch(answerSystem({ answerLang: 'zh', noteLang: 'zh', hints: false }), /标签/)
+  assert.equal(wantsHints('zh', 'zh'), false)
+  assert.equal(wantsHints('de', 'zh'), true)
+  assert.equal(wantsHints(null, 'zh'), true)
+  const same = answerMessages({ question: '你为什么想离开现在的公司？', noteLang: 'zh' })
+  assert.doesNotMatch(same.system, /标签/)
+  assert.doesNotMatch(same.messages[0].content, /标签/)
+  const diff = answerMessages({ question: 'Why do you want to leave your current company?', noteLang: 'zh' })
+  assert.match(diff.system, /标签/)
+  assert.match(diff.messages[0].content, /每句前面的【标签】也用简体中文/)
+  // 回答语言没判出来（太短的问题）：让模型自己判，回答和标签同语言时不写
+  assert.match(answerSystem({ answerLang: null, noteLang: 'zh' }), /回答也是简体中文时不写标签/)
+  // 括号规则给标签让路
+  assert.match(en, /标签的【】除外/)
 })

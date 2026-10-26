@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { answerMessages, withImage } from './answerPrompt.js'
+import { answerMessages, parseAnswer, withImage } from './answerPrompt.js'
 import { noDashes } from '../prompts.js'
 import { t } from '../i18n.js'
 
@@ -29,7 +29,7 @@ export class Assistant extends EventEmitter {
     screenReady = () => true, // 截屏权限在不在（Mac 没授权时预热不截，免得开会一开始就弹授权框）
     model = 'answer',
     effort = 'none',
-    maxOutputTokens = 400,
+    maxOutputTokens = 500,
     timeoutMs = 25_000,
     screenTimeoutMs = 1500,
     screenMaxWidth = 1600,
@@ -163,6 +163,14 @@ export class Assistant extends EventEmitter {
     this.#finish(r)
   }
 
+  // 模型写的回答每句前面带【标签】：标签单独放 hints，text 里不留标记（流式写到一半的标签也不露出来）
+  #setText(r, raw) {
+    const p = parseAnswer(raw)
+    r.answer.text = p.text
+    if (p.hints.length) r.answer.hints = p.hints
+    else delete r.answer.hints
+  }
+
   #public(r) {
     return { ...r.answer, timing: { ...r.answer.timing } }
   }
@@ -279,12 +287,12 @@ export class Assistant extends EventEmitter {
         onDelta: (full) => {
           if (signal.aborted || r.finished) return
           if (r.answer.timing.firstToken == null && full) r.answer.timing.firstToken = elapsed()
-          r.answer.text = noDashes(full)
+          this.#setText(r, noDashes(full))
           this.#emit(r)
         },
       })
       if (r.cancelled) return this.#public(r)
-      if (typeof text === 'string' && text.trim()) r.answer.text = noDashes(text).trim()
+      if (typeof text === 'string' && text.trim()) this.#setText(r, noDashes(text).trim())
       if (r.answer.timing.firstToken == null && r.answer.text) r.answer.timing.firstToken = elapsed()
       if (!r.answer.text.trim()) r.answer.error = 'AI 没有给出回答，点「重新回答」再试一次'
     } catch (e) {

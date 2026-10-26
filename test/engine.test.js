@@ -892,6 +892,28 @@ test('engine: the hotkey picks the question the teacher is still saying, and a f
   assert.ok(ctx.session().answers.at(-1).trans)
 })
 
+test('engine: a tagged answer is stored and translated without the tags; the tags are kept next to it', async (t) => {
+  const ctx = await start(await setup({ patch: { assist: { auto: false } } }), t)
+  const raw = '要点：先说原因\n【标签有噪声】Because the labels are noisy. 【先清洗再训练】So I cleaned them first.'
+  ctx.assistant.complete = async (o) => {
+    o.onDelta?.(raw.slice(0, 20))
+    o.onDelta?.(raw)
+    return raw
+  }
+  ctx.providers[0].emit('final', { key: 'q', text: 'Why did the model fail on the second dataset?' })
+  await tick(40)
+  assert.ok(ctx.engine.askLast().ok)
+  await tick(80)
+  const a = ctx.assistant.list().at(-1)
+  assert.equal(a.text, '要点：先说原因\nBecause the labels are noisy. So I cleaned them first.')
+  assert.deepEqual(a.hints.map((h) => h.text), ['标签有噪声', '先清洗再训练'])
+  assert.deepEqual(a.trans.body.map((x) => x.text), ['Because the labels are noisy.', 'So I cleaned them first.'])
+  assert.ok(ctx.llmCalls.every((c) => !JSON.stringify(c).includes('【')), '翻译请求里没有标签')
+  const saved = ctx.session().answers.at(-1)
+  assert.equal(saved.text, a.text)
+  assert.deepEqual(saved.hints, a.hints)
+})
+
 /* ---------------- 答非所问（2026-10-26 实测） ---------------- */
 
 test('engine: the answer takes a screenshot on the member channel too (the backend passes it to deepseek-flash), same as with an own key', async (t) => {

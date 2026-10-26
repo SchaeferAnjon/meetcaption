@@ -41,6 +41,7 @@ button {
 }
 
 .panel {
+  position: relative;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -207,7 +208,9 @@ button {
 }
 
 .card {
-  padding: 9px 11px 6px;
+  --px: 11px; /* 卡片左右内边距：要点和底栏贴着滚动区边缘时往外探出这么多 */
+  --tint: rgba(255, 255, 255, 0.035);
+  padding: 9px var(--px) 6px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -215,12 +218,9 @@ button {
 }
 
 .card.latest {
-  background: rgba(113, 118, 255, 0.1);
+  --tint: rgba(113, 118, 255, 0.1);
+  background: var(--tint);
   border-color: rgba(125, 129, 255, 0.26);
-}
-
-.card.latest .meta {
-  background: linear-gradient(rgba(113, 118, 255, 0.1), rgba(113, 118, 255, 0.1)), rgb(28, 28, 30);
 }
 
 .card.old:hover {
@@ -240,11 +240,28 @@ button {
   opacity: 1;
 }
 
+/* 提问：只放一行用户语言的「问：…」，原文和彩色对照指上去才浮出来 */
 .q {
+  display: flex;
+  align-items: center;
+  min-width: 0;
   font-size: 12.5px;
   line-height: 1.45;
   color: var(--text-2);
-  overflow-wrap: anywhere;
+}
+
+.q-zh {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.q-head {
+  color: var(--text-3);
 }
 
 .tag {
@@ -279,12 +296,21 @@ button {
   display: none;
 }
 
+/* 最新一条的要点贴在卡片顶上：回答长了往下滚它不动（列表有 8px 内边距，贴在滚动区真正的上沿） */
+.card.latest .gist {
+  position: sticky;
+  top: -8px;
+  z-index: 2;
+  margin: 6px calc(-1 * var(--px)) 0;
+  padding: 4px var(--px) 6px;
+  background: linear-gradient(var(--tint), var(--tint)), rgb(28, 28, 30);
+}
+
 .body {
   margin-top: 3px;
   font-size: var(--font-size);
   line-height: 1.5;
   color: #f2f2f4;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;
 }
@@ -338,12 +364,12 @@ button {
   /* 列表有 8px 内边距，贴在滚动区真正的底边，下面才不会漏出半行正文 */
   bottom: -8px;
   z-index: 1;
-  margin-left: -11px;
+  margin-left: calc(-1 * var(--px));
   margin-bottom: -6px;
-  margin-right: -11px;
-  padding: 4px 6px 14px 11px;
+  margin-right: calc(-1 * var(--px));
+  padding: 4px 6px 14px var(--px);
   border-radius: 0 0 10px 10px;
-  background: linear-gradient(rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.035)), rgb(28, 28, 30);
+  background: linear-gradient(var(--tint), var(--tint)), rgb(28, 28, 30);
   font-size: 11px;
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
@@ -539,8 +565,10 @@ body.prominent .title::after {
 }
 
 body.prominent .card.latest {
-  padding: 12px 13px 8px;
-  background: rgba(113, 118, 255, 0.14);
+  --px: 13px;
+  --tint: rgba(113, 118, 255, 0.14);
+  padding: 12px var(--px) 8px;
+  background: var(--tint);
   border-color: rgba(125, 129, 255, 0.4);
 }
 
@@ -563,26 +591,147 @@ body.dragging * {
   cursor: grabbing !important;
 }
 
-/* 答完后的中外对照：每句原文下面一句彩色译文 */
-.card.has-pairs .body {
-  white-space: normal;
+/*
+ * 回答正文：白字整段连排，每句开头一个紫色短标签（和要点同色），竖着扫标签就是整段的提纲。
+ * 整句译文平时不显示，指上去浮出来（.pop，盖在下面的字上、不挤开别的字），点一下钉住；意群颜色只在浮出的译文和它对着的那句英文（细色条）上。
+ */
+.en {
+  white-space: pre-wrap;
 }
 
-.pair + .pair {
-  margin-top: 5px;
+.s {
+  border-radius: 4px;
+  padding: 1px 0;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background-color 0.15s;
 }
 
-.pair .tr {
-  margin-top: 1px;
-  font-size: calc(var(--font-size) * 0.86);
-  line-height: 1.45;
-  color: var(--text-2);
+.s.has-tr:hover,
+.s.pin {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: -3px 0 0 rgba(255, 255, 255, 0.08), 3px 0 0 rgba(255, 255, 255, 0.08);
 }
 
-.q .pair .tr {
-  font-size: 12px;
+.card.old:not(.open) .s,
+.card.old:not(.open) .s:hover {
+  background: none;
+  box-shadow: none;
 }
 
-.q .pair {
+.hint {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 5px;
+  vertical-align: 0.1em;
+  font-size: 0.69em;
+  font-weight: 500;
+  line-height: 1.7;
+  white-space: nowrap;
+  background: rgba(113, 118, 255, 0.22);
+  color: #c9cbff;
+}
+
+.card.old:not(.open) .hint {
+  display: none;
+}
+
+.zh {
+  display: none;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+/* 意群颜色：英文用底部细色条（白字照样好念），中文用字色，同一块两边同色 */
+.bi-c {
+  --bi: var(--chunk-1);
+}
+
+.bi-c[data-c='1'] {
+  --bi: var(--chunk-2);
+}
+
+.bi-c[data-c='2'] {
+  --bi: var(--chunk-3);
+}
+
+.bi-c[data-c='3'] {
+  --bi: var(--chunk-4);
+}
+
+.s.has-tr:hover .en .bi-c,
+.s.pin .en .bi-c,
+.body.all .en .bi-c,
+.bars .bi-c {
+  background-image: linear-gradient(var(--bi), var(--bi));
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 2px;
+  padding-bottom: 1px;
+}
+
+.cols .bi-c {
+  color: var(--bi);
+}
+
+/* 全部译文：临时把每句的整句译文都摆出来，一句英文一句中文 */
+.body.all .s {
   display: block;
+  padding: 0;
+}
+
+.body.all .s + .s {
+  margin-top: 6px;
+}
+
+.body.all .hint {
+  display: none;
+}
+
+.body.all .zh {
+  display: block;
+}
+
+.body.all .s.has-tr:hover {
+  background: none;
+  box-shadow: none;
+}
+
+.pop {
+  position: absolute;
+  z-index: 5;
+  left: 8px;
+  right: 8px;
+  padding: 8px 11px 9px;
+  border-radius: 8px;
+  background: rgb(44, 44, 48);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-size: calc(var(--font-size) * 0.9);
+  line-height: 1.5;
+  color: #f2f2f4;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 0.12s, transform 0.12s;
+}
+
+.pop.on {
+  opacity: 1;
+  transform: none;
+}
+
+.pop-k {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.pop-src {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-3);
 }

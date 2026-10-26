@@ -1,4 +1,5 @@
-// 实时答题的 prompt。输出要短：第一行要点（用这一场「翻译成」的语言，一眼看懂），后面 2 到 4 句能直接说出口的回答（默认跟提问的语言）。
+// 实时答题的 prompt。输出要短：第一行要点（用这一场「翻译成」的语言，一眼看懂），后面 2 到 4 句能直接说出口的回答（默认跟提问的语言），
+// 回答里每句前面带一个【标签】（同样用「翻译成」的语言，答题卡上扫一眼就是整段的提纲；回答和翻成的语言相同时不要标签）。
 import { detectLang, promptLang } from '../languages.js'
 
 const LATIN_GUESS = ['en', 'de', 'fr', 'es', 'it', 'pt'] // detectLang 数虚词认得的几种
@@ -23,6 +24,12 @@ export function answerLanguage(question, answerLang = 'auto', source = null) {
 
 const langName = (lang) => (lang ? promptLang(lang) : '和提问相同的语言')
 
+// 标签的长度：汉字、假名按字数，其他语言按词数
+const TAG_LIMIT = (lang) => (['zh', 'zh-Hant', 'ja'].includes(lang) ? '10 个字以内' : '4 个词以内')
+
+/** 要不要写标签：回答用的语言和翻成的语言一样就不要（标签是给看不懂回答的人看的）；回答语言还没定（null）时问模型自己判。 */
+export const wantsHints = (answerLang, noteLang) => !answerLang || answerLang !== noteLang
+
 const PROFILE_MAX = 4000
 // 最近的对话给多一点：课上老师问的常常是十几分钟前讲的内容（只给 12 句时只能答出「没有问题」这种空话）
 const TRANSCRIPT_LINES = 60
@@ -42,12 +49,16 @@ const CLASS_RULES = [
   '- 老师问的是内容问题：用课上刚讲的内容和例子回答，术语和老师的说法保持一致。',
 ]
 
-export function answerSystem({ answerLang = null, noteLang = 'zh', withScreen = false, mode = 'meeting' } = {}) {
+export function answerSystem({ answerLang = null, noteLang = 'zh', withScreen = false, mode = 'meeting', hints = true } = {}) {
+  const hintRule = answerLang
+    ? `每句话的前面先写一个${promptLang(noteLang)}标签：用【】括起来，紧贴着这句话，${TAG_LIMIT(noteLang)}，只概括这句话本身，不加这句话里没有的数字和名字，不带标点。标签一律用${promptLang(noteLang)}写，不跟着回答的语言走（回答是别的语言也一样）。一句一个标签，一句也不漏，标签以外不要用【】。`
+    : `回答用的语言和${promptLang(noteLang)}不同时，每句话的前面先写一个${promptLang(noteLang)}标签：用【】括起来，紧贴着这句话，${TAG_LIMIT(noteLang)}，只概括这句话本身，不加这句话里没有的数字和名字，不带标点，标签一律用${promptLang(noteLang)}写，不跟着回答的语言走，一句一个、一句也不漏，标签以外不要用【】；回答也是${promptLang(noteLang)}时不写标签。`
   return [
     `你是我的实时答题助手。${SCENE[mode] ?? SCENE.meeting}你写一段我能直接照着说出口的回答。`,
     '格式：',
     `第一行：「要点：」（这三个字照写）加一句${promptLang(noteLang)}要点，15 个字或 8 个词以内，让我一眼知道怎么答。`,
-    `第二行起：回答本身，用${langName(answerLang)}回答。2 到 4 句，第一人称，口语，像我自己在说话。每句尽量不超过 20 个词（中文 30 个字），不用分号、括号和破折号。`,
+    `第二行起：回答本身，用${langName(answerLang)}回答。2 到 4 句，第一人称，口语，像我自己在说话。每句尽量不超过 20 个词（中文 30 个字），不用分号、括号和破折号${hints ? '（标签的【】除外）' : ''}。`,
+    ...(hints ? [hintRule] : []),
     '要求：',
     '- 只回答「对方的问题」这一个问题。「最近的对话」只是背景：里面更早的问题已经答过了，不要再答；寒暄和会上的事务（能听到吗、共享屏幕）也不要回应。',
     '- 直接回答，不复述问题，不说 Great question 之类的客套，不用列表、标题和 Markdown。',
@@ -130,9 +141,11 @@ export function answerMessages({ question, lead = '', transcript, context, profi
   if (withScreen) parts.push('附图是我现在的屏幕，只在问题和屏幕内容有关时才围绕它回答。')
   const lang = answerLanguage(ask, answerLang, source)
   // 语言放在最后再说一遍：只在 system 里说时，资料是中文的场次要点常写成中文
-  parts.push(`语言：要点那一行用${promptLang(noteLang)}（除了人名、项目名这类专有名词，每个词都用${promptLang(noteLang)}），回答用${langName(lang)}，不管资料和对话是什么语言。`)
+  const hints = wantsHints(lang, noteLang)
+  const tags = hints ? `，每句前面的【标签】也用${promptLang(noteLang)}（专有名词除外，不跟着回答的语言走）` : ''
+  parts.push(`语言：要点那一行用${promptLang(noteLang)}（除了人名、项目名这类专有名词，每个词都用${promptLang(noteLang)}）${tags}，回答用${langName(lang)}，不管资料和对话是什么语言。`)
   return {
-    system: answerSystem({ answerLang: lang, noteLang, withScreen, mode }),
+    system: answerSystem({ answerLang: lang, noteLang, withScreen, mode, hints }),
     messages: [{ role: 'user', content: parts.join('\n\n') }],
   }
 }
@@ -144,6 +157,33 @@ export function withImage(messages, dataUrl) {
       ? { ...m, content: [...(typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : m.content), { type: 'image', dataUrl }] }
       : m,
   )
+}
+
+const TAG = /【([^【】\n]{1,40})】\s*/g
+
+/**
+ * 模型写出来的回答（流式写到一半也行）→ { text, gist, body, hints }。每句前面的【标签】摘出来：
+ * text 是不带标签的回答（第一行要点 + 正文，存档、复制、翻译都用它），hints 是 [{ at, text }]，at 是标签后面那句在正文（text 去掉要点行）里的位置。
+ * 标签还没写完（【负责结…）的先不露出来，写完那一刻才出现，所以流式出字时用户看不到标记。
+ */
+export function parseAnswer(raw) {
+  const full = String(raw ?? '')
+  if (!full.includes('【')) return { text: full, ...splitAnswer(full), hints: [] }
+  const s = full.replace(/^\s+/, '')
+  const head = s.match(/^要点[:：][^\n]*\n*/)?.[0] ?? ''
+  const rest = s.slice(head.length).replace(/\*\*|__/g, '')
+  let body = ''
+  let last = 0
+  const hints = []
+  for (const m of rest.matchAll(TAG)) {
+    body += rest.slice(last, m.index)
+    const text = m[1].trim()
+    if (text) hints.push({ at: body.length, text })
+    last = m.index + m[0].length
+  }
+  body += rest.slice(last)
+  body = body.replace(/【[^【】\n]{0,40}$/, '')
+  return { text: head + body, gist: splitAnswer(head).gist, body, hints }
 }
 
 /** 把回答拆成「要点」和正文，界面和复制都用。 */

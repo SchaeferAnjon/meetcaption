@@ -992,6 +992,7 @@ export class MeetingEngine extends EventEmitter {
       return
     }
     const record = { id: a.id, question: a.question, text: a.text, reason: a.reason, withScreen: a.withScreen, startedAt: a.startedAt, timing: a.timing }
+    if (a.hints) record.hints = a.hints
     if (a.trans) record.trans = a.trans
     if (a.error) record.error = a.error
     const segId = this.answerSeg.get(a.id)
