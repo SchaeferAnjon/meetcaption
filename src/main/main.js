@@ -30,7 +30,7 @@ import { Assistant } from './assist/assistant.js'
 import { captureScreen, screenPermission } from './assist/screen.js'
 import { createAnswerWindow, keepFrontApp, resetAnswerBounds, setAnswerEditMode, showAnswerWindow } from './assist/answerWindow.js'
 import { centeredIn } from './assist/answerBounds.js'
-import { dragBounds, getBoundsKept, gesture, keepSize, setBoundsKept } from './windowBounds.js'
+import { dragBounds, getBoundsKept, gesture, keepSize, resizeBounds, setBoundsKept } from './windowBounds.js'
 import { applyTheme, chromeInfo, chromeOptions } from './windows.js'
 import { runSelfTest } from './selftest.js'
 import { resolveMode } from './modes.js'
@@ -349,6 +349,7 @@ function visibleOnSomeDisplay(b) {
 }
 
 const OVERLAY_EDGE = 6 // 字幕条四周给阴影留的边，和 overlay.css 的 --edge 一样
+const OVERLAY_MIN_WIDTH = 320
 
 // 字幕条的朝向：top 贴着窗口顶边往下长、术语解释在下面；bottom 贴着底边往上长、术语解释在上面
 const overlayAnchor = () => settings.get().overlay.anchor
@@ -385,6 +386,16 @@ function clampOverlayY(x, y, width, height) {
   return Math.min(Math.max(y, d.y - areaTop), d.y + d.height - areaBottom)
 }
 
+// 窗口不出屏幕：宽度不超过所在屏幕的可用区域，左右两边都在里面，字幕区上下不出屏（见 clampOverlayY）
+function keepOverlayOnScreen() {
+  const b = getBoundsKept(overlayWin)
+  const a = screen.getDisplayMatching(b).workArea
+  const width = Math.min(b.width, a.width)
+  const x = Math.min(Math.max(b.x, a.x), a.x + a.width - width)
+  const y = Math.round(clampOverlayY(x, b.y, width, b.height))
+  if (x !== b.x || y !== b.y || width !== b.width) setBoundsKept(overlayWin, { ...b, x, y, width })
+}
+
 function createOverlay() {
   const o = settings.get().overlay
   const height = overlayHeight(o)
@@ -412,6 +423,7 @@ function createOverlay() {
     webPreferences: { preload: path.join(root, 'preload/overlay.cjs'), backgroundThrottling: false },
   })
   keepSize(overlayWin, bounds)
+  keepOverlayOnScreen()
   overlayFront = isMac ? keepFrontApp(overlayWin) : null
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
   overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
@@ -534,7 +546,10 @@ function setEditMode(on) {
   overlayWin.setIgnoreMouseEvents(!on)
   overlayWin.setFocusable(on)
   setAnswerEditMode(answerWin, on)
-  if (!on) saveOverlayBounds()
+  if (!on) {
+    keepOverlayOnScreen()
+    saveOverlayBounds()
+  }
   refreshOverlay()
 }
 
@@ -1824,9 +1839,13 @@ function wireIpc() {
     toOverlay('overlay:config', overlayConfig())
     toOverlay('overlay:segments', engine.snapshot().segments)
   })
-  ipcMain.on('overlay:setHorizontal', (_e, { x, width }) => {
-    const b = overlayWin.getBounds()
-    overlayWin.setBounds({ ...b, x: Math.round(x), width: Math.max(320, Math.round(width)) })
+  // 调整位置：拖左右边缘改宽度，高度和上下位置不动，窗口不出屏幕
+  const sizingOverlay = gesture(() => getBoundsKept(overlayWin), () => screen.getCursorScreenPoint())
+  ipcMain.on('overlay:resizeEdge', (e, r) => {
+    if (e.sender !== overlayWin?.webContents || !editMode || !['left', 'right'].includes(r?.side)) return
+    const g = sizingOverlay(Boolean(r.first))
+    const area = screen.getDisplayMatching(g.start).workArea
+    setBoundsKept(overlayWin, resizeBounds(g.start, g.dx, 0, r.side === 'left' ? 'l' : 'r', { width: OVERLAY_MIN_WIDTH, height: 0 }, area))
   })
   ipcMain.on('overlay:doneEditing', () => setEditMode(false))
   ipcMain.on('overlay:hitRect', (e, r) => {

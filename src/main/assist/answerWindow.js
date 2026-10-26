@@ -1,7 +1,7 @@
 import { BrowserWindow, clipboard, screen } from 'electron'
 import { execFile } from 'node:child_process'
 import { MIN_SIZE, placeAnswer } from './answerBounds.js'
-import { dragBounds, getBoundsKept, gesture, keepSize, setBoundsKept } from '../windowBounds.js'
+import { dragBounds, getBoundsKept, gesture, keepSize, resizeBounds, setBoundsKept } from '../windowBounds.js'
 
 // 答题框：独立的置顶窗口，默认在主屏右侧、字幕上方。不抢焦点，但按钮能点。
 // 窗口平时鼠标穿透。鼠标移到面板上时接管点击：Mac 靠 forward 转来的 mousemove，渲染进程发 answer:setIgnoreMouse(false)；
@@ -163,15 +163,18 @@ export function createAnswerWindow({ preload, page, bounds, contentProtection = 
   })
   ipc.on('answer:hitRect', (_e, r) => hover?.setRect(r))
   ipc.on('answer:clicked', () => front?.clicked())
-  // 随时拖动：页面只说「开始了 / 还在拖」，位置由这里按鼠标走了多远算（见 windowBounds.js）
+  // 随时拖动、调整位置时拖边缘：页面只说「开始了 / 还在拖」，位置和大小由这里按鼠标走了多远算（见 windowBounds.js）
   const cursor = () => screen.getCursorScreenPoint()
   const moving = gesture(() => getBoundsKept(win), cursor)
+  const sizing = gesture(() => getBoundsKept(win), cursor)
   ipc.on('answer:moveTo', (_e, p) => {
     const g = moving(Boolean(p?.first))
     setBoundsKept(win, dragBounds(g.start, g.from, g.now))
   })
-  ipc.on('answer:setBounds', (_e, nb) => {
-    if (nb && [nb.x, nb.y, nb.width, nb.height].every(Number.isFinite)) win.setBounds(sanitize(nb))
+  ipc.on('answer:resizeEdges', (_e, r) => {
+    if (typeof r?.edges !== 'string') return
+    const g = sizing(Boolean(r.first))
+    setBoundsKept(win, resizeBounds(g.start, g.dx, g.dy, r.edges, MIN_SIZE, screen.getDisplayMatching(g.start).workArea))
   })
   ipc.on('answer:copy', (_e, text) => {
     Promise.resolve(clipboard.writeText(String(text ?? ''))).catch(() => {})

@@ -415,20 +415,16 @@ document.addEventListener('pointerup', () => {
   if (!config.editMode) api.released()
 })
 
-// 调整位置模式：拖左右边缘改宽度（拖动整个字幕条移动位置由 -webkit-app-region 负责）
+// 调整位置模式：拖左右边缘改宽度（拖动整个字幕条移动位置由 -webkit-app-region 负责）；宽度由主进程按鼠标走了多远算
 document.getElementById('done').addEventListener('click', () => api.doneEditing())
 for (const handle of document.querySelectorAll('.handle')) {
   handle.addEventListener('pointerdown', (e) => {
     const side = handle.dataset.side
-    const start = { mouse: e.screenX, x: window.screenX, width: window.innerWidth }
+    let first = true
     handle.setPointerCapture(e.pointerId)
-    const move = (ev) => {
-      const dx = ev.screenX - start.mouse
-      if (side === 'right') api.setHorizontal({ x: start.x, width: Math.max(320, start.width + dx) })
-      else {
-        const width = Math.max(320, start.width - dx)
-        api.setHorizontal({ x: start.x + start.width - width, width })
-      }
+    const move = () => {
+      api.resizeEdge({ side, first })
+      first = false
     }
     const up = () => {
       handle.removeEventListener('pointermove', move)

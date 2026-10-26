@@ -1,9 +1,9 @@
-// 字幕窗和答题框的拖动。不引 electron，单测直接跑。
+// 字幕窗和答题框的拖动、拉边缘改大小。不引 electron，单测直接跑。
 //
 // Windows 在 150%、165% 这类小数缩放下，getBounds 读到的宽高会比 setBounds 设进去的大一两个像素，读了再设就一次涨一截
-// （165% 的真机上拖一次字幕条宽 1095 → 1481）。所以：
+// （165% 的真机上拖一次字幕条宽 1095 → 1481，改宽度时高 328 → 639）。所以：
 // 1. 窗口宽高以我们自己上次设的为准（setBoundsKept / getBoundsKept）；
-// 2. 拖动在按下时记一次窗口位置和鼠标位置（主进程读，屏幕坐标），之后只按鼠标走了多远算，
+// 2. 拖动和拉边缘都在按下时记一次窗口位置和鼠标位置（主进程读，屏幕坐标），之后只按鼠标走了多远算，
 //    不用渲染进程的 screenX（窗口一动它跟着错位，上下不跟手）。
 
 const kept = new WeakMap()
@@ -32,8 +32,25 @@ export function dragBounds(start, from, to) {
   return { x: Math.round(start.x + to.x - from.x), y: Math.round(start.y + to.y - from.y), width: start.width, height: start.height }
 }
 
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi)
+
 /**
- * 一次手势（拖动）的状态：first 为真或还没开始就记下起点，之后每次返回 { start, dx, dy }。
+ * 拖边缘：edges 里有 l、r、t、b，dx、dy 是鼠标从按下起走的距离。没拖的那一边纹丝不动，拖的那一边不超出 area，宽高不小于 min。
+ */
+export function resizeBounds(start, dx, dy, edges, min, area) {
+  let left = start.x
+  let right = start.x + start.width
+  let top = start.y
+  let bottom = start.y + start.height
+  if (edges.includes('l')) left = clamp(start.x + dx, area.x, right - min.width)
+  if (edges.includes('r')) right = clamp(right + dx, left + min.width, area.x + area.width)
+  if (edges.includes('t')) top = clamp(start.y + dy, area.y, bottom - min.height)
+  if (edges.includes('b')) bottom = clamp(bottom + dy, top + min.height, area.y + area.height)
+  return { x: Math.round(left), y: Math.round(top), width: Math.round(right - left), height: Math.round(bottom - top) }
+}
+
+/**
+ * 一次手势（拖动或拉边缘）的状态：first 为真或还没开始就记下起点，之后每次返回 { start, dx, dy }。
  * cursor() 读鼠标的屏幕位置，getBounds() 读窗口。
  */
 export function gesture(getBounds, cursor) {

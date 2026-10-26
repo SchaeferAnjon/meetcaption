@@ -474,29 +474,17 @@ list.addEventListener(
 // 随时拖动：按住面板（按钮和回答正文以外）拖就移动答题框；调整位置模式下由 -webkit-app-region 负责
 window.dragWindow(panel, { moveTo: (p) => api.moveTo(p), enabled: () => !config.editMode, ignore: '.body' })
 
-/* ---------------- 调整位置模式：拖边缘改大小（移动靠 -webkit-app-region） ---------------- */
+/* ---------------- 调整位置模式：拖边缘改大小（移动靠 -webkit-app-region；大小由主进程按鼠标走了多远算） ---------------- */
 
 document.getElementById('done').addEventListener('click', () => api.doneEditing())
 for (const handle of document.querySelectorAll('.handle')) {
   handle.addEventListener('pointerdown', (e) => {
     const edges = handle.dataset.edges
-    const start = { mx: e.screenX, my: e.screenY, x: window.screenX, y: window.screenY, w: window.innerWidth, h: window.innerHeight }
+    let first = true
     handle.setPointerCapture(e.pointerId)
-    const move = (ev) => {
-      const dx = ev.screenX - start.mx
-      const dy = ev.screenY - start.my
-      let { x, y, w, h } = start
-      if (edges.includes('r')) w = start.w + dx
-      if (edges.includes('l')) {
-        w = Math.max(300, start.w - dx)
-        x = start.x + start.w - w
-      }
-      if (edges.includes('b')) h = start.h + dy
-      if (edges.includes('t')) {
-        h = Math.max(200, start.h - dy)
-        y = start.y + start.h - h
-      }
-      api.setBounds({ x, y, width: Math.max(300, w), height: Math.max(200, h) })
+    const move = () => {
+      api.resizeEdges({ edges, first })
+      first = false
     }
     const up = () => {
       handle.removeEventListener('pointermove', move)

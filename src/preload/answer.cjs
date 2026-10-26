@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('answerApi', {
   onClear: (cb) => ipcRenderer.on('answer:clear', () => cb()),
   regenerate: (id) => ipcRenderer.send('answer:regenerate', id),
   doneEditing: () => ipcRenderer.send('answer:doneEditing'),
-  setBounds: (b) => ipcRenderer.send('answer:setBounds', b),
+  resizeEdges: (e) => ipcRenderer.send('answer:resizeEdges', e),
   moveTo: (p) => ipcRenderer.send('answer:moveTo', p),
   setIgnoreMouse: (ignore) => ipcRenderer.send('answer:setIgnoreMouse', ignore),
   setHitRect: (r) => ipcRenderer.send('answer:hitRect', r),
