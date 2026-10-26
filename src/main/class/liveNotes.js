@@ -10,8 +10,8 @@ const { repair } = globalThis.texfix
 
 // 实时笔记（三种模式都有，内容按模式不同）：定稿的字幕攒起来，每累计约 N 分钟新内容（或 400 个英文词、600 个汉字）把上一版笔记的摘要和新片段一起交给 smart 模型，
 // 模型只写这一批带来的变化（补到哪个小节、新开的小节、改哪一条、新的强调点 / 作业 / 术语），applyNotes 合进上一版，得到完整的新版笔记。
-// 同一时间只有一个请求；失败或额度不够时保留上一版，隔一会儿带着这批内容再试。
-// 事件 'update'：{ notes, updatedAt, error }（失败时 notes 是上一版，error 是一句中文原因）。
+// 同一时间只有一个请求；失败或额度不够时保留上一版，隔一会儿带着这批内容再试。这一场的 AI 用量到上限了（usage-limit）就不再发。
+// 事件 'update'：{ notes, updatedAt, error }（失败时 notes 是上一版，error 是一句中文原因）；'limit'：用量到上限的那个错误（引擎停掉译文请求）。
 
 const LIMITS = { sections: 80, points: 30, formulas: 15, examples: 12, emphasis: 80, homework: 20, terms: 80, edits: 30 }
 const DASH = /[\u2013\u2014]+/g
@@ -248,7 +248,7 @@ export class LiveNotes extends EventEmitter {
    * everyMs() → 攒多久更新一次（设置里的 class.notesEveryMin，开会中改了马上生效）；context：课程或会议背景；
    * mode：class | meeting | interview；prev：接着之前的笔记（没有就 null）。
    */
-  constructor({ llm, llmStatus = null, startedAt = Date.now(), everyMs = () => 120_000, context = '', mode = 'class', lang = 'zh', prev = null, now = () => Date.now(), wordsCap = 400, hanCap = 600, minWords = 15, retryMs = 60_000, timeoutMs = 180_000 }) {
+  constructor({ llm, llmStatus = null, startedAt = Date.now(), everyMs = () => 120_000, context = '', mode = 'class', lang = 'zh', prev = null, now = () => Date.now(), wordsCap = 400, hanCap = 600, minWords = 15, retryMs = 60_000, flushRetryMs = 10_000, timeoutMs = 180_000 }) {
     super()
     this.llm = llm
     this.llmStatus = llmStatus
@@ -258,7 +258,7 @@ export class LiveNotes extends EventEmitter {
     this.mode = mode
     this.lang = lang
     this.now = now
-    this.opts = { wordsCap, hanCap, minWords, retryMs, timeoutMs }
+    this.opts = { wordsCap, hanCap, minWords, retryMs, flushRetryMs, timeoutMs }
     this.notes = prev
     this.updatedAt = null
     this.pending = [] // [{ id（段落 id）, at（绝对时间）, speaker, text }]
@@ -266,6 +266,7 @@ export class LiveNotes extends EventEmitter {
     this.retryAt = 0
     this.warned = false
     this.closed = false
+    this.halted = false // 这一场的 AI 用量到上限了：不再发请求
   }
 
   /** 一段定稿的字幕：{ id, startedAt, speaker, text }。 */
@@ -310,7 +311,7 @@ export class LiveNotes extends EventEmitter {
 
   /** 定时调用（引擎每 5 秒一次）：到时间了就发一次请求。返回这次请求的 Promise（没发返回 null）。 */
   tick({ final = false } = {}) {
-    if (this.running || !this.due({ final })) return null
+    if (this.running || this.halted || !this.due({ final })) return null
     const st = this.llmStatus?.()
     if (st && !st.ready) {
       if (!this.warned) {
@@ -329,16 +330,24 @@ export class LiveNotes extends EventEmitter {
     return this.running
   }
 
-  /** 下课：等在跑的请求，剩下的内容再更新一次。 */
+  /** 下课：等在跑的请求，剩下的内容再更新一次；这次失败了隔 flushRetryMs 再试一次。 */
   async flush() {
     this.closed = true
     await this.running
     this.retryAt = 0
-    if (this.due({ final: true })) {
+    for (let i = 0; i < 2 && !this.halted && this.due({ final: true }); i++) {
+      if (i) await new Promise((r) => setTimeout(r, this.opts.flushRetryMs).unref()) // 只为等这一下不挡着进程退出
       const batch = this.pending
       this.pending = []
-      await this.#run(batch)
+      if (await this.#run(batch)) return
     }
+  }
+
+  /** 这一场的 AI 用量到上限了：不再整理，提示一次。 */
+  halt(e) {
+    if (this.halted) return
+    this.halted = true
+    this.emit('update', { notes: this.notes, updatedAt: this.updatedAt, error: t(`实时笔记暂停了：{0}`, reason(e)) })
   }
 
   async #run(batch) {
@@ -354,11 +363,18 @@ export class LiveNotes extends EventEmitter {
       this.retryAt = 0
       this.warned = false
       this.emit('update', { notes: this.notes, updatedAt: this.updatedAt, error: null, ms: this.updatedAt - t0, lines: lines.length })
+      return true
     } catch (e) {
       // 这批内容放回去，下次和新内容一起再整理
       this.pending = [...batch, ...this.pending]
+      if (e?.code === 'usage-limit') {
+        this.halt(e)
+        this.emit('limit', e)
+        return false
+      }
       this.retryAt = this.now() + this.opts.retryMs
       this.emit('update', { notes: this.notes, updatedAt: this.updatedAt, error: t(`实时笔记这次没更新：{0}`, reason(e)), ms: this.now() - t0 })
+      return false
     }
   }
 }

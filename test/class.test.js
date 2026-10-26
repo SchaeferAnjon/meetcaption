@@ -8,6 +8,7 @@ import { classNotesMessages, classTodoMessages, notesDigest, notesMessages } fro
 import { exportNotesTo, notesFileName, saveSlide } from '../src/main/class/files.js'
 import { modeSettings, resolveMode, speakerLabel } from '../src/main/modes.js'
 import { applyPatch, DEFAULTS, merge } from '../src/main/defaults.js'
+import { LlmError } from '../src/main/llm/errors.js'
 import { ProjectStore } from '../src/main/projects.js'
 import { SessionStore } from '../src/main/sessions.js'
 
@@ -247,7 +248,7 @@ test('countWords: English words and Chinese characters', () => {
 
 /* ---------------- 实时笔记：调度和容错 ---------------- */
 
-function notesHarness({ replies, ready = true, everyMin = 2 } = {}) {
+function notesHarness({ replies, ready = true, everyMin = 2, flushRetryMs } = {}) {
   let now = START
   const calls = []
   const queue = [...replies]
@@ -258,7 +259,7 @@ function notesHarness({ replies, ready = true, everyMin = 2 } = {}) {
     return typeof r === 'string' ? r : JSON.stringify(r)
   }
   const updates = []
-  const notes = new LiveNotes({ llm, llmStatus: () => ({ ready, reason: '还没登录' }), startedAt: START, everyMs: () => everyMin * 60_000, context: 'Intro ML', now: () => now })
+  const notes = new LiveNotes({ llm, llmStatus: () => ({ ready, reason: '还没登录' }), startedAt: START, everyMs: () => everyMin * 60_000, context: 'Intro ML', now: () => now, flushRetryMs })
   notes.on('update', (u) => updates.push(u))
   const say = (sec, text) => notes.add({ startedAt: START + sec * 1000, speaker: '老师', text })
   return { notes, calls, updates, say, advance: (sec) => (now += sec * 1000), at: (sec) => (now = START + sec * 1000) }
@@ -411,6 +412,37 @@ test('LiveNotes: AI not ready pauses with one message; flush at the end sends wh
   tiny.say(1, 'Okay.')
   await tiny.notes.flush()
   assert.equal(tiny.calls.length, 0)
+})
+
+test('LiveNotes: the last update after the meeting is tried once more when it fails; usage-limit stops it for good', async () => {
+  const h = notesHarness({ replies: [new LlmError('rate-limit', 'AI 服务额度用完或太频繁（429）：busy', { status: 429, retryable: true }), NOTE_A], flushRetryMs: 5 })
+  h.at(30)
+  h.say(20, sentence(12))
+  await h.notes.flush()
+  assert.equal(h.calls.length, 2)
+  assert.match(h.updates[0].error, /实时笔记这次没更新/)
+  assert.equal(h.updates[1].error, null)
+  assert.equal(h.updates[1].notes.sections[0].title, 'A')
+  assert.match(h.calls[1].messages[0].content, /\[00:20\] 老师：w0/) // 再试的是同一批内容
+  // 再试也失败：到此为止
+  const bad = notesHarness({ replies: [new Error('断网了'), new Error('还是断网'), NOTE_A], flushRetryMs: 5 })
+  bad.say(20, sentence(12))
+  await bad.notes.flush()
+  assert.equal(bad.calls.length, 2)
+  // 用量到上限：发 limit，之后的 tick 和收尾都不再发请求
+  const lim = notesHarness({ replies: [new LlmError('usage-limit', '这一场的 AI 用量到上限了', { status: 429 }), NOTE_A], flushRetryMs: 5 })
+  const limits = []
+  lim.notes.on('limit', (e) => limits.push(e.code))
+  lim.at(10)
+  lim.say(5, sentence(400))
+  await lim.notes.running
+  assert.deepEqual(limits, ['usage-limit'])
+  assert.deepEqual(lim.updates.map((u) => u.error), ['实时笔记暂停了：这一场的 AI 用量到上限了'])
+  lim.at(200)
+  lim.say(190, sentence(400))
+  assert.equal(lim.notes.tick(), null)
+  await lim.notes.flush()
+  assert.equal(lim.calls.length, 1)
 })
 
 /* ---------------- 课堂 prompt ---------------- */
