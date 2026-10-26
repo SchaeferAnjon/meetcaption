@@ -1,6 +1,7 @@
 import { calendarText, clock, dateLabel, transcriptText } from '../prompts.js'
 import { relativeDayHints } from '../todos.js'
-import { promptLang, templateRule, writeLang } from '../languages.js'
+import { promptLang, writeLang } from '../languages.js'
+import { templateRule, templateWords } from '../templateWords.js'
 
 // 课堂模式的三个 prompt：实时笔记（边听边整理，JSON）、课后课堂笔记（Markdown）、作业提取（沿用待办的 JSON 格式）。
 
@@ -46,7 +47,7 @@ const NOTES_ROLE = {
     rules: `- sections：会上讨论的议题，按讨论顺序，title 是议题，start 是开始讨论的时间（mm:ss）；points 每条一句话，写清谁说了什么、有什么意见和理由。
 - formulas、examples：会上真的出现公式、举了具体例子才写，一般给空数组。
 - emphasis：已经定下来的结论和决定，或对方明确提出的要求和修改意见，at 是原话的时间，quote 是原话（保留原文）。
-- homework：待办，text 写清谁做什么（「我：…」或「对方：…」），due 按日历换算成 YYYY-MM-DD，没说时间写 null；dueText 是原话里的时间说法（保留原文）。
+- homework：待办，text 写清谁做什么（「{ME}…」或「{OTHER}…」），due 按日历换算成 YYYY-MM-DD，没说时间写 null；dueText 是原话里的时间说法（保留原文）。
 - terms：会上出现的专业术语、项目名、缩写，原文、{L}译名、一句{L}解释（不超过 40 个字）。`,
   },
   interview: {
@@ -55,7 +56,7 @@ const NOTES_ROLE = {
     background: '面试背景',
     date: '面试日期',
     first: '还没有，这是这场面试的第一段。',
-    rules: `- sections：面试官问过的问题，按提问顺序，title 是问题（一句话概括），start 是提问的时间（mm:ss）。points 先写我回答的要点，再写面试官的追问（以「追问：」开头）。
+    rules: `- sections：面试官问过的问题，按提问顺序，title 是问题（一句话概括），start 是提问的时间（mm:ss）。points 先写我回答的要点，再写面试官的追问（以「{FOLLOW}」开头）。
 - formulas、examples：面试里真的推公式、举了具体例子才写，一般给空数组。
 - emphasis：面试官在意或反复追问的地方、给出的评价和暗示、我没答好需要补的点，at 是原话的时间，quote 是原话（保留原文）。
 - homework：面试后要做的事和时间点：下一轮面试、要补发的材料、面试官让我准备的东西。due 按日历换算成 YYYY-MM-DD，没说时间写 null；dueText 是原话里的时间说法（保留原文）。
@@ -102,6 +103,10 @@ export function notesDigest(prev, { full = FULL_SECTIONS } = {}) {
 export function notesMessages({ prev = null, lines, context = '', startedAt = Date.now(), mode = 'class', lang = 'zh' }) {
   const r = NOTES_ROLE[mode] ?? NOTES_ROLE.class
   const L = promptLang(lang)
+  const w = templateWords(lang)
+  // 「我：」「对方：」「追问：」按笔记的语言写（模型照抄前缀，中文前缀会漏进日语笔记）
+  let rules = r.rules.replaceAll('{L}', L).replace('{ME}', w.me).replace('{OTHER}', w.other).replace('{FOLLOW}', w.followUp.trim())
+  if (!w.own && /\{(ME|FOLLOW)\}/.test(r.rules)) rules += `\n- 上面英文的前缀（${[w.me, w.other, w.followUp].map((x) => x.trim()).join(' ')}）换成${L}。`
   const system = `${r.who}
 下面给你上一版笔记的摘要和刚才${r.lines}。
 只输出这一批新内容带来的变化，不要重写上一版已有的内容，程序会把你写的合并进笔记。格式：
@@ -116,7 +121,7 @@ ${JSON.stringify(NOTES_SHAPE)}
 
 要求：
 - 用${L}写，术语、人名、模型名、书名保留原文。
-${r.rules.replaceAll('{L}', L)}
+${rules}
 - points、examples、emphasis 里提到符号或式子时写成行内公式 $...$，比如 "用 k-fold cross-validation 选 $\\\\lambda$"，不要把 \\\\lambda 这种命令不带 $ 直接写在文字里。homework 和 terms 用纯文字，不加 $。
 - 反斜杠：输出的是 JSON，字符串里 LaTeX 的每个反斜杠都写成两个（\\\\lambda、\\\\text{ridge}、\\\\frac{a}{b}、\\\\rVert），JSON 解析后才是一个。只写一个会被当成转义，\\text、\\rVert、\\frac、\\beta、\\nabla 会变成制表符、回车、换页、退格、换行；写四个又会变成换行。
 - 识别稿可能有错字（尤其是公式和术语），按上下文纠正；拿不准的不写。
@@ -141,40 +146,40 @@ ${r.rules.replaceAll('{L}', L)}
 export function classNotesMessages({ session, project = null, extraAsk = '', slides = [], liveNotes = null, materials = null }) {
   const withMaterials = Boolean(materials?.text)
   const out = writeLang(session, project)
+  const w = templateWords(out)
+  const h = w.class
   const system = `你是一位细心的课堂笔记助手。用户刚听完一节课，下面是课堂的自动识别稿（可能有识别错误、缺标点；「老师」是授课老师，「我」是用户，我偶尔会在课上提问）。
 请用${promptLang(out)}写一份课堂笔记，术语、人名、模型名、书名保留原文；公式用 LaTeX（行内用 $...$，单独一行的用 $$...$$）。要求：
-- 只根据识别稿、实时笔记和截图写，不编造；识别稿里念出来的公式（比如 "y i minus theta transpose x i, squared"）还原成 LaTeX；拿不准的标「（待确认）」。
+- 只根据识别稿、实时笔记和截图写，不编造；识别稿里念出来的公式（比如 "y i minus theta transpose x i, squared"）还原成 LaTeX；拿不准的标「${w.tbc}」。
 - 时间戳用识别稿里的 [mm:ss]。
 - 相对日期换算成具体日期：上课日期是 ${dateLabel(session.startedAt)}，「next Wednesday」「this Sunday」「下周三」都算出日期并保留原话；「next + 星期几」按下一周的那一天算。
-- 给了课件截图时，在讲到对应内容的地方用 ![简短说明](slides/文件名.jpg) 引用截图，路径照抄下面给的，没用上的截图不用硬塞。${
+- 给了课件截图时，在讲到对应内容的地方用 ![${w.shotAlt}](slides/文件名.jpg) 引用截图，路径照抄下面给的，没用上的截图不用硬塞。${
     withMaterials
       ? `
-- 给了老师的课件时，对照课件和识别稿一起写：课件是老师准备的讲义，识别稿是老师实际讲的。大纲按老师讲的顺序；定义、公式、符号、术语和人名的写法以课件为准（识别稿里听错的按课件改）；老师口头补充的解释、例子、强调和课件上没有的内容都写进去；课件上有、课上没讲的简要写，标「（课件内容，课上没讲）」。
-- 小节标题后面注明对应的课件页，比如「（课件 p.12 到 p.15）」。在讲到对应内容的地方用 ![课件第 N 页：简短说明](materials/…/pNNN.jpg) 插入那一页，路径照抄课件文字里每页标的路径；只插有图、表、公式推导或关键定义的页，一般 3 到 10 页；标题页、目录页、只有几行字的页不插，不要整份课件都插。`
+- 给了老师的课件时，对照课件和识别稿一起写：课件是老师准备的讲义，识别稿是老师实际讲的。大纲按老师讲的顺序；定义、公式、符号、术语和人名的写法以课件为准（识别稿里听错的按课件改）；老师口头补充的解释、例子、强调和课件上没有的内容都写进去；课件上有、课上没讲的简要写，标「${w.slideOnly}」。
+- 小节标题后面注明对应的课件页，比如「${w.slidePages}」。在讲到对应内容的地方用 ![${w.slideAlt}](materials/…/pNNN.jpg) 插入那一页，路径照抄课件文字里每页标的路径；只插有图、表、公式推导或关键定义的页，一般 3 到 10 页；标题页、目录页、只有几行字的页不插，不要整份课件都插。`
       : ''
   }
+- 「${h[0]}」写 3 到 5 句：这节课讲了什么，主线是什么。「${h[2]}」每个公式写清楚符号含义，老师推导过的写出推导步骤。「${h[7]}」出 3 到 5 道，覆盖本节重点，每道后面另起一行写「${w.answer}…」。
 - 不要用破折号。${templateRule(out)}
 
-按下面的 Markdown 结构输出，没有内容的小节写「无」：
+按下面的 Markdown 结构输出，没有内容的小节写「${w.none}」：
 
-## 本节概览
-（3 到 5 句：这节课讲了什么，主线是什么）
-## 大纲与知识点
-### [mm:ss] 小节标题
-- 要点
-## 公式与推导
-（每个公式写清楚符号含义；老师推导过的写出推导步骤）
-## 例子
-## 老师强调和可能的考点
-- 要点（[mm:ss] 原话："…"）
-## 作业与截止
-- [ ] 作业（截止：日期 / 无明确截止）  原话："…" [mm:ss]
-## 术语表
-| 英文 | 中文 | 解释 |
+## ${h[0]}
+## ${h[1]}
+### [mm:ss] ${w.sectionTitle}
+- ${w.point}
+## ${h[2]}
+## ${h[3]}
+## ${h[4]}
+${w.emphLine}
+## ${h[5]}
+${w.hwLine}
+## ${h[6]}
+${w.glossHead}
 |---|---|---|
-## 自测题
-（3 到 5 道，覆盖本节重点，每道后面另起一行写「答案：…」）
-## 没听清需要确认的地方`
+## ${h[7]}
+## ${h[8]}`
   const parts = []
   if (project) {
     parts.push(`这节课属于「${project.name}」${project.description ? `（${project.description}）` : ''}`)
@@ -196,7 +201,8 @@ export function classNotesMessages({ session, project = null, extraAsk = '', sli
 
 /** 课堂的作业提取：输出同待办提取（{"title","items"}），全部归到这节课所属的项目。 */
 export function classTodoMessages({ session, summary, project, liveNotes = null }) {
-  const L = promptLang(writeLang(session, project))
+  const out = writeLang(session, project)
+  const L = promptLang(out)
   const system = `你是课堂助理，从一节课的课堂笔记和识别稿里提取作业、阅读任务、要交的东西、考试和截止时间，输出 JSON。
 「老师」是授课老师，「我」是用户（学生）。
 
@@ -207,7 +213,7 @@ ${relativeDayHints(session.startedAt)}
 
 规则：
 - 只提取老师明确布置的、要我做或要注意的事：作业、阅读、项目、要交的报告、考试和测验。泛泛的建议不算。
-- text：一句${L}，动词开头，具体到能照着做（写清楚是哪次作业、做什么）；术语、书名保留原文；不要用破折号。考试写成「准备 期中考试（范围：…）」这类。
+- text：一句${L}，动词开头，具体到能照着做（写清楚是哪次作业、做什么）；术语、书名保留原文；不要用破折号。考试写成「${templateWords(out).exam}」这类。
 - owner：作业和考试都是 me。
 - dueText：原话里的时间说法，原样保留（比如 "next Wednesday before midnight"），没有写 null。
 - quote：识别稿里的原话依据，原样保留英文，不超过 120 个字符。

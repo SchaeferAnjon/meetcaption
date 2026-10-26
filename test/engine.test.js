@@ -894,8 +894,8 @@ test('engine: the hotkey picks the question the teacher is still saying, and a f
 
 /* ---------------- 答非所问（2026-10-26 实测） ---------------- */
 
-test('engine: on the member channel the answer takes no screenshot and the prompt does not mention one; with an own key it does', async (t) => {
-  for (const [llmProvider, expect] of [['member', false], ['deepseek', true]]) {
+test('engine: the answer takes a screenshot on the member channel too (the backend passes it to deepseek-flash), same as with an own key', async (t) => {
+  for (const [llmProvider, expect] of [['member', true], ['deepseek', true]]) {
     const ctx = await setup({ patch: { llmProvider, assist: { withScreen: true } } })
     let shots = 0
     ctx.assistant.captureScreen = async () => {
@@ -915,6 +915,17 @@ test('engine: on the member channel the answer takes no screenshot and the promp
     assert.equal(/附图/.test(ctx.asks[0].system + JSON.stringify(ctx.asks[0].messages)), expect, llmProvider)
     await ctx.engine.stop()
   }
+})
+
+test('engine: once this meeting hits its AI usage limit, questions are no longer answered automatically', async (t) => {
+  const { LlmError } = await import('../src/main/llm/errors.js')
+  const ctx = await start(await setup({ llmImpl: async () => { throw new LlmError('usage-limit', '这一场的 AI 用量到上限了', { status: 429 }) } }), t)
+  const [sys] = ctx.providers
+  sys.emit('final', { key: 'a', text: 'The ledger migration is the risky one.' })
+  await tick(50)
+  sys.emit('final', { key: 'b', text: 'Why did you pick Postgres for the ledger?' })
+  await tick(50)
+  assert.equal(ctx.asks.length, 0)
 })
 
 test('engine: the answer prompt gets the terms, the question language and the lead-in apart; chores before the question are left out', async (t) => {

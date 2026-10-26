@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import { calendarText, cleanText, dateLabel, extractJson, transcriptText, ymd } from './prompts.js'
 import { INBOX_ID } from './projects.js'
 import { promptLang, writeLang } from './languages.js'
+import { TBC_RE } from './templateWords.js'
 
 // 待办和 DDL：纪要生成后再让模型做一次结构化提取，每条标到一个项目，存进 session.summary.items：
 // { id, text, due: 'YYYY-MM-DD' | null, dueUncertain?, dueText, owner: 'me' | 'other' | null, projectId, quote, at, done, doneAt? }
@@ -235,7 +236,7 @@ const DATE_RE = /\d{4}\s*[-/.年]\s*\d{1,2}\s*[-/.月]\s*\d{1,2}/g
 function deadlineOf(s) {
   const t = String(s ?? '')
   const dates = [...new Set((t.match(DATE_RE) ?? []).map((x) => normalizeDate(x.replace(/\s/g, ''))).filter(Boolean))].sort()
-  const uncertain = /冲突|待确认|推测|不确定|或/.test(t) || dates.length > 1
+  const uncertain = /冲突|待确认|推测|不确定|或/.test(t) || TBC_RE.test(t) || dates.length > 1
   if (!dates.length && !uncertain) return null
   return { due: dates[0] ?? null, uncertain }
 }

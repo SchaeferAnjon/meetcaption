@@ -50,6 +50,19 @@ test('enhanceMessages: translate off asks for terms only; chunks off; class scen
   for (const msg of [...off, ...noChunks, ...chunksOnly, ...cls, ...en]) assert.doesNotMatch(msg.content, /[\u2013\u2014]/)
 })
 
+test('enhanceMessages: the audience line names the language they actually hear (Chinese source into English is Chinese, not English)', () => {
+  const head = (o) => enhanceMessages({ sentence: 'x', ...o })[0].content.split('\n')[0]
+  assert.equal(head({ source: 'zh', target: 'en' }), '你是会议实时字幕助手，听众是母语为英语（English）的研究生，中文听力一般。')
+  assert.match(head({ source: 'auto', target: 'en' }), /英语（English）的研究生，中文听力一般/)
+  assert.match(head({ source: 'auto', target: 'ja' }), /日语（日本語）的研究生，中文和英语听力一般/)
+  assert.match(head({ source: 'auto', target: 'zh' }), /简体中文的研究生，英语听力一般/)
+  assert.match(head({ source: 'en', target: 'zh', scene: 'class' }), /^你是课堂实时字幕助手，听众是母语为简体中文的学生，英语听力一般。/)
+  assert.match(head({ source: 'de', target: 'zh' }), /德语听力一般。发言的原文是德语/)
+  // 原文就是目标语言（只要术语）：不说听力
+  assert.equal(head({ source: 'en', target: 'en', translate: false }), '你是会议实时字幕助手，听众是母语为英语（English）的研究生。')
+  assert.equal(head({ source: 'zh', target: 'zh-Hant', translate: false }), '你是会议实时字幕助手，听众是母语为繁体中文（繁體字，台湾、香港的用词）的研究生。')
+})
+
 test('parseEnhance: plain JSON', () => {
   const r = parseEnhance('{"tr":"我们在这里用低秩适配。","terms":[{"term":"LoRA","zh":"低秩适配","explain":"低秩适配，一种参数高效微调方法"}]}')
   assert.deepEqual(r, { tr: '我们在这里用低秩适配。', chunks: [], terms: [{ term: 'LoRA', zh: '低秩适配', explain: '低秩适配，一种参数高效微调方法' }] })
@@ -361,6 +374,17 @@ test('checkFix and fixEdits: near spellings, merges and splits count half, unrel
   assert.equal(checkFix('我们用罗拉微调', '我们今天下午用 LoRA 在新数据上微调模型').reason, 'edits')
   assert.deepEqual(checkFix('x', undefined), { ok: false, reason: 'empty' })
   assert.deepEqual(checkFix('Hello there.', 'Hello there!'), { ok: false, reason: 'same' })
+})
+
+test('checkFix: an English word written right against Chinese characters counts as one word, not the whole run', () => {
+  // 实测 DeepSeek 给对了、以前被当成改动太大丢掉的两句
+  const lora = checkFix('我们用罗拉微调了这个模型，效果还不错。', '我们用LoRA微调了这个模型，效果还不错。')
+  assert.deepEqual([lora.ok, lora.edits], [true, 1.5])
+  const torch = checkFix('我们这次用的是派托奇两点零版本', '我们这次用的是PyTorch 2.0版本')
+  assert.deepEqual([torch.ok, torch.edits], [true, 5])
+  // 真正的改写照样拒绝
+  assert.equal(checkFix('我们下周把实验做完，然后写论文', '我们打算在下个月之前完成全部的实验和写作').reason, 'edits')
+  assert.equal(checkFix('我们用罗拉微调', '我们今天下午用LoRA在新数据上微调模型').reason, 'edits')
 })
 
 test('streamedHead: with AI correction the reply starts with fixed, then tr; both show as soon as tr is complete', () => {

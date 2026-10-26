@@ -38,7 +38,10 @@ const CROSSTALK_WINDOW_MS = 10_000
 const TRANSCRIPT_MS = 15 * 60_000 // 答题带最近多久的记录（再按句数和字数截，见 answerPrompt.js）
 const NOTES_TICK_MS = 5000
 const ENH_HOLD_MS = 2000 // 答题优先时译文最多等多久（答案首字一般 1 到 2 秒）
-const ENH_RETRY_MS = 1500 // 译文请求失败后多久只要译文再试一次
+const ENH_RETRY_MS = 1500 // 译文请求失败（不是限流、服务出错这类）后多久只要译文再试一次
+// 限流、服务出错、超时、回复是空的：所有译文请求先停这么久，再一次只发一个试，通了才恢复；连着不通就往后挪，最多 30 秒
+const ENH_BACKOFF_MS = [5000, 15000, 30000]
+const ENH_TRIES = 3 // 服务正常时一句自己失败几次就不再试（服务一直出错时的试探不算）
 const CAPTURE_RETRY_MS = [500, 1000, 2000, 3000] // 音频断了重开的间隔，之后一直按最后一个
 const SOURCE_NAME = { mic: '麦克风', system: '电脑声音' }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -98,6 +101,9 @@ const shownLang = (code) => (uiLang() === 'zh' ? LANG_NAMES[code] : new Intl.Dis
 // 译文请求的超时：一般 20 秒，长句多给一点（一个字 30 毫秒，最多再加 20 秒）
 const enhanceTimeout = (text) => 20_000 + Math.min(20_000, text.length * 30)
 
+// 回复是空的或者解析不出译文：当成可重试的失败
+const emptyReply = () => Object.assign(new Error(t('AI 没给出译文（回复是空的或格式不对）')), { code: 'empty-reply', retryable: true })
+
 // 太短的句子（Okay. / 对。）不值得单独问术语
 const worthTerms = (text) => tokenize(text).length >= 3
 
@@ -146,8 +152,8 @@ function syncFixed(seg) {
 // 句子的识别原文：译文缓存、重新分句都按它认句子，纠正后的文字不会再被当成新句子送去翻译
 const rawOf = (sen) => sen.orig ?? sen.text
 
-// 答题带不带截图：会员通道的后台把图片丢掉，带了只是白等截图、白传，prompt 还会说附了图
-const withScreen = (s) => Boolean(s?.assist?.withScreen) && s.llmProvider !== 'member'
+// 答题带不带截图：会员通道也带（后台原样转给 deepseek-flash，它看得懂图）
+const withScreen = (s) => Boolean(s?.assist?.withScreen)
 
 export class MeetingEngine extends EventEmitter {
   /**
@@ -180,6 +186,11 @@ export class MeetingEngine extends EventEmitter {
     this.enhHoldSince = 0
     this.enhHoldTimer = null
     this.enhQueue = []
+    this.enhRetry = [] // 失败了等着重发的（只要译文）：排在新句子后面，服务恢复后补上
+    this.enhFails = 0 // 连着几次可重试的失败：大于 0 时一次只发一个
+    this.enhPauseUntil = 0
+    this.enhPauseTimer = null
+    this.aiLimited = false // 这一场 AI 用量到上限了：不再发译文请求，实时笔记也停
     this.enhActive = 0
     this.enhRunning = new Set() // 已经发出去、还没回来的译文请求（答题时 ChatGPT 通道上要让路）
     this.enhWarned = false
@@ -331,8 +342,10 @@ export class MeetingEngine extends EventEmitter {
     this.classSource = this.mode === 'class' ? (classSource === 'system' ? 'system' : 'mic') : null
     const s = this.#settingsFor(this.settings.get())
     this.cfg = s
+    this.#dropEnhanceQueue()
     this.enh.clear()
     this.enhEarly.clear()
+    this.aiLimited = false
     this.#releaseEnhance()
     this.enhWarned = false
     this.assistWarned = false
@@ -589,6 +602,7 @@ export class MeetingEngine extends EventEmitter {
       lang: session.target ?? 'zh',
     })
     notes.on('update', (u) => this.#onNotes(session, u))
+    notes.on('limit', (e) => this.#aiLimit(e))
     this.notes = notes
     this.notesTimer = setInterval(() => notes.tick(), NOTES_TICK_MS)
   }
@@ -1027,6 +1041,7 @@ export class MeetingEngine extends EventEmitter {
   }
 
   #maybeAsk(seg, ask) {
+    if (this.aiLimited) return // 这一场 AI 用量到上限了，不再自动答
     if (ask === 'not-ready') {
       if (!this.assistWarned) {
         this.assistWarned = true
@@ -1109,7 +1124,7 @@ export class MeetingEngine extends EventEmitter {
    */
   async #translateAnswer(a) {
     const s = this.#conf()
-    if (!this.llm || !s.translate || this.llmStatus?.()?.ready === false) return
+    if (!this.llm || !s.translate || this.aiLimited || this.llmStatus?.()?.ready === false) return
     const chunks = s.display?.chunkColors !== false
     const one = async (text) => {
       const known = await this.#captionTr(text)
@@ -1183,6 +1198,10 @@ export class MeetingEngine extends EventEmitter {
     return v ?? null
   }
 
+  // 译文请求失败后等多久再试（单测改小）
+  enhBackoffMs = ENH_BACKOFF_MS
+  enhRetryMs = ENH_RETRY_MS
+
   // 翻译开、句子不是目标语言才要译文；要译文且开着意群颜色就要意群对齐；术语开就要术语。都不要就不发请求。
   #requestEnhance(text) {
     if (this.enh.has(text)) return
@@ -1190,7 +1209,7 @@ export class MeetingEngine extends EventEmitter {
     const translate = Boolean(s.translate) && needsTranslation(text, s.language, s.translateTarget)
     const chunks = translate && s.display?.chunkColors !== false
     const terms = s.terms?.enabled !== false && worthTerms(text)
-    if (!translate && !terms) {
+    if ((!translate && !terms) || this.aiLimited) {
       this.enh.set(text, null)
       return
     }
@@ -1225,14 +1244,19 @@ export class MeetingEngine extends EventEmitter {
   }
 
   #pumpEnhance() {
-    while (!this.enhHold && this.enhActive < 3 && this.enhQueue.length) {
-      const job = this.enhQueue.shift()
+    if (this.enhHold || Date.now() < this.enhPauseUntil) return
+    // 服务还在出错：一次只发一个试，通了再恢复同时 3 个
+    const max = this.enhFails ? 1 : 3
+    while (this.enhActive < max && (this.enhQueue.length || this.enhRetry.length)) {
+      const job = this.enhQueue.shift() ?? this.enhRetry.shift()
       job.ctrl = new AbortController()
       job.yielded = false
+      job.probe = this.enhFails > 0
       this.enhActive++
       this.enhRunning.add(job)
       this.#enhance(job)
         .then((r) => {
+          this.#enhanceBack()
           // 已经开了下一场会：只补进上一场的文件，别碰这一场的缓存和实时记录
           if (job.gen !== this.gen) return this.#applyToStored(job.sessionId, job.text, r)
           this.enh.set(job.text, r)
@@ -1257,26 +1281,40 @@ export class MeetingEngine extends EventEmitter {
             this.enhEarly.delete(job.text)
             return
           }
+          if (e?.code === 'usage-limit') {
+            this.enh.set(job.text, job.early ?? null)
+            this.enhEarly.delete(job.text)
+            this.#aiLimit(e)
+            return
+          }
           // 译文已经先到了、后面的意群和术语断了：留住译文，不算失败
           if (job.early) {
             this.enh.set(job.text, job.early)
             this.enhEarly.delete(job.text)
             return
           }
-          // 没拿到译文（超时、断网）：过一会儿只要译文再试一次（不要意群和术语，快很多）
-          if (job.translate && !job.retried && this.state === 'running') {
+          // 限流、服务出错、超时、回复是空的：只要译文（不要意群和术语，快很多），排在新句子后面，所有译文请求先退一会儿
+          const tries = (job.tries ?? 0) + (job.probe ? 0 : 1)
+          if (job.translate && e?.retryable && this.state === 'running' && tries < ENH_TRIES) {
+            this.enhRetry.push({ ...job, tries, retried: true, chunks: false, terms: false, correct: false })
+            this.#backoff(e)
+            return
+          }
+          // 别的错（请求被拒这类）：过一会儿只要译文再试一次
+          if (job.translate && !job.retried && !e?.retryable && this.state === 'running') {
             this.emit('trace', { type: 'enhance-retry', text: job.text, error: e.message })
             setTimeout(() => {
               if (job.gen !== this.gen) return
               this.enhQueue.push({ ...job, retried: true, chunks: false, terms: false, correct: false })
               this.#pumpEnhance()
-            }, ENH_RETRY_MS)
+            }, this.enhRetryMs)
             return
           }
           this.enh.set(job.text, null)
           this.enhEarly.delete(job.text)
-          // 402：会员场次用完，另有「场次用完」的提示，这里不再报
-          if (!this.enhWarned && (e.status !== 402 || this.cfg?.llmProvider !== 'member')) {
+          // 会员场次用完的 402 另有「场次用完」的提示，这里不再报；自带 Key 余额不足的 402 要报
+          const memberOut = e.status === 402 && this.cfg?.llmProvider === 'member'
+          if (!this.enhWarned && !memberOut) {
             this.enhWarned = true
             this.notice('warn', t(`{0}失败：{1}`, job.translate ? t('翻译') : t('术语解释'), e.message), 'enhance')
           }
@@ -1287,6 +1325,52 @@ export class MeetingEngine extends EventEmitter {
           this.#pumpEnhance()
         })
     }
+  }
+
+  // 可重试的失败：所有译文请求先停一会儿（同一波同时失败的只算一次），之后一次只发一个试；连着不通就停得更久
+  #backoff(e) {
+    if (Date.now() < this.enhPauseUntil) return
+    const ms = this.enhBackoffMs[Math.min(this.enhFails, this.enhBackoffMs.length - 1)]
+    this.enhFails++
+    this.enhPauseUntil = Date.now() + ms
+    clearTimeout(this.enhPauseTimer)
+    this.enhPauseTimer = setTimeout(() => {
+      this.enhPauseUntil = 0
+      this.#pumpEnhance()
+    }, ms)
+    this.emit('trace', { type: 'enhance-retry', error: e.message, fails: this.enhFails, waitMs: ms })
+    // 试了一次还不通：告诉用户在等，通了会补上（通了就收回）
+    if (this.enhFails === 2 && !this.enhWarned) {
+      this.enhWarned = true
+      this.notice('warn', t('翻译暂时失败，正在重试，恢复后会补上：{0}', e.message), 'enhance')
+    }
+  }
+
+  // 有请求成功了：服务恢复，排着的（包括失败等着重发的）全速接着发
+  #enhanceBack() {
+    if (!this.enhFails && !this.enhPauseUntil) return
+    this.enhFails = 0
+    this.enhPauseUntil = 0
+    clearTimeout(this.enhPauseTimer)
+  }
+
+  // 排着的译文请求不发了（停止时等过了、开新的一场）
+  #dropEnhanceQueue() {
+    for (const job of [...this.enhQueue, ...this.enhRetry]) if (this.enh.get(job.text) === PENDING) this.enh.set(job.text, null)
+    this.enhQueue = []
+    this.enhRetry = []
+    this.#enhanceBack()
+  }
+
+  // 这一场的 AI 用量到上限了（会员这一场的 token 上限、ChatGPT 套餐额度）：这一场不再发译文和实时笔记的请求，提示一次
+  #aiLimit(e) {
+    if (this.aiLimited || this.state === 'idle') return
+    this.aiLimited = true
+    this.#dropEnhanceQueue()
+    this.notes?.halt(e)
+    // 会员场次用完（402）另有提示
+    if (e.status === 402 && this.cfg?.llmProvider === 'member') return
+    this.notice('warn', t('翻译和实时笔记这一场先停了：{0}', e.message), 'ai-limit')
   }
 
   // 要意群、术语或纠错时走 enhance（一次拿译文、纠正后的句子、意群对齐和术语，JSON）；只要译文时用原来的翻译 prompt，快一点
@@ -1305,6 +1389,7 @@ export class MeetingEngine extends EventEmitter {
       const [system, user] = translateMessages(args)
       const tr = await this.llm({ model: 'fast', system: system.content, messages: [user], effort: 'none', timeoutMs: enhanceTimeout(text), signal: job.ctrl?.signal })
       r = { tr: noDashes(String(tr ?? '')).trim() }
+      if (!r.tr) throw emptyReply()
     } else {
       const [system, user] = enhanceMessages({ ...args, translate, chunks, terms, correct, scene: this.mode === 'class' ? 'class' : 'meeting' })
       // 流式收：JSON 开头的译文（开着纠错时连同前面纠正后的句子）一收全就先显示（ChatGPT 通道上整个 JSON 要 3 到 10 秒，译文 1.5 到 2 秒就齐了）
@@ -1321,11 +1406,14 @@ export class MeetingEngine extends EventEmitter {
         : undefined
       const raw = await this.llm({ model: 'fast', system: system.content, messages: [user], effort: 'none', json: true, timeoutMs: enhanceTimeout(text) + 10_000, onDelta, signal: job.ctrl?.signal })
       const p = parseEnhance(raw, text, { correct })
+      // 要译文却没拿到（回复是空的或不是 JSON，DeepSeek 的 JSON 模式偶尔这样）：流式先到的译文就用它，没有就算失败，走重试
+      const early = translate && !p.tr ? job.early : null
+      if (translate && !p.tr && !early) throw emptyReply()
       r = {}
-      if (p.fixed) r.fixed = p.fixed
+      if (p.fixed ?? early?.fixed) r.fixed = p.fixed ?? early.fixed
       if (p.fixDropped) fixDropped = p.fixDropped
       if (translate) {
-        r.tr = p.tr
+        r.tr = p.tr || early.tr
         if (chunks) r.chunks = p.chunks
       }
       if (terms) r.terms = translate ? p.terms : p.terms.map(({ term, explain }) => ({ term, explain }))
@@ -1397,9 +1485,11 @@ export class MeetingEngine extends EventEmitter {
     const session = this.session
     if (session) {
       session.endedAt = Date.now()
-      // 译文可能还在路上，等一小会儿再落盘
+      // 译文可能还在路上、还在排队，等一小会儿再落盘（服务在出错、退着的时候不等排队的）；还没发出去的就不发了
       const deadline = Date.now() + this.enhanceWaitMs
-      while (this.enhActive > 0 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200))
+      const waiting = () => this.enhActive > 0 || (!this.enhFails && this.enhQueue.length + this.enhRetry.length > 0)
+      while (waiting() && Date.now() < deadline) await sleep(200)
+      this.#dropEnhanceQueue()
       this.store.saveNow(session)
     }
     this.#setState('idle', { lastSessionId: session?.id ?? null })
@@ -1526,7 +1616,6 @@ export class MeetingEngine extends EventEmitter {
     const closing = [...this.pipelines.values()].map((p) => p.provider.close().catch(() => {}))
     await Promise.all(closing)
     this.pipelines.clear()
-    this.enhQueue = []
-    this.#releaseEnhance() // 收尾时补的译文不用再给答题让路
+    this.#releaseEnhance() // 收尾时补的译文不用再给答题让路，排着的接着发（停止时等它们落盘）
   }
 }

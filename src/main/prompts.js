@@ -1,5 +1,6 @@
 import { isMostlyChinese } from './text.js'
-import { isChinese, needsMultilingual, promptLang, templateRule, writeLang } from './languages.js'
+import { isChinese, needsMultilingual, promptLang, writeLang } from './languages.js'
+import { templateRule, templateWords } from './templateWords.js'
 
 // 对方说的是中英文以外的语言（德语课等）：告诉模型原文是什么语言，识别稿里的错字按这种语言去理解
 const sourceLine = (source) => (needsMultilingual(source) ? `发言的原文是${promptLang(source)}。` : '')
@@ -87,28 +88,29 @@ export function projectBrief({ project, projects = [] }) {
 export function summaryMessages({ session, project = null, projects = [], context, extraAsk }) {
   const dateText = dateLabel(session.startedAt)
   const out = writeLang(session, project)
+  const w = templateWords(out)
+  const h = w.summary
   const system = `你是一位细心的会议助理。用户刚开完一场会。下面是会议的自动识别稿（可能有识别错误、缺标点，也可能只录到一方；「我」是用户，「对方」是会上的其他人）。
 请用${promptLang(out)}写会议纪要，术语、论文章节名、人名保留原文。要求：
-- 只根据识别稿写，不编造；拿不准的地方标「（待确认）」。
+- 只根据识别稿写，不编造；拿不准的地方标「${w.tbc}」。
 - 相对时间要换算成具体日期：会议日期是 ${dateText}，「next Friday」「in two weeks」「下周三」这类都算出日期并保留原话；「next + 星期几」按下一周的那一天算。
-- 待办和 DDL 要具体到能直接照着做，每条后面用「原话：」附上识别稿里的依据（保留原文）和时间戳。
+- 待办和 DDL 要具体到能直接照着做，每条后面用「${w.quote.trim()}」附上识别稿里的依据（保留原文）和时间戳。
 - 用户同时在做好几个项目（见项目清单）。会里说到别的项目的事照样写进纪要，在那一条后面用【项目名】标出来。
+- 「${h[1]}」按话题分组，每组几条要点；「${h[2]}」按主题或论文章节列，尽量具体到改哪里、怎么改。
 - 不要用破折号。${templateRule(out)}
 
-按下面的 Markdown 结构输出，没有内容的小节写「无」：
+按下面的 Markdown 结构输出，没有内容的小节写「${w.none}」：
 
-## 一句话总结
-## 讨论要点
-（按话题分组，每组几条要点）
-## 对方的具体意见和修改要求
-（按主题或论文章节列，尽量具体到改哪里、怎么改）
-## 我要做的事
-- [ ] 事项（截止：日期 / 无明确截止）  原话："…" [mm:ss]
-## DDL 与时间节点
-| 时间 | 事项 | 原话 |
+## ${h[0]}
+## ${h[1]}
+## ${h[2]}
+## ${h[3]}
+${w.todoLine}
+## ${h[4]}
+${w.tableHead}
 |---|---|---|
-## 下次会议
-## 没听清或需要再确认的地方`
+## ${h[5]}
+## ${h[6]}`
   const parts = []
   const brief = projectBrief({ project, projects })
   if (brief) parts.push(brief)
@@ -177,6 +179,15 @@ function exampleOut(out, { correct, terms }) {
   return o
 }
 
+// 听众听不太懂的是原文的哪种语言：自动（中英混着说）时是两种里不是目标语言的；原文就是目标语言（只要术语）时不说
+function heardLang(source, target) {
+  const zh = isChinese(target)
+  if (source === 'auto') return zh ? '英语' : target === 'en' ? '中文' : '中文和英语'
+  if (source === 'zh') return zh ? '' : '中文'
+  if (source === target) return ''
+  return source === 'en' ? '英语' : promptLang(source).replace(/（.*）/, '')
+}
+
 /**
  * enhance v2 的请求：translate 要译文，chunks 要意群对齐（只在要译文时有），terms 要术语解释，correct 要 AI 纠正识别错误。
  * 回复 { fixed, tr, chunks: [{ en, zh }], terms: [{ term, zh, explain }] }；en 是原文片段，zh 是译文片段（译成英文时也叫这两个名字）。
@@ -237,9 +248,9 @@ export function enhanceMessages({ sentence, previous = [], target = 'zh', source
         .join('\n'),
     )
   const numbered = tasks.length > 1 ? tasks.map((t, i) => `任务${'一二三四'[i]}：${t}`) : [`任务：${tasks[0] ?? ''}`]
-  const heard = needsMultilingual(source) ? promptLang(source).replace(/（.*）/, '') : '英语'
-  const audience =
-    (scene === 'class' ? `你是课堂实时字幕助手，听众是母语为${lang}的学生，${heard}听力一般。` : `你是会议实时字幕助手，听众是母语为${lang}的研究生，${heard}听力一般。`) + sourceLine(source)
+  const heard = heardLang(source, target)
+  const listen = heard ? `，${heard}听力一般` : ''
+  const audience = (scene === 'class' ? `你是课堂实时字幕助手，听众是母语为${lang}的学生${listen}。` : `你是会议实时字幕助手，听众是母语为${lang}的研究生${listen}。`) + sourceLine(source)
   const examples = correct ? [...CHUNK_EXAMPLES, FIX_EXAMPLE] : CHUNK_EXAMPLES
   const system = [
     audience,
@@ -507,8 +518,9 @@ export function chunkCoverage(sentence, chunks) {
 
 const FIX_MAX_EDITS = 0.35 // 词级编辑超过原句词数的 35%（至少允许 1 处）：多半是改写了，不是纠错
 const FIX_MAX_LENGTH = 0.4 // 长度变化超过 40%：多半是补全或删了半句
-// 词：字母数字连在一起算一个（中间可以有撇号、连字符、点，比如 Siemens's、p-values、U.S）；汉字一个字算一个
-const FIX_TOKEN = /\p{Script=Han}|[\p{L}\p{N}]+(?:['’.\-][\p{L}\p{N}]+)*/gu
+// 词：字母数字连在一起算一个（中间可以有撇号、连字符、点，比如 Siemens's、p-values、U.S）；汉字一个字算一个，
+// 紧贴着的英文词和汉字分开算（「LoRA微调」是 LoRA 加两个字，不是一个词）
+const FIX_TOKEN = /\p{Script=Han}|(?:(?!\p{Script=Han})[\p{L}\p{N}])+(?:['’.\-](?:(?!\p{Script=Han})[\p{L}\p{N}])+)*/gu
 const fixTokens = (s) => String(s ?? '').match(FIX_TOKEN) ?? []
 const normWord = (w) => w.toLowerCase().replace(/['’.\-]/g, '')
 

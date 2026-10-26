@@ -1196,7 +1196,7 @@ function checkScreenPermission() {
     })
     return
   }
-  if (!s.assist.enabled || !s.assist.withScreen || effective(s).llmProvider === 'member') return // 会员通道答题不截屏
+  if (!s.assist.enabled || !s.assist.withScreen) return
   toUi('engine:notice', {
     level: 'warn',
     text: t('AI 答题要带屏幕截图，但会议字幕还没有屏幕录制权限，这次回答不带截图。去「系统设置 → 隐私与安全性 → 录屏与系统录音」打开「会议字幕」，重启应用后生效。'),

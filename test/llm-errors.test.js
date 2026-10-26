@@ -135,7 +135,7 @@ test('纪要写到一半被截断：半截先存下，再报「内容被截断�
   await assert.rejects(empty.generate(s.id), (e) => e.message === '内容被截断：超过了 AI 服务一次能写的长度')
 })
 
-test('引擎：自带 Key 的 402（余额不足）提示一次；会员的 402 另有「场次用完」的提示，这里不报', async () => {
+test('引擎：自带 Key 的 402（余额不足）这一场停发译文、提示一次；会员的 402 另有「场次用完」的提示，这里不报', async () => {
   const notices = async (llmProvider) => {
     const cfg = applyPatch(merge(DEFAULTS, {}), { translate: true, llmProvider, terms: { enabled: false, correct: false }, display: { chunkColors: false }, assist: { enabled: false } })
     const settings = Object.assign(new EventEmitter(), { get: () => structuredClone(cfg) })
@@ -147,13 +147,14 @@ test('引擎：自带 Key 的 402（余额不足）提示一次；会员的 402 
     const engine = new MeetingEngine({ settings, store, rendererCapture: null, llm, llmStatus: () => ({ ready: true }), createProvider: () => asr })
     engine.useFakeSources({ system: true })
     const got = []
-    engine.on('notice', (n) => n.code === 'enhance' && n.text && got.push(n.text))
+    engine.on('notice', (n) => ['enhance', 'ai-limit'].includes(n.code) && n.text && got.push(n.text))
     await engine.start()
     asr.emit('final', { key: 'a', text: 'The ledger migration is the risky one.' })
-    await new Promise((r) => setTimeout(r, 1800)) // 失败后 1.5 秒只要译文再试一次，再失败才提示
+    asr.emit('final', { key: 'b', text: 'We should roll it out next week.' })
+    await new Promise((r) => setTimeout(r, 300))
     await engine.stop()
     return got
   }
-  assert.deepEqual(await notices('deepseek'), ['翻译失败：AI 服务账户余额不足，去充值（402）：Insufficient Balance'])
+  assert.deepEqual(await notices('deepseek'), ['翻译和实时笔记这一场先停了：AI 服务账户余额不足，去充值（402）：Insufficient Balance'])
   assert.deepEqual(await notices('member'), [])
 })
