@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { loadVoiceprintModel, voiceprintPaths, enrollFrom, cosine, MODEL_ID } from '../src/main/audio/voiceprint.js'
+import { loadVoiceprintModel, voiceprintPaths, enrollFrom, scoreSegment, cosine, MODEL_ID } from '../src/main/audio/voiceprint.js'
+import { loadVoiceprintScorer } from '../src/main/audio/voiceprintWorker.js'
 
 // 真模型：本机装了对应平台的 sherpa-onnx 才跑（Windows CI 的 npm ci 会装 win-x64），顺便验证原生库能加载。
 const paths = voiceprintPaths()
@@ -47,4 +48,17 @@ test('model: enrollFrom on 10 s works and the same source scores higher than a d
   const same = cosine(p.embedding, model.embed(voice(110, 3, 7)))
   const other = cosine(p.embedding, model.embed(voice(230, 3, 7)))
   assert.ok(same > other, `same ${same} other ${other}`)
+})
+
+test('scorer (what the meeting uses, outside the main thread in the app): same score as scoring in-process, null for short audio', { skip }, async () => {
+  const model = await loadVoiceprintModel()
+  const profile = enrollFrom(voice(110, 10), model)
+  const scorer = await loadVoiceprintScorer()
+  assert.equal(scorer.modelId, MODEL_ID)
+  const x = voice(110, 3, 7)
+  const pcm = Int16Array.from(x, (v) => Math.round(v * 32767))
+  const r = await scorer.scorePcm(pcm, RATE)
+  const ref = scoreSegment(model, profile, Float32Array.from(pcm, (v) => v / 32768))
+  assert.ok(Math.abs(cosine(profile.embedding, r.embedding) - ref.score) < 1e-3, `${cosine(profile.embedding, r.embedding)} vs ${ref.score}`)
+  assert.equal(await scorer.scorePcm(new Int16Array(RATE * 0.4), RATE), null)
 })

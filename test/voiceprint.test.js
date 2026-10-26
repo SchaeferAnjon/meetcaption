@@ -8,6 +8,7 @@ import {
   pcm16ToFloat32,
   resample,
   trimSilence,
+  embedPcm,
   enrollFrom,
   scoreSegment,
   VoiceprintStore,
@@ -166,6 +167,20 @@ test('scoreSegment: null for short speech or a profile from another model', () =
   const r = scoreSegment(fakeModel, profile, sine(300, 3))
   assert.ok(Math.abs(r.score - 1) < 1e-6)
   assert.ok(r.seconds > 2.9)
+})
+
+test('embedPcm: same vector and length as the in-process scoring path; null for short speech; 24k input is resampled; long input is cut to the middle', () => {
+  const toPcm = (x) => Int16Array.from(x, (v) => Math.round(v * 32767))
+  const x = sine(300, 3)
+  const r = embedPcm(fakeModel, toPcm(x), RATE)
+  const ref = scoreSegment(fakeModel, { embedding: r.embedding, modelId: MODEL_ID }, pcm16ToFloat32(toPcm(x)))
+  assert.ok(Math.abs(ref.score - 1) < 1e-6, '同一段音频，向量和主进程里算的一样')
+  assert.ok(Math.abs(r.seconds - ref.seconds) < 1e-9)
+  assert.equal(embedPcm(fakeModel, toPcm(concat(sine(300, 0.6), new Float32Array(RATE))), RATE), null)
+  const r24 = embedPcm(fakeModel, toPcm(sine(300, 3, 24000)), 24000)
+  assert.ok(r24.seconds > 2.9 && r24.seconds < 3.1, `seconds ${r24.seconds}`)
+  const long = embedPcm(fakeModel, toPcm(sine(300, 12)), RATE)
+  assert.ok(long.seconds <= 6.01, `太长的取中间 6 秒：${long.seconds}`)
 })
 
 test('VoiceprintStore: save, load, overwrite, clear, and corrupt files', () => {

@@ -19,7 +19,8 @@ import { OpenAIRealtimeASR } from './asr/openai.js'
 import { VolcStreamASR } from './asr/volc.js'
 import { SonioxStreamASR } from './asr/soniox.js'
 import { LocalStreamASR, localAsrAvailable, prewarmLocalAsr, stopLocalAsr } from './asr/local.js'
-import { MODEL_ID, VoiceprintStore, loadVoiceprintModel } from './audio/voiceprint.js'
+import { MODEL_ID, VoiceprintStore } from './audio/voiceprint.js'
+import { loadVoiceprintScorer, prewarmVoiceprint, stopVoiceprintWorker } from './audio/voiceprintWorker.js'
 import { WavCapture } from './audio/wav.js'
 import { MacSystemAudio, macTapSupported } from './audio/macTap.js'
 import { dbfs } from './audio/gate.js'
@@ -1797,6 +1798,7 @@ function wireIpc() {
   ipcMain.handle('voiceprint:enroll', (_e, seconds) => enrollVoiceprint(seconds))
   ipcMain.handle('voiceprint:clear', () => {
     vpStore.clear()
+    if (engine.state === 'idle') stopVoiceprintWorker()
     emitOnboarding()
     return vpStatus()
   })
@@ -2049,7 +2051,7 @@ app.whenReady().then(async () => {
     llm,
     llmStatus: () => aiStatus(),
     assistant,
-    voiceprint: { profile: vpProfile, loadModel: () => loadVoiceprintModel() },
+    voiceprint: { profile: vpProfile, loadModel: () => loadVoiceprintScorer() },
   })
   summarizer = new Summarizer({ store, projects, llm, aiStatus: () => aiStatus(), modelName: (m) => resolveModel(effective(), m), loadImage: slideDataUrl, renderPdf })
 
@@ -2105,8 +2107,10 @@ app.whenReady().then(async () => {
   } else createControl()
   lastOnboarding = JSON.stringify(onboardingStatus())
   setInterval(pollPointer, 50)
-  // 用本地识别时，启动后在后台进程里先把模型加载好，开会时不用再等
-  if (settings.get().engine === 'local') setTimeout(() => prewarmLocalAsr(), 3000)
+  // 启动后在后台进程里先把模型加载好，开会时不用再等：本地识别的模型（用本地识别时），声纹模型（录过声纹时）。
+  // 两个都是一两秒到几秒的 CPU 活，各在自己的进程里，不占主进程
+  if (settings.get().engine === 'local') setTimeout(() => prewarmLocalAsr(), 1000)
+  if (vpProfile()) setTimeout(() => prewarmVoiceprint(), 5000)
   if (uiSelfTest) {
     // 否则截图里看不到字幕窗和答题框
     overlayWin.setContentProtection(false)
@@ -2154,6 +2158,7 @@ app.on('before-quit', async (e) => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   stopLocalAsr()
+  stopVoiceprintWorker()
 })
 
 app.on('window-all-closed', () => {})
