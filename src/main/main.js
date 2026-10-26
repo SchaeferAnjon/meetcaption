@@ -7,7 +7,7 @@ import { SettingsStore, keywordList } from './settings.js'
 import { accelLabel, patchFor, registerHotkey } from './hotkeys.js'
 import { upgradePatch } from './defaults.js'
 import { SessionStore } from './sessions.js'
-import { INBOX_ID, ProjectStore, migrateSettingsToInbox } from './projects.js'
+import { INBOX_ID, ProjectStore, migrateSettingsToInbox, projectRow } from './projects.js'
 import { NOTES_HTML, Summarizer } from './summary.js'
 import { aggregateTodos, openTodoCounts, patchTodo } from './todos.js'
 import { searchLibrary } from './search.js'
@@ -193,17 +193,7 @@ function projectStats() {
 
 function listProjects() {
   const stats = projectStats()
-  return projects.list().map((p) => ({
-    id: p.id,
-    name: p.name,
-    color: p.color,
-    icon: p.icon,
-    description: p.description,
-    archived: p.archived,
-    createdAt: p.createdAt,
-    inbox: p.id === INBOX_ID,
-    ...stats(p.id),
-  }))
+  return projects.list().map((p) => ({ ...projectRow(p), ...stats(p.id) }))
 }
 
 function getProject(id) {
