@@ -336,7 +336,7 @@ export class LiveNotes extends EventEmitter {
     await this.running
     this.retryAt = 0
     for (let i = 0; i < 2 && !this.halted && this.due({ final: true }); i++) {
-      if (i) await new Promise((r) => setTimeout(r, this.opts.flushRetryMs).unref()) // 只为等这一下不挡着进程退出
+      if (i) await new Promise((r) => setTimeout(r, this.opts.flushRetryMs))
       const batch = this.pending
       this.pending = []
       if (await this.#run(batch)) return
