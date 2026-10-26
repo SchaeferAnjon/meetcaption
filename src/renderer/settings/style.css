@@ -1,7 +1,7 @@
 /* 设置窗口的排版（组件样式在 ../shared/ui.css 和 parts.css） */
 
 .settings {
-  --sidebar-w: 200px;
+  --sidebar-w: 224px;
 }
 
 .settings .sidebar-scroll {
@@ -13,6 +13,18 @@
 
 .settings .nav-item {
   gap: 9px;
+  height: auto;
+  min-height: var(--nav-h);
+  padding-block: 4px;
+}
+
+/* 栏目名长的语言（英、德、法、西、意）放不下一行时换行，不截成省略号 */
+.settings .nav-item > .nav-label {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
 }
 
 .settings .nav-item > .icon-box {
