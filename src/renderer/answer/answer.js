@@ -98,6 +98,18 @@ function el(tag, cls, text) {
   return e
 }
 
+// 最新一条的要点和底栏平时透明，真贴住（要点贴在列表上沿、底栏贴在下沿）时才上底色
+function syncStuck() {
+  const view = list.getBoundingClientRect()
+  for (const c of cards.values()) {
+    const g = c.gist.getBoundingClientRect()
+    const m = c.meta.getBoundingClientRect()
+    c.gist.classList.toggle('stuck', g.height > 0 && g.top - view.top < 1)
+    c.meta.classList.toggle('stuck', m.height > 0 && view.bottom - m.bottom < 1)
+  }
+}
+const cardSize = new ResizeObserver(syncStuck) // 译文回来、展开收回都会改卡片高度
+
 const expanded = new Set() // 点了「全部译文」的卡片
 let pinned = null // 点一下钉住的那一句 { id, i }
 let hover = null // 现在浮着的译文对着谁 { anchor, nodes }
@@ -124,9 +136,12 @@ function createCard(id) {
   const copy = el('button', 'ghost copy', t('复制'))
   all.type = regen.type = copy.type = 'button'
   all.hidden = true
-  meta.append(timing, all, regen, copy)
+  const acts = el('span', 'acts')
+  acts.append(all, regen, copy)
+  meta.append(timing, acts)
   root.append(q, gist, body, warn, error, meta)
-  const c = { root, tag, q, qZh, qText, gist, body, warn, error, timing, all, regen, copy, units: [] }
+  cardSize.observe(root)
+  const c = { root, tag, q, qZh, qText, gist, body, warn, error, meta, timing, all, regen, copy, units: [] }
   regen.addEventListener('click', () => {
     if (!id.startsWith('sample-')) api.regenerate(id)
   })
@@ -324,6 +339,7 @@ function render() {
   const keep = new Set(items.map((a) => a.id))
   for (const [id, c] of cards) {
     if (!keep.has(id)) {
+      cardSize.unobserve(c.root)
       c.root.remove()
       cards.delete(id)
     }
@@ -346,6 +362,7 @@ function render() {
   collapseBtn.hidden = Boolean(config.editMode)
   reportHit()
   placePop()
+  syncStuck()
 }
 
 // 标题条右边：收起时显示条数，平时用快捷键徽标提示「回答刚才的问题」
@@ -445,7 +462,14 @@ function reportHit() {
 }
 new ResizeObserver(reportHit).observe(panel)
 new ResizeObserver(placePop).observe(panel)
-list.addEventListener('scroll', placePop, { passive: true })
+list.addEventListener(
+  'scroll',
+  () => {
+    placePop()
+    syncStuck()
+  },
+  { passive: true },
+)
 
 // 随时拖动：按住面板（按钮和回答正文以外）拖就移动答题框；调整位置模式下由 -webkit-app-region 负责
 window.dragWindow(panel, { moveTo: (p) => api.moveTo(p), enabled: () => !config.editMode, ignore: '.body' })

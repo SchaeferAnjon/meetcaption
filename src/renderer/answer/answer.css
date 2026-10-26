@@ -178,6 +178,12 @@ button {
   background: rgba(255, 255, 255, 0.14);
 }
 
+/* 「全部译文」展开着：和标签同一个紫，看得出现在是展开状态 */
+.ghost.all[aria-pressed='true'] {
+  background: rgba(113, 118, 255, 0.24);
+  color: #d6d8ff;
+}
+
 .ghost:disabled {
   opacity: 0.4;
   background: transparent;
@@ -296,14 +302,36 @@ button {
   display: none;
 }
 
-/* 最新一条的要点贴在卡片顶上：回答长了往下滚它不动（列表有 8px 内边距，贴在滚动区真正的上沿） */
+/*
+ * 最新一条的要点贴在卡片顶上：回答长了往下滚它不动（列表有 8px 内边距，贴在滚动区真正的上沿）。
+ * 平时透明，和卡片同色；真贴住（.stuck，answer.js 判断）时才上底色盖住从下面滚过来的字。
+ */
 .card.latest .gist {
   position: sticky;
   top: -8px;
   z-index: 2;
   margin: 6px calc(-1 * var(--px)) 0;
   padding: 4px var(--px) 6px;
+}
+
+.card.latest .gist.stuck,
+.card.latest .meta.stuck {
   background: linear-gradient(var(--tint), var(--tint)), rgb(28, 28, 30);
+}
+
+@supports (color: rgb(from red r g b / alpha)) {
+  .card.latest .gist.stuck,
+  .card.latest .meta.stuck {
+    background: linear-gradient(var(--tint), var(--tint)), rgb(from var(--bg) 28 28 30 / max(alpha, 0.98));
+  }
+}
+
+.card.latest .gist.stuck {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.card.latest .meta.stuck {
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .body {
@@ -354,12 +382,20 @@ button {
   color: var(--warn);
 }
 
+/* 底栏：耗时在左，按钮在右；放不下时耗时单独一行，按钮排在它下面靠右，不把耗时截成一个字 */
 .meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 2px;
+  gap: 0 2px;
   margin-top: 6px;
-  /* 回答长到超出面板时，耗时和「重新回答」「复制」那一行贴在可视区底部，不用先滚动 */
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 最新一条回答长到超出面板时，底栏贴在可视区底部，不用先滚动；旧卡片的底栏跟在正文后面，露不全就被窗口裁掉 */
+.card.latest .meta {
   position: sticky;
   /* 列表有 8px 内边距，贴在滚动区真正的底边，下面才不会漏出半行正文 */
   bottom: -8px;
@@ -369,17 +405,20 @@ button {
   margin-right: calc(-1 * var(--px));
   padding: 4px 6px 14px var(--px);
   border-radius: 0 0 10px 10px;
-  background: linear-gradient(var(--tint), var(--tint)), rgb(28, 28, 30);
-  font-size: 11px;
-  color: var(--text-3);
-  font-variant-numeric: tabular-nums;
 }
 
 .timing {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.acts {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
 }
 
 /* 调整位置模式 */
@@ -625,7 +664,7 @@ body.dragging * {
   padding: 0 6px;
   border-radius: 5px;
   vertical-align: 0.1em;
-  font-size: 0.69em;
+  font-size: max(12px, 0.69em);
   font-weight: 500;
   line-height: 1.7;
   white-space: nowrap;
