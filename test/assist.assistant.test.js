@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Assistant } from '../src/main/assist/assistant.js'
-import { answerMessages, answerSystem, recentTranscript, splitAnswer, withImage } from '../src/main/assist/answerPrompt.js'
+import { answerLanguage, answerMessages, answerSystem, recentTranscript, splitAnswer, withImage } from '../src/main/assist/answerPrompt.js'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -175,7 +175,6 @@ test('assistant: the same auto question is answered once; regenerate reuses the 
 test('answer prompt: language rule, profile, trimmed transcript', () => {
   assert.match(answerSystem({ answerLang: 'en' }), /用英语（English）回答/)
   assert.match(answerSystem({ answerLang: 'de' }), /用德语（Deutsch）回答/)
-  assert.match(answerSystem({ answerLang: 'auto' }), /跟随提问的语言/)
   assert.match(answerSystem({}), /「要点：」（这三个字照写）加一句简体中文要点/)
   assert.match(answerSystem({ noteLang: 'ja' }), /加一句日语（日本語）要点/, '要点用这一场翻译成的语言')
   const segs = Array.from({ length: 90 }, (_, i) => ({ who: i % 2 ? 'me' : 'other', text: `line ${i}` }))
@@ -185,9 +184,9 @@ test('answer prompt: language rule, profile, trimmed transcript', () => {
   assert.ok(t.endsWith('我：line 89'))
   const { system, messages } = answerMessages({ question: ' Why? ', transcript: segs.slice(0, 30), context: 'Interview', profile: 'CV', answerLang: 'zh' })
   assert.match(system, /简体中文/)
-  assert.match(messages[0].content, /会议背景：Interview[\s\S]*我的资料：\nCV[\s\S]*最近的对话：[\s\S]*对方的问题：Why\?$/)
+  assert.match(messages[0].content, /会议背景：Interview[\s\S]*我的资料：\nCV[\s\S]*最近的对话：[\s\S]*对方的问题：Why\?\n\n语言：要点那一行用简体中文[^\n]*回答用简体中文/)
   const dup = answerMessages({ question: 'Why this one?', transcript: [{ who: 'me', text: 'Here it is.' }, { who: 'other', text: 'Why this one?' }] })
-  assert.equal(dup.messages[0].content, '最近的对话：\n我：Here it is.\n\n对方的问题：Why this one?')
+  assert.match(dup.messages[0].content, /^最近的对话：\n我：Here it is\.\n\n对方的问题：Why this one\?\n\n语言：/)
   const img = withImage(messages, 'data:image/jpeg;base64,AA')
   assert.equal(img[0].content[0].type, 'text')
   assert.equal(img[0].content[1].dataUrl, 'data:image/jpeg;base64,AA')
@@ -202,7 +201,49 @@ test('answer prompt: class rules for open invitations, live notes outline, and a
   const meeting = answerSystem({ mode: 'meeting' })
   assert.doesNotMatch(meeting, /不要答「没有问题」/)
   const loose = answerMessages({ question: 'So you should always try to balance.', matched: false })
-  assert.match(loose.messages[0].content, /没认出明确的问题，这是对方最后说的话：So you should always try to balance\.$/)
+  assert.match(loose.messages[0].content, /没认出明确的问题，这是对方最后说的话：So you should always try to balance\.\n\n语言：/)
+})
+
+test('answer language: "follow the question" is decided in code from the question, falling back to the meeting language', () => {
+  assert.equal(answerLanguage('Can you walk me through your experience with Kafka?', 'auto', 'en'), 'en')
+  assert.equal(answerLanguage('Warum möchten Sie Ihre aktuelle Firma verlassen?', 'auto', 'en'), 'de')
+  assert.equal(answerLanguage('これまでの経験について教えてください。', 'auto', 'en'), 'ja')
+  assert.equal(answerLanguage('你为什么想离开现在的公司？', 'auto', 'en'), 'zh')
+  assert.equal(answerLanguage('你用过 Kubernetes 吗', 'auto', 'en'), 'zh', '汉字比英文词多')
+  assert.equal(answerLanguage('How do you handle 高并发 in your system?', 'auto', 'zh'), 'en')
+  assert.equal(answerLanguage('Can you tell me about yourself?', 'auto', 'ar'), 'en')
+  // 判不准的交给模型跟着提问答：太短的、对方说荷兰语时被数虚词猜成法语的
+  assert.equal(answerLanguage('Why?', 'auto', 'de'), null)
+  assert.equal(answerLanguage('Wat vind je van dit voorstel?', 'auto', 'nl'), null)
+  assert.match(answerSystem({ answerLang: null }), /用和提问相同的语言回答/)
+  assert.equal(answerLanguage('你为什么想离开现在的公司？', 'en', 'zh'), 'en', '设了就用设的')
+})
+
+test('answer prompt: language written out for both lines, lead-in apart from the question, terms, no screen when not attached', () => {
+  const { system, messages } = answerMessages({
+    question: 'So we looked at your Kafka work. Can you walk me through the migration?',
+    lead: 'So we looked at your Kafka work.',
+    keywords: ['idempotent', 'Kafka'],
+    answerLang: 'auto',
+    source: 'en',
+    noteLang: 'de',
+    mode: 'interview',
+  })
+  assert.match(system, /要点：」（这三个字照写）加一句德语（Deutsch）要点/)
+  assert.match(system, /用英语（English）回答/)
+  assert.match(system, /只回答「对方的问题」这一个问题/)
+  assert.doesNotMatch(system, /附图/)
+  const c = messages[0].content
+  assert.match(c, /^术语：idempotent、Kafka/)
+  assert.match(c, /铺垫[^\n]*：So we looked at your Kafka work\.\n\n对方的问题：Can you walk me through the migration\?/)
+  assert.match(c, /\n\n语言：要点那一行用德语（Deutsch）[^\n]*回答用英语（English）/)
+  assert.doesNotMatch(c, /附图|屏幕/)
+  // 问题是中文时回答跟着换，要点还是这一场翻译成的语言
+  const zh = answerMessages({ question: '你为什么想离开现在的公司？', noteLang: 'ja', source: 'en' })
+  assert.match(zh.system, /用简体中文回答/)
+  assert.match(zh.messages[0].content, /要点那一行用日语（日本語）[^\n]*回答用简体中文/)
+  // 带截图时才提附图
+  assert.match(answerMessages({ question: 'What does this chart show?', withScreen: true }).messages[0].content, /附图是我现在的屏幕/)
 })
 
 test('splitAnswer: gist line and body', () => {

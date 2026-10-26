@@ -127,3 +127,30 @@ test('question run: pulls in the lead-in, stops at my turn, long pauses and old 
   const long = at('l', 'other', 'x'.repeat(700), 0, 900)
   assert.deepEqual(questionRun([long, b], b).map((x) => x.id), ['b'])
 })
+
+test('question run: meeting chores before the question are not lead-ins, and leave the question itself too', () => {
+  const at = (id, text, startedAt, endedAt) => ({ id, who: 'other', text, final: true, startedAt, endedAt })
+  // 2026-10-26 实测：先说「共享屏幕」「能听到吗」，3 秒后问迁移进度，回答开头答成 Yes, I can hear you
+  const share = at('s', 'Could you share your screen?', 0, 1500)
+  const hear = at('h', 'Can you hear me now?', 2000, 3000)
+  const q = at('q', 'How far along is the Postgres migration?', 6000, 8000)
+  assert.deepEqual(questionRun([share, hear, q], q).map((x) => x.text), ['How far along is the Postgres migration?'])
+  const zh = [at('a', '喂，能听到吗？', 0, 1000), at('b', '那我们先看一下迁移的进度。', 1500, 3000), at('c', '现在卡在哪一步了？', 3500, 5000)]
+  assert.deepEqual(questionRun(zh, zh[2]).map((x) => x.text), ['那我们先看一下迁移的进度。', '现在卡在哪一步了？'])
+  const one = at('o', 'Can you hear me? OK so why do you want to leave Northwind?', 0, 3000)
+  const run = questionRun([one], one)
+  assert.equal(run[0].id, 'o')
+  assert.equal(run[0].text, 'OK so why do you want to leave Northwind?')
+})
+
+test('question run: an earlier question that was already answered is not merged in, even within the re-ask window', () => {
+  const at = (id, text, startedAt, endedAt) => ({ id, who: 'other', text, final: true, startedAt, endedAt })
+  // 识别给强调句加了问号、答过了；6 秒后真正的问题来了，以前会拼进去，答成上一题
+  const a = at('a', "What's important is that you think out loud during that round?", 0, 4000)
+  const b = at('b', 'Why do you want to leave your current company?', 6000, 9000)
+  const now = 10_000
+  const askedAt = new Map([['a', now - 5000]])
+  assert.deepEqual(questionRun([a, b], b, { askedAt, now, answered: (x) => x.id === 'a' }).map((x) => x.id), ['b'])
+  // 还在答（新问题会停掉它）：合并重问
+  assert.deepEqual(questionRun([a, b], b, { askedAt, now, answered: () => false }).map((x) => x.id), ['a', 'b'])
+})

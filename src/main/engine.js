@@ -9,7 +9,7 @@ import { VolcStreamASR } from './asr/volc.js'
 import { LocalStreamASR, localAsrAvailable } from './asr/local.js'
 import { SonioxStreamASR } from './asr/soniox.js'
 import { LocalFallbackASR } from './asr/fallback.js'
-import { isQuestion, pickLastQuestion } from './assist/question.js'
+import { isCutOff, isQuestion, pickLastQuestion } from './assist/question.js'
 import { splitAnswer } from './assist/answerPrompt.js'
 import { checkFix, chunkCoverage, enhanceMessages, noDashes, parseEnhance, streamedHead, translateMessages } from './prompts.js'
 import { keywordList } from './defaults.js'
@@ -146,6 +146,9 @@ function syncFixed(seg) {
 // 句子的识别原文：译文缓存、重新分句都按它认句子，纠正后的文字不会再被当成新句子送去翻译
 const rawOf = (sen) => sen.orig ?? sen.text
 
+// 答题带不带截图：会员通道的后台把图片丢掉，带了只是白等截图、白传，prompt 还会说附了图
+const withScreen = (s) => Boolean(s?.assist?.withScreen) && s.llmProvider !== 'member'
+
 export class MeetingEngine extends EventEmitter {
   /**
    * llm(opts) → Promise<string>：A 模块 complete 的门面（已绑好设置和登录）。
@@ -187,6 +190,7 @@ export class MeetingEngine extends EventEmitter {
     this.micCheck = false // 麦克风的定稿要不要判（比声纹、查串音）：有声纹，或者同时在录电脑声音（没声纹也要滤串音）
     this.lastMicWho = null
     this.askedAt = new Map()
+    this.answered = new Set() // 已经答完的提问段（一次提问的最后一段）：拼新问题时不再当铺垫
     this.answerSeg = new Map()
     this.pendingAsk = null
     this.watchdog = null
@@ -216,6 +220,7 @@ export class MeetingEngine extends EventEmitter {
       // 答案出了第一个字（或者失败、被停掉）：让路的译文请求接着发
       // 只认让路之后开始的回答：新问题会先停掉还在出字的旧回答，旧的那条 done 不算
       if (this.enhHold && a.startedAt >= this.enhHoldSince && (a.text || a.done)) this.#releaseEnhance()
+      if (a.done && a.text && !a.error && !a.cancelled && a.segIds?.length) this.answered.add(a.segIds.at(-1))
       this.#storeAnswer(a)
       if (a.done && a.text && !a.error && !a.cancelled && !a.trans) this.#translateAnswer(a)
     })
@@ -333,6 +338,7 @@ export class MeetingEngine extends EventEmitter {
     this.assistWarned = false
     this.meta.clear()
     this.askedAt.clear()
+    this.answered.clear()
     this.answerSeg.clear()
     this.screenAsked.clear()
     this.lastMicWho = null
@@ -565,7 +571,7 @@ export class MeetingEngine extends EventEmitter {
     if (!this.assistant?.warmUp || !a?.enabled || this.mode === 'class') return
     if (this.llmStatus?.()?.ready === false) return
     this.assistant
-      .warmUp({ screen: Boolean(a.withScreen) })
+      .warmUp({ screen: withScreen(s) })
       .then((r) => this.emit('trace', { type: 'warm', ...r }))
       .catch(() => {})
   }
@@ -765,7 +771,7 @@ export class MeetingEngine extends EventEmitter {
     let ask = false
     if (final) {
       this.#m(seg).endedAt = Date.now()
-      if (seg.who === 'other' && isQuestion(seg.text)) seg.question = true
+      if (seg.who === 'other' && (isQuestion(seg.text) || this.#continuesQuestion(seg))) seg.question = true
       else delete seg.question
       // 要自动答题：这句的译文请求等答案先发出去（#resplit 里就会发译文请求，所以在它前面拦）
       ask = this.#autoAsk(seg)
@@ -995,10 +1001,16 @@ export class MeetingEngine extends EventEmitter {
     return [...this.live.values()].sort((a, b) => a.startedAt - b.startedAt)
   }
 
+  // 停顿把问题切成了两段（What is the / best way to roll out…）：前一段没说完、连起来是提问，这段也算提问
+  #continuesQuestion(seg) {
+    const run = questionRun(this.#ordered(), seg, { maxSegs: 2, endedAt: (x) => this.meta.get(x.id)?.endedAt })
+    return run.length === 2 && isCutOff(run[0].text) && isQuestion(`${run[0].text} ${run[1].text}`)
+  }
+
   // 对方还在说、听着已经像提问了：让答题助手先截屏，问完自动答题时省掉截图的时间
   #maybePrefetchScreen(seg) {
     const a = this.cfg?.assist
-    if (!this.assistant?.prefetchScreen || !a?.enabled || !a.auto || !a.withScreen || this.screenAsked.has(seg.id)) return
+    if (!this.assistant?.prefetchScreen || !a?.enabled || !a.auto || !withScreen(this.cfg) || this.screenAsked.has(seg.id)) return
     if (!isQuestion(seg.text)) return
     if (this.llmStatus?.()?.ready === false) return
     this.screenAsked.add(seg.id)
@@ -1022,30 +1034,36 @@ export class MeetingEngine extends EventEmitter {
       }
       return
     }
-    const run = questionRun(this.#ordered(), seg, { askedAt: this.askedAt, endedAt: (x) => this.meta.get(x.id)?.endedAt })
+    const run = questionRun(this.#ordered(), seg, { askedAt: this.askedAt, answered: (x) => this.answered.has(x.id), endedAt: (x) => this.meta.get(x.id)?.endedAt })
     this.#ask(run, 'auto')
   }
 
-  // 问题前面的铺垫句一起带上；上下文是最近 15 分钟的记录（不含问题本身）和实时笔记。matched：认出了问句（没认出时拿的是对方最后的话）
+  // 问题前面的铺垫句一起带上（prompt 里和问题分开写）；上下文是最近 15 分钟的记录（不含问题本身）、实时笔记和术语。
+  // matched：认出了问句（没认出时拿的是对方最后的话）
   #ask(run, reason, { matched = true } = {}) {
     const s = this.#conf()
     const now = Date.now()
     for (const x of run) this.askedAt.set(x.id, now)
     const ids = new Set(run.map((x) => x.id))
     const question = run.map((x) => x.text.trim()).join(' ')
+    // 铺垫最后一句没说完（What is the）：和问题是同一句话，不分开写
+    const lead = run.length > 1 && !isCutOff(run.at(-2).text) ? run.slice(0, -1).map((x) => x.text.trim()).join(' ') : ''
     const transcript = this.#ordered().filter((x) => x.final && x.text && !ids.has(x.id) && now - x.startedAt <= TRANSCRIPT_MS)
     this.emit('trace', { type: 'ask', reason, question, segIds: [...ids] })
     this.pendingAsk = { segId: run.at(-1).id }
     try {
       const p = this.assistant.ask({
         question,
+        lead,
         transcript,
         context: s.context,
         profile: s.assist.profile,
+        keywords: keywordList(s),
         notes: this.session?.liveNotes ?? null,
         matched,
-        withScreen: s.assist.withScreen,
+        withScreen: withScreen(s),
         answerLang: s.assist.answerLang,
+        source: s.language,
         noteLang: this.session?.target ?? s.translateTarget,
         mode: this.mode,
         reason,
@@ -1068,7 +1086,7 @@ export class MeetingEngine extends EventEmitter {
     const q = pickLastQuestion(segs)
     if (!q) return { ok: false, error: t('最近 90 秒没有对方说的话') }
     const seg = this.live.get(q.segId)
-    const run = q.matched && seg ? questionRun(segs, seg, { endedAt: (x) => this.meta.get(x.id)?.endedAt }) : [{ id: q.segId, text: q.text }]
+    const run = q.matched && seg ? questionRun(segs, seg, { answered: (x) => this.answered.has(x.id), endedAt: (x) => this.meta.get(x.id)?.endedAt }) : [{ id: q.segId, text: q.text }]
     if (this.state === 'running') this.#holdEnhance() // 按快捷键答题也让答案先走
     return { ok: true, question: this.#ask(run, 'hotkey', { matched: q.matched }) }
   }
@@ -1080,7 +1098,7 @@ export class MeetingEngine extends EventEmitter {
     if (st && !st.ready) return { ok: false, error: st.reason }
     const seg = this.live.get(segId)
     if (!seg?.text) return { ok: false, error: t('找不到这句话（可能是上一场的记录）') }
-    const run = seg.final ? questionRun(this.#ordered().filter((x) => x.final && x.text), seg, { endedAt: (x) => this.meta.get(x.id)?.endedAt }) : [seg]
+    const run = seg.final ? questionRun(this.#ordered().filter((x) => x.final && x.text), seg, { answered: (x) => this.answered.has(x.id), endedAt: (x) => this.meta.get(x.id)?.endedAt }) : [seg]
     if (this.state === 'running') this.#holdEnhance()
     return { ok: true, question: this.#ask(run, 'click') }
   }

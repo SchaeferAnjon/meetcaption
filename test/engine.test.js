@@ -141,7 +141,7 @@ test('engine: other side question gets enhanced, merged with its lead-in and ans
   const a = ctx.segs.filter((s) => s.id === 'system:a').at(-1)
   assert.ok(!a.question)
   assert.equal(ctx.asks.length, 1)
-  assert.match(ctx.asks[0].messages[0].content, /second dataset\. Could you walk me through/)
+  assert.match(ctx.asks[0].messages[0].content, /铺垫[^\n]*：So we looked at your results on the second dataset\.\n\n对方的问题：Could you walk me through/)
   const list = ctx.assistant.list()
   assert.equal(list.length, 1)
   assert.equal(list[0].question, 'So we looked at your results on the second dataset. Could you walk me through why the ablation drops so much there?')
@@ -890,4 +890,94 @@ test('engine: the hotkey picks the question the teacher is still saying, and a f
   assert.ok(a.trans.question.every((x) => x.tr))
   // 存进会议的 answers 里，会后看也有
   assert.ok(ctx.session().answers.at(-1).trans)
+})
+
+/* ---------------- 答非所问（2026-10-26 实测） ---------------- */
+
+test('engine: on the member channel the answer takes no screenshot and the prompt does not mention one; with an own key it does', async (t) => {
+  for (const [llmProvider, expect] of [['member', false], ['deepseek', true]]) {
+    const ctx = await setup({ patch: { llmProvider, assist: { withScreen: true } } })
+    let shots = 0
+    ctx.assistant.captureScreen = async () => {
+      shots++
+      return { dataUrl: 'data:image/jpeg;base64,AAAA', ms: 5 }
+    }
+    await start(ctx, t)
+    await tick()
+    const [sys] = ctx.providers
+    sys.emit('partial', { key: 'q', text: 'What does this chart' })
+    sys.emit('final', { key: 'q', text: 'What does this chart on your screen show?' })
+    await tick(50)
+    const a = ctx.assistant.list().at(-1)
+    assert.equal(a.withScreen, expect, llmProvider)
+    assert.equal(shots > 0, expect, llmProvider)
+    assert.equal(ctx.asks[0].messages.some((m) => Array.isArray(m.content)), expect, llmProvider)
+    assert.equal(/附图/.test(ctx.asks[0].system + JSON.stringify(ctx.asks[0].messages)), expect, llmProvider)
+    await ctx.engine.stop()
+  }
+})
+
+test('engine: the answer prompt gets the terms, the question language and the lead-in apart; chores before the question are left out', async (t) => {
+  const ctx = await start(await setup({ patch: { keywords: 'idempotent, Kafka', translateTarget: 'de' } }), t)
+  const [sys] = ctx.providers
+  sys.emit('final', { key: 'a', text: 'Could you share your screen?' })
+  sys.emit('final', { key: 'b', text: 'Can you hear me now?' })
+  sys.emit('final', { key: 'c', text: 'How would you design an item potent payment API?' })
+  await tick()
+  assert.equal(ctx.asks.length, 1, '「共享屏幕」「能听到吗」不自动答')
+  const { system, messages } = ctx.asks[0]
+  const c = messages[0].content
+  assert.match(c, /术语：idempotent、Kafka/)
+  assert.match(c, /对方的问题：How would you design an item potent payment API\?/)
+  assert.doesNotMatch(c, /铺垫/, '「共享屏幕」「能听到吗」不当铺垫拼进问题')
+  assert.match(system, /用英语（English）回答/)
+  assert.match(c, /要点那一行用德语（Deutsch）/)
+  assert.equal(ctx.assistant.list().at(-1).question, 'How would you design an item potent payment API?')
+})
+
+test('engine: a question answered seconds ago is not merged into the next one', async (t) => {
+  const ctx = await start(await setup(), t)
+  const [sys] = ctx.providers
+  // 识别给强调句加了问号，被当成提问答了；几秒后才是真正的问题
+  sys.emit('final', { key: 'a', text: 'Why did you pick Postgres for the ledger?' })
+  await tick(30)
+  assert.ok(ctx.assistant.list().at(-1).done)
+  sys.emit('final', { key: 'b', text: 'Why do you want to leave your current company?' })
+  await tick(30)
+  assert.equal(ctx.asks.length, 2)
+  assert.equal(ctx.assistant.list().at(-1).question, 'Why do you want to leave your current company?')
+  assert.doesNotMatch(ctx.asks[1].messages[0].content, /对方的问题：[^\n]*Postgres/)
+})
+
+test('engine: the hotkey answers "有没有什么问题" said just now, not the question from half a minute ago', async (t) => {
+  const ctx = await start(await setup({ patch: { assist: { auto: false }, language: 'zh', translate: false } }), t)
+  const [sys] = ctx.providers
+  sys.emit('final', { key: 'a', text: '大家想一想，这种情况下查找的时间复杂度是多少' })
+  sys.emit('final', { key: 'b', text: '对，退化成链表以后就是 O(n)。' })
+  sys.emit('final', { key: 'c', text: '到这里大家有没有什么问题' })
+  await tick()
+  assert.ok(ctx.segs.filter((x) => x.id === 'system:c').at(-1).question)
+  const r = ctx.engine.askLast()
+  assert.ok(r.ok)
+  assert.equal(r.question.endsWith('到这里大家有没有什么问题'), true)
+  await tick(30)
+  assert.match(ctx.asks[0].messages[0].content, /对方的问题：到这里大家有没有什么问题/)
+  assert.match(ctx.asks[0].system, /用简体中文回答/)
+})
+
+test('engine: a question cut in two by a pause is answered once, as one sentence, and the cut-off half alone is not', async (t) => {
+  const ctx = await start(await setup(), t)
+  const [sys] = ctx.providers
+  // 2026-10-26 存档里的真实情况：面试官停顿了一下，前半句「What is the」被单独自动答成「你的问题好像没说完」
+  sys.emit('final', { key: 'a', text: 'What is the' })
+  await tick()
+  assert.equal(ctx.asks.length, 0)
+  sys.emit('final', { key: 'b', text: 'best way to roll out a schema change without downtime.' })
+  await tick()
+  assert.ok(ctx.segs.filter((x) => x.id === 'system:b').at(-1).question)
+  assert.equal(ctx.asks.length, 1)
+  assert.equal(ctx.assistant.list().at(-1).question, 'What is the best way to roll out a schema change without downtime.')
+  const c = ctx.asks[0].messages[0].content
+  assert.match(c, /对方的问题：What is the best way to roll out a schema change without downtime\./)
+  assert.doesNotMatch(c, /铺垫/)
 })
