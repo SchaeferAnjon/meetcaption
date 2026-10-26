@@ -120,6 +120,16 @@ function updateError(msg, version = '') {
   return m
 }
 
+const SITE_URL = 'https://meetcaption.us-cloud.uk'
+
+// 装的是哪个包：Mac 看包的芯片（arch），Intel 版在 Apple 芯片的 Mac 上是 Rosetta 转译跑的（translated），这时提示换原生版
+function buildKind({ platform, arch, translated }) {
+  if (platform === 'win32') return { label: t('Windows 版'), rosetta: false }
+  if (platform !== 'darwin') return { label: '', rosetta: false }
+  if (arch === 'arm64') return { label: t('Apple 芯片版'), rosetta: false }
+  return { label: t('Intel 芯片版'), rosetta: translated === true }
+}
+
 // 两句话排成一行：前一句没有句末标点就补上（状态句本身都不带句号）
 function joinSentences(first, next) {
   if (!next) return first
@@ -822,13 +832,24 @@ function buildAbout() {
     [t('会议结束点「停止」或再按一次 '), stopKbd, t('，在会议详情里生成纪要，待办和 DDL 会按项目归好。所有快捷键都能在「快捷键」里改。')],
     [t('共享屏幕、录屏时，对方看不到字幕和答题框。')],
   ]
+  const build = buildKind(init)
+  const download = build.rosetta
+    ? P.callout(
+        'warn',
+        'info',
+        t('这是 Intel 芯片版，在 Apple 芯片的 Mac 上要靠 Rosetta 转译运行'),
+        t('去官网换成 Apple 芯片版，会更省电、更快。会议记录和设置都不用动，装好直接覆盖。'),
+        el('button.btn.btn-sm', { type: 'button', onClick: () => api.openExternal(SITE_URL) }, icon('external-link', 13), el('span', { text: t('下载 Apple 芯片版') })),
+      )
+    : null
   return [
     el(
       'div.about-hero',
       {},
       el('img.about-icon', { src: '../../assets/icon.png', alt: '' }),
-      el('div', {}, el('div.title-xl', { text: t('会议字幕') }), el('div.text-2', { text: t(`版本 {0}`, init.version || '') }), el('div.text-3.text-sm', { text: t('实时字幕、AI 答题和会后纪要') })),
+      el('div', {}, el('div.title-xl', { text: t('会议字幕') }), el('div.text-2', { text: build.label ? t('版本 {0}（{1}）', init.version || '', build.label) : t(`版本 {0}`, init.version || '') }), el('div.text-3.text-sm', { text: t('实时字幕、AI 答题和会后纪要') })),
     ),
+    download,
     P.section(
       t('数据'),
       null,

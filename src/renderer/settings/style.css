@@ -177,6 +177,11 @@
   margin-bottom: 24px;
 }
 
+/* Rosetta 提示：贴着上面的标题行，和下面的「数据」隔开 */
+.about-hero + .callout {
+  margin: -8px 0 24px;
+}
+
 .about-icon {
   width: 64px;
   height: 64px;

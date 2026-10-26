@@ -1545,6 +1545,8 @@ function wireIpc() {
     snapshot: snapshotForUi(),
     platform: process.platform,
     version: app.getVersion(),
+    arch: process.arch,
+    translated: !!app.runningUnderARM64Translation,
     hotkey: hotkeyStatus(),
     overlay: { visible: overlayWanted, editMode },
     sessionsDir: store.baseDir(),
