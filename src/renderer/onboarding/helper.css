@@ -1,0 +1,118 @@
+/* 系统设置旁边的拖图标面板（main/dragHelper.js）：340×92，透明窗口里画一张卡 */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  color: var(--text);
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+.hp {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 30px 0 14px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: inset 0 0 0 0.5px var(--stroke-strong);
+  transition: background var(--dur);
+}
+.hp.is-done {
+  background: var(--green-soft);
+}
+.hp-icon {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1.5px dashed var(--accent);
+  cursor: grab;
+  transition: transform var(--dur);
+}
+.hp-icon:hover {
+  transform: scale(1.05);
+}
+.hp.is-done .hp-icon {
+  border-color: var(--green);
+}
+.hp-icon img {
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+}
+.hp-icon.is-plain {
+  border: 0;
+  cursor: default;
+}
+.hp-icon.is-plain:hover {
+  transform: none;
+}
+.hp-text {
+  flex: 1;
+  min-width: 0;
+}
+.hp-t1 {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs);
+  font-weight: var(--fw-semibold);
+  line-height: 1.35;
+}
+.hp-t1 .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.hp-t1 .nudge {
+  animation: nudge 1.2s infinite var(--ease-in-out);
+}
+.hp-t2 {
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.hp-x {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-3);
+}
+.hp-x:hover {
+  background: var(--fill-2);
+  color: var(--text-2);
+}
+.hp-x .icon {
+  width: 13px;
+  height: 13px;
+}
+@keyframes nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hp-t1 .nudge {
+    animation: none;
+  }
+}

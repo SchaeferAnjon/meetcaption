@@ -1,4 +1,5 @@
 import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, screen, shell, systemPreferences, Tray, dialog } from 'electron'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -23,6 +24,7 @@ import { WavCapture } from './audio/wav.js'
 import { MacSystemAudio, macTapSupported } from './audio/macTap.js'
 import { dbfs } from './audio/gate.js'
 import { recordVoiceprint } from './enroll.js'
+import { DragHelper } from './dragHelper.js'
 import { Assistant } from './assist/assistant.js'
 import { captureScreen, screenPermission } from './assist/screen.js'
 import { createAnswerWindow, keepFrontApp, resetAnswerBounds, setAnswerEditMode, showAnswerWindow } from './assist/answerWindow.js'
@@ -70,6 +72,9 @@ let classAnswered = false // 课堂上默认不出答题框，按快捷键答过
 let quitting = false
 let enrolling = false
 let audioTest = null
+let listening = null // 引导里的试听：{ stop }
+let onboardingResumed = false // 这次启动是引导被系统授权的「退出并重新打开」打断后接着出的
+let dragHelper = null
 let pointerLast = null
 let overlayHit = null // 字幕框在字幕窗里的位置（页面报），鼠标在上面时接管点击，可以拖
 let overlayGrab = false
@@ -651,8 +656,10 @@ function updateTrayMenu() {
     .list()
     .filter((p) => !p.archived)
     .map((p) => ({ label: p.name, type: 'radio', checked: p.id === cur, click: () => setCurrentProject(p.id) }))
+  const unfinished = !s.onboarding?.done && !(onboardingWin && !onboardingWin.isDestroyed())
   tray.setContextMenu(
     Menu.buildFromTemplate([
+      ...(unfinished ? [{ label: t('继续设置…'), click: () => openOnboarding() }, { type: 'separator' }] : []),
       { label: running ? t(`停止记录{0}`, liveName ? t(`（{0}）`, liveName) : '') : t(`在「{0}」里开始记录`, curName), accelerator: s.hotkeyRecord || undefined, click: () => (running ? engine.stop() : startEngine()) },
       ...(running ? [{ label: paused ? t('继续记录') : t('暂停记录'), click: () => togglePause() }] : []),
       { label: t('当前项目'), submenu: projectItems },
@@ -809,27 +816,33 @@ function openOnboarding() {
     bringToFront(onboardingWin)
     return
   }
-  // 照 Typefree：440×500 的小窗只要权限，演示放在主窗口上（control/guide.js）
-  onboardingWin = uiWindow({ width: 440, height: 500, minWidth: 440, minHeight: 500, title: t('欢迎使用 MeetCaption'), resizable: false, maximizable: false, minimizable: false, fullscreenable: false })
+  // design/onboarding-v2 方向 A：900×640 的引导窗口，左边步骤栏；走完在主窗口上导览四处（control/guide.js）
+  onboardingWin = uiWindow({ width: 900, height: 640, minWidth: 900, minHeight: 640, title: t('欢迎使用 MeetCaption'), resizable: false, maximizable: false, fullscreenable: false })
   onboardingWin.loadFile(path.join(root, 'renderer/onboarding/index.html'))
   onboardingWin.once('ready-to-show', () => bringToFront(onboardingWin))
   // 引导开着时应用退出（macOS 给录屏与系统录音权限要「退出并重新打开」）：下次启动接着出引导，从同一步开始
   if (!settings.get().onboarding.done) settings.update({ onboarding: { resume: true } })
   onboardingWin.on('closed', () => {
     onboardingWin = null
+    onboardingResumed = false
+    dragHelper?.hide()
+    stopListen()
     // 用户自己关掉的：以后不再自动弹（设置里还能再打开）
     if (!quitting) settings.update({ onboarding: { resume: false } })
     // 没走完就关了：主窗口得出来，不然应用只剩托盘
     if (!quitting && (!controlWin || controlWin.isDestroyed() || !controlWin.isVisible())) showControl()
+    updateTrayMenu()
   })
+  updateTrayMenu()
 }
 
-function finishOnboarding() {
-  settings.update({ onboarding: { done: true, resume: false, step: '' } })
+/** 引导最后一步：tour 为真时进主窗口后导览四处（「带我看一遍主窗口」），否则直接开始。 */
+function finishOnboarding({ tour = false } = {}) {
+  settings.update({ onboarding: { done: true, resume: false, step: '', inList: [], ...(tour ? {} : { demo: true }) } })
   emitOnboarding()
   showControl()
-  // 主窗口已经开着时它不会重新加载，直接让它放演示（新开的主窗口自己看 onboarding.demo）
-  if (!settings.get().onboarding.demo) toUi('guide:show')
+  // 主窗口已经开着时它不会重新加载，直接让它导览（新开的主窗口自己看 onboarding.demo）
+  if (tour) toUi('guide:show')
   if (onboardingWin && !onboardingWin.isDestroyed()) onboardingWin.close()
   return onboardingStatus()
 }
@@ -914,6 +927,7 @@ function themeInfo() {
 async function startEngine({ projectId, mode, classSource } = {}) {
   // 录声纹、声音测试和开会共用麦克风采集：同时开会互相把对方的采集窗口关掉
   if (enrolling) return { ok: false, error: t('正在录制声纹，录完再开始记录'), code: 'busy' }
+  stopListen()
   if (audioTest) return { ok: false, error: t('正在测试声音，测完再开始记录'), code: 'busy' }
   try {
     const id = projectId && projects.has(projectId) ? projectId : currentProjectId()
@@ -1260,6 +1274,83 @@ async function testAudio({ seconds = 5, mic } = {}) {
   return { ok: errors.length === 0, error: errors[0] ?? null, system: out(stats.system), mic: withMic ? out(stats.mic) : null }
 }
 
+/**
+ * 引导的「试听」：电脑声音和麦克风一起开，电脑声音送本地识别（免费、不联网，不算会员场次），
+ * 期间发 'audio:level' { source, db } 和 'listen:text' { key, text, final }；本地识别用不了时发 'listen:text' { error }。
+ * 最多 90 秒，stopListen() 或开始记录时停。→ { ok } | { ok: false, error }
+ */
+async function startListen() {
+  if (listening) return { ok: true }
+  if (engine.state !== 'idle') return { ok: false, error: t('正在记录会议') }
+  if (enrolling) return { ok: false, error: t('正在录制声纹') }
+  if (audioTest) return { ok: false, error: t('声音测试已经在进行') }
+  const me = { stopped: false }
+  const backlog = [] // 模型加载的这几秒先攒着（最多 10 秒），连上一起补
+  let asr = null
+  let ready = false
+  const onPcm = (source, buf) => {
+    if (me.stopped) return
+    const b = Buffer.from(buf)
+    toUi('audio:level', { source, db: Math.round(dbfs(new Int16Array(b.buffer, b.byteOffset, b.byteLength >> 1)) * 10) / 10 })
+    if (source !== 'system' || !asr) return
+    if (ready) asr.sendAudio(b)
+    else if (backlog.reduce((n, x) => n + x.length, 0) < 320_000) backlog.push(b)
+  }
+  const onError = (source, msg) => toUi('listen:text', { error: `${source === 'mic' ? t('麦克风') : t('电脑声音')}：${msg}` })
+  const fake = useFakes ? new WavCapture(fakeFiles) : null
+  let tap = null
+  let token = null
+  me.stop = () => {
+    if (me.stopped) return
+    me.stopped = true
+    clearTimeout(me.timer)
+    fake?.stop()
+    tap?.stop()
+    if (!fake) capture.stop(token)
+    asr?.close().catch(() => {})
+    if (listening === me) listening = null
+    if (audioTest === me) audioTest = null
+  }
+  listening = me
+  audioTest = me // 试听时录声纹、声音测试都等一等
+  me.timer = setTimeout(() => me.stop(), 90_000)
+  if (localAsrAvailable()) {
+    asr = new LocalStreamASR()
+    asr.on('partial', (e) => toUi('listen:text', { key: e.key, text: e.text, final: false }))
+    asr.on('final', (e) => toUi('listen:text', { key: e.key, text: e.text, final: true }))
+    asr.on('fatal', (e) => toUi('listen:text', { error: e.message }))
+    asr
+      .connect()
+      .then(() => {
+        if (me.stopped) return
+        ready = true
+        asr.catchUp(backlog.splice(0))
+      })
+      .catch((e) => toUi('listen:text', { error: e.message }))
+  } else toUi('listen:text', { error: t('本地识别模型没装好，试听只看声音，不出字幕') })
+  try {
+    if (fake) await fake.start({ system: true, mic: true, sampleRate: 16000, onPcm })
+    else {
+      if (isMac) {
+        if (!macTapSupported()) throw new Error(t('抓电脑声音需要 macOS 14.2 或更新的系统'))
+        tap = new MacSystemAudio({ sampleRate: 16000 })
+        tap.on('data', (buf) => onPcm('system', buf))
+        tap.on('error', (e) => onError('system', e.message))
+        tap.start()
+      }
+      token = await capture.start({ system: !isMac, mic: true, sampleRate: 16000, micDeviceId: settings.get().micDeviceId, onPcm, onError })
+    }
+  } catch (e) {
+    me.stop()
+    return { ok: false, error: e.message }
+  }
+  return { ok: true }
+}
+
+function stopListen() {
+  listening?.stop()
+}
+
 /** 设置的「权限」页和引导用：麦克风、屏幕录制现在的状态（'granted' | 'denied' | 'not-determined' | 'restricted'）。系统录音没有查询接口，不在这里。 */
 function permissionStatus() {
   return { microphone: systemPreferences.getMediaAccessStatus('microphone'), screen: isMac ? screenPermission() : 'granted' }
@@ -1325,6 +1416,46 @@ function relaunchApp() {
   app.relaunch()
   app.quit()
   return { ok: true }
+}
+
+// 系统设置里「录屏与系统录音」「仅系统录音」两个列表和「退出并重新打开」「以后」两个按钮的原文：按系统语言显示，
+// 和界面语言可能不一样（英文系统、中文界面）。读系统设置隐私面板自己的本地化表；读不到（macOS 14 没有「仅系统录音」）的项留空，界面用自己的译文
+let sysNames = null
+function systemSettingsNames() {
+  if (sysNames) return sysNames
+  sysNames = {}
+  if (!isMac) return sysNames
+  const file = '/System/Library/ExtensionKit/Extensions/SecurityPrivacyExtension.appex/Contents/Resources/Localizable.loctable'
+  let table
+  try {
+    table = JSON.parse(execFileSync('plutil', ['-convert', 'json', '-o', '-', file], { timeout: 3000, maxBuffer: 64 << 20 }))
+  } catch (e) {
+    console.error('[onboarding] 读不到系统设置的本地化表', e.message)
+    return sysNames
+  }
+  const want = String(app.getPreferredSystemLanguages()[0] ?? 'en')
+  const [base, ...rest] = want.split('-')
+  const script = rest.find((x) => /^[A-Z][a-z]{3}$/.test(x))
+  const region = rest.find((x) => /^[A-Z]{2}$|^\d{3}$/.test(x))
+  const zh = base === 'zh' ? (script === 'Hant' || ['TW', 'HK', 'MO'].includes(region) ? (region === 'HK' || region === 'MO' ? 'zh_HK' : 'zh_TW') : 'zh_CN') : null
+  const lang = [zh, region && `${base}_${region}`, base, 'en'].find((k) => k && table[k])
+  const x = table[lang] ?? {}
+  sysNames = { screen: x.SCREEN_CAPTURE_HEADER ?? '', audio: x.AUDIO_CAPTURE_HEADER ?? '', quit: x.QUIT_APP ?? '', later: x.QUIT_LATER ?? '' }
+  return sysNames
+}
+
+// 系统设置的权限列表里显示的应用名：打包后是 Info.plist 的 CFBundleDisplayName（开发版的 productName 和它不一样），开发时授权记在 Electron 身上
+let listName = null
+function systemListName() {
+  if (listName) return listName
+  if (!app.isPackaged) return (listName = 'Electron')
+  if (!isMac) return (listName = app.getName())
+  try {
+    listName = execFileSync('plutil', ['-extract', 'CFBundleDisplayName', 'raw', '-o', '-', path.resolve(process.execPath, '../../Info.plist')], { timeout: 3000, encoding: 'utf8' }).trim()
+  } catch (e) {
+    console.error('[onboarding] 读不到 CFBundleDisplayName', e.message)
+  }
+  return (listName ||= app.getName())
 }
 
 function privacyUrl(kind) {
@@ -1394,6 +1525,9 @@ function wireIpc() {
     projects: listProjects(),
     currentProjectId: currentProjectId(),
     onboarding: onboardingStatus(),
+    onboardingResumed,
+    appName: systemListName(),
+    sysNames: systemSettingsNames(),
     theme: themeInfo(),
     chrome: chromeInfo(),
   }))
@@ -1540,7 +1674,15 @@ function wireIpc() {
   ipcMain.handle('window:openOnboarding', () => openOnboarding())
   ipcMain.handle('window:showMain', () => showControl())
   ipcMain.handle('onboarding:status', () => onboardingStatus())
-  ipcMain.handle('onboarding:finish', () => finishOnboarding())
+  ipcMain.handle('onboarding:finish', (_e, opts) => finishOnboarding(opts ?? {}))
+  ipcMain.handle('onboarding:helper', (_e, kind) => {
+    if (!kind) return dragHelper.hide()
+    if (!['sys', 'scr', 'mic'].includes(kind)) throw new Error(`unknown helper ${kind}`)
+    shell.openExternal(privacyUrl(kind === 'mic' ? 'microphone' : 'screen'))
+    if (isMac) dragHelper.show(kind)
+  })
+  ipcMain.handle('listen:start', () => startListen())
+  ipcMain.handle('listen:stop', () => stopListen())
   ipcMain.handle('onboarding:step', (_e, key) => settings.update({ onboarding: { step: String(key ?? '') } }) && null)
 
   ipcMain.handle('test:asr', (_e, patch) => testAsr(patch))
@@ -1569,6 +1711,7 @@ function wireIpc() {
   ipcMain.handle('member:cancelBuy', () => member.cancelBuy())
   // 引导里把应用图标拖进系统设置的权限列表：拖的是应用本身（.app / 安装目录里的 exe）
   ipcMain.on('app:dragApp', (e) => {
+    dragHelper.dragged(e.sender)
     const file = isMac ? path.resolve(process.execPath, '../../..') : process.execPath
     e.sender.startDrag({ file, icon: nativeImage.createFromPath(path.join(root, 'assets/icon.png')).resize({ width: 64, height: 64 }) })
   })
@@ -1873,6 +2016,13 @@ app.whenReady().then(async () => {
   }
 
   if (isMac) app.dock?.setIcon(path.join(root, 'assets/icon.png'))
+  dragHelper = new DragHelper({
+    root,
+    appName: systemListName(),
+    names: () => systemSettingsNames(),
+    near: () => (onboardingWin && !onboardingWin.isDestroyed() ? onboardingWin.getBounds() : screen.getPrimaryDisplay().workArea),
+    onChange: (e) => send(onboardingWin, 'onboarding:helper', e),
+  })
   buildAppMenu()
   wireIpc()
   wireEngine()
@@ -1883,6 +2033,7 @@ app.whenReady().then(async () => {
   // 第一次启动：先出引导，完成后再开主窗口。没走完就被系统授权重启打断的，接着出（从同一步）；自己关掉的以后从设置里再打开
   const ob = settings.get().onboarding
   if (!ob.done && (!ob.shownAt || ob.resume) && !uiSelfTest) {
+    onboardingResumed = Boolean(ob.shownAt && ob.resume)
     if (!ob.shownAt) settings.update({ onboarding: { shownAt: Date.now() } })
     openOnboarding()
   } else createControl()

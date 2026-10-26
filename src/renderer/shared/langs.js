@@ -27,3 +27,23 @@ window.LANG_CODES = [
 })()
 window.langLabel = (code) => [...window.TARGET_LANGS, ...window.SOURCE_LANGS].find((l) => l.value === code)?.label ?? code
 window.needsMultilingual = (code) => !['zh', 'en', 'auto'].includes(code)
+
+// 例句：首次引导的演示、字幕示例、试听朗读，主窗口导览里的示例字幕和答题卡。SENT 常用 11 种加繁体；QQ、AA（一问一答）九种界面语言
+;(function () {
+  const SENT = {
+    en: ['Thanks for joining, everyone.', 'Let’s go over the test results again next Tuesday.'],
+    zh: ['谢谢大家来参加。', '我们下周二再过一遍测试结果。'],
+    'zh-Hant': ['謝謝大家來參加。', '我們下週二再過一遍測試結果。'],
+    ja: ['皆さん、ご参加ありがとうございます。', '来週の火曜日にテスト結果をもう一度見直しましょう。'],
+    ko: ['모두 참석해 주셔서 감사합니다.', '다음 주 화요일에 테스트 결과를 다시 검토합시다.'],
+    de: ['Danke, dass ihr alle dabei seid.', 'Lass uns die Testergebnisse nächsten Dienstag noch einmal durchgehen.'],
+    fr: ['Merci à tous d’être là.', 'Revoyons les résultats des tests mardi prochain.'],
+    es: ['Gracias a todos por venir.', 'Repasemos los resultados de las pruebas el próximo martes.'],
+    it: ['Grazie a tutti per essere qui.', 'Rivediamo i risultati dei test martedì prossimo.'],
+    pt: ['Obrigado a todos por virem.', 'Vamos rever os resultados dos testes na próxima terça-feira.'],
+    ru: ['Спасибо всем, что пришли.', 'Давайте ещё раз разберём результаты тестов в следующий вторник.'],
+  }
+  const QQ = { zh: '测试版什么时候能上线？', 'zh-Hant': '測試版什麼時候能上線？', en: 'When can we ship the beta?', ja: 'ベータ版はいつ出せますか？', ko: '베타는 언제 출시할 수 있나요?', de: 'Wann können wir die Beta veröffentlichen?', fr: 'Quand pouvons-nous sortir la bêta ?', es: '¿Cuándo podemos lanzar la beta?', it: 'Quando possiamo rilasciare la beta?' }
+  const AA = { zh: '最后一轮测试做完，周五前就能上线。', 'zh-Hant': '最後一輪測試做完，週五前就能上線。', en: 'We can ship it by Friday, after the last round of tests.', ja: '最後のテストが終われば、金曜日までに出せます。', ko: '마지막 테스트를 마치면 금요일까지 출시할 수 있습니다.', de: 'Nach der letzten Testrunde können wir bis Freitag veröffentlichen.', fr: 'Après la dernière série de tests, on peut la sortir d’ici vendredi.', es: 'Tras la última ronda de pruebas, podemos lanzarla antes del viernes.', it: 'Dopo l’ultimo giro di test, possiamo rilasciarla entro venerdì.' }
+  window.SAMPLES = { SENT, QQ, AA }
+})()

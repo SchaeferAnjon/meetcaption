@@ -31,7 +31,9 @@ const EVENTS = new Set([
   'theme:changed', // { source: 'system'|'dark'|'light', dark }
   'onboarding:changed', // { done, voiceprint, ai, asr, project }
   'settings:section', // 设置窗口已开着时又要求打开某个分区
-  'audio:level', // 声音测试时的音量 { source, db }
+  'audio:level', // 声音测试、试听时的音量 { source, db }
+  'listen:text', // 引导试听时本地识别出的字 { key, text, final } | { error }
+  'onboarding:helper', // 系统设置旁的拖图标面板 { kind: 'sys'|'scr'|'mic', dragged | closed }
   // v4 课堂
   'notes:update', // 实时笔记 { sessionId, notes: { sections, emphasis, homework, terms }, updatedAt, error }，error 非空时 notes 是上一版
   'materials:progress', // 读课件的进度 { sessionId, name, page, total }，读完一批发 { sessionId, done: true }
@@ -39,7 +41,7 @@ const EVENTS = new Set([
   'member:update', // { info: { kind, code, balance, devices, trialOnly, recent }, session, buying, error }
   'member:paid', // 付完款、场次加上了：{ kind, code, balance, ... }
   'member:showPricing', // 别的窗口（设置）要求主窗口打开收费页
-  'guide:show', // 放主窗口上的演示（首次引导第二段，或设置里点「看演示」）
+  'guide:show', // 主窗口导览（引导最后点「带我看一遍主窗口」，或设置里点「看主窗口导览」）
   'slides:added', // 截取了一张画面 { sessionId, file: 'slides/时.分.秒.jpg', at（截图时刻，毫秒时间戳，同 seg.startedAt）, url（file:// 地址）}
 ])
 
@@ -96,7 +98,10 @@ contextBridge.exposeInMainWorld('app', {
   // 窗口和引导
   openSettings: invoke('window:openSettings'),
   openOnboarding: invoke('window:openOnboarding'),
-  finishOnboarding: invoke('onboarding:finish'),
+  finishOnboarding: invoke('onboarding:finish'), // finishOnboarding({ tour })：tour 为真时进主窗口后导览四处
+  showDragHelper: invoke('onboarding:helper'), // ('sys' | 'scr' | 'mic')：打开系统设置，旁边浮出能拖的兔子图标；不给参数就收起
+  listenStart: invoke('listen:start'), // 引导试听：电脑声音和麦克风一起开，电脑声音走本地识别
+  listenStop: invoke('listen:stop'),
   saveOnboardingStep: invoke('onboarding:step'), // 引导走到哪一步（被系统授权重启打断后从这里接着来）
   onboardingStatus: invoke('onboarding:status'),
   showMain: invoke('window:showMain'),
@@ -130,7 +135,7 @@ contextBridge.exposeInMainWorld('app', {
   memberBuy: invoke('member:buy'), // (pack: 'p1'|'p10'|'p30'|'p100', currency: 'cny'|'usd')：浏览器里结账，付完自动加上
   memberCancelBuy: invoke('member:cancelBuy'),
   showPricing: invoke('member:showPricing'), // 把主窗口叫出来、打开收费页
-  openGuide: invoke('guide:open'), // 把主窗口叫出来、放演示
+  openGuide: invoke('guide:open'), // 把主窗口叫出来、导览四处
   dragApp: () => ipcRenderer.send('app:dragApp'), // 在 dragstart 里调：拖的是应用本身，放进系统设置的权限列表
 
 

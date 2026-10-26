@@ -34,7 +34,7 @@ On Windows, if **Windows protected your PC** appears, click **More info**, then 
 
 ## First run
 
-The first time you open MeetCaption, a short guide asks for two permissions: the microphone, and on Mac the recording of system audio (listed under **Screen & System Audio Recording**, **System Audio Recording Only**). macOS sometimes asks you to quit and reopen the app after granting it; the guide comes back at the step where you stopped.
+The first time you open MeetCaption, a setup window walks you through six steps: welcome, permissions, languages, a listening test, your voiceprint (optional; you can record it later in **Settings**, page **Voiceprint**) and start. It asks for two permissions: the microphone, and on Mac the recording of system audio. Click **Open System Settings** and a rabbit icon appears next to System Settings; drag it into the **System Audio Recording Only** list. If macOS asks you to quit and reopen the app, the guide comes back at the step where you stopped. The listening test uses local recognition and does not use up a session. At the end it can point out where Start meeting, the captions, the answer card and the language button are in the main window.
 
 Captions work right away with local recognition, no key needed. New users get **1 free session** (up to 1 hour) with cloud recognition and AI included.
 

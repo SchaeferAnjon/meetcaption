@@ -77,7 +77,10 @@ VIEWS.home = {
       const projectHint = onlyInbox
         ? el('div.home-hints.text-2.text-sm', {}, el('span', { text: t('会议放在项目里，每个项目有自己的会议背景、术语和我的资料。') }), el('button.list-more', { type: 'button', onClick: () => newProjectModal() }, t('建第一个项目'), icon('arrow-right', 14)))
         : null
-      hero.append(...[el('div.home-start-row', {}, el('div.btn-group', {}, startBtn, pick)), hints.length ? el('div.home-hints.text-2.text-sm', {}, ...hints) : null, projectHint].filter(Boolean))
+      // 开始按钮旁边一直显示这个项目的语言对，点开就能改（design/onboarding-v2：回答「语言在哪设置」）
+      const langBtn = el('button.btn.btn-lg.home-lang', { type: 'button', title: t('对方说的语言和翻成的语言'), onClick: () => langMenu(langBtn, state.currentProjectId) }, icon('languages', 16), el('span.home-lang-pair'), icon('chevron-down', 14))
+      fillLangButton(langBtn, state.currentProjectId)
+      hero.append(...[el('div.home-start-row', {}, el('div.btn-group', {}, startBtn, pick), langBtn), hints.length ? el('div.home-hints.text-2.text-sm', {}, ...hints) : null, projectHint].filter(Boolean))
     }
 
     function renderGuide() {
@@ -179,6 +182,51 @@ VIEWS.home = {
 
     return { focus: () => startBtn?.focus({ preventScroll: true }) }
   },
+}
+
+/** 首页语言按钮上的「English → 简体中文」：项目的对方语言，翻成（项目没设就跟设置）。 */
+async function fillLangButton(btn, id) {
+  const p = await call('getProject', id)
+  if (!btn.isConnected || !p) return
+  const src = p.language ?? 'en'
+  const tgt = p.target || state.settings?.translateTarget || 'zh'
+  btn.querySelector('.home-lang-pair').replaceChildren(el('span', { lang: src, text: langLabel(src) }), icon('arrow-right', 13), el('span', { lang: tgt, text: langLabel(tgt) }))
+}
+
+/** 语言按钮的菜单：对方说的语言、翻成（各开一个能搜索的列表），或者去项目的「资料」页。改的是这个项目的。 */
+async function langMenu(anchor, id) {
+  const p = await call('getProject', id)
+  if (!p) return
+  const s = state.settings ?? {}
+  const list = (which) => {
+    const options = which === 'src' ? SOURCE_LANGS : [{ value: '', label: t(`跟设置走（{0}）`, langLabel(s.translateTarget ?? 'zh')) }, ...TARGET_LANGS]
+    const cur = which === 'src' ? (p.language ?? 'en') : (p.target ?? '')
+    ui.menu(
+      anchor,
+      options.map((o) => ({
+        label: o.label,
+        hint: o.hint,
+        keywords: o.keywords,
+        checked: o.value === cur,
+        onSelect: async () => {
+          const r = await call('updateProject', id, which === 'src' ? { language: o.value } : { target: o.value })
+          if (failed(r)) ui.toast({ title: t('没能保存'), message: r?.error, type: 'error' })
+        },
+      })),
+      { searchable: true, placeholder: t('搜索语言，比如 Deutsch、德语、de'), minWidth: 280 },
+    )
+  }
+  ui.menu(
+    anchor,
+    [
+      { section: t(`「{0}」的语言`, projectName(id)) },
+      { label: t('对方说的语言'), icon: 'mic', hint: langLabel(p.language ?? 'en'), onSelect: () => setTimeout(() => list('src')) },
+      { label: t('翻成'), icon: 'languages', hint: langLabel(p.target || s.translateTarget || 'zh'), onSelect: () => setTimeout(() => list('tgt')) },
+      'sep',
+      { label: t('在项目的「资料」页改…'), icon: 'pencil', onSelect: () => go('project', { id, tab: 'info' }) },
+    ],
+    { minWidth: 260 },
+  )
 }
 
 /** 会议列表的一行：标题（没有就用时间）、副标题、右侧时长和有没有纪要。 */
