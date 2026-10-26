@@ -6,6 +6,12 @@
 
 const ANSWERS_SHOWN = 12
 
+// 点的这一句自己的回答：segIds 最后一段是被问的那句，前面是带进去的铺垫。
+// 按快捷键答的那次可能把前一个问题也带上（Bob 那句 + 最大风险那句），不能当成 Bob 那句的回答。多条取最新的
+function answerOfSeg(answers, segId) {
+  return answers.filter((a) => a.segIds?.at(-1) === segId).sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0] ?? null
+}
+
 VIEWS.live = {
   mount(ctx) {
     const header = () => renderLiveHeader(ctx)
@@ -201,10 +207,7 @@ VIEWS.live = {
     // 框挂在句子节点里，字幕滚动不受影响；句子节点被换掉（译文到了、重画）时挪到新节点上。
     const qBoxes = new Map() // segId → { root, body, card }
 
-    function answerFor(segId) {
-      const all = state.live ? [...state.live.answers.values()] : []
-      return all.filter((a) => a.segIds?.includes(segId)).sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0))[0] ?? null
-    }
+    const answerFor = (segId) => answerOfSeg(state.live ? [...state.live.answers.values()] : [], segId)
 
     function attachQBox(segId) {
       const b = qBoxes.get(segId)
@@ -311,7 +314,7 @@ VIEWS.live = {
       notesLine.hidden = !err
       notesLine.className = 'notes-line is-warn'
       // 主进程的 error 已经是完整的一句（实时笔记这次没更新：原因 / 实时笔记暂停了：原因），这里只补后半句
-      const msg = err ? t(`{0}。先保留上一版，稍后再试。`, String(err).replace(/[。.，,\s]+$/, '')) : ''
+      const msg = err ? `${String(err).replace(/[。.，,\s]+$/, '')}。${live.notes ? t('先保留上一版。') : ''}` : ''
       fill(notesLine, err ? [icon('triangle-alert', 13), el('span', { text: msg })] : [])
       renderSide()
     }
@@ -323,7 +326,7 @@ VIEWS.live = {
       answerEmpty.hidden = cards.size > 0
       if (llm && !llm.ready) {
         answerEmpty.append(
-          el('div.callout.callout-warn', {}, icon('triangle-alert', 16), el('div.callout-body', {}, el('div.callout-title', { text: t('AI 答题用不了') }), el('div.callout-desc', { text: llm.reason || t('AI 服务还没设置好') })), el('button.btn.btn-sm', { type: 'button', onClick: () => openSettings('ai') }, t('去设置'))),
+          el('div.callout.callout-warn', {}, icon('triangle-alert', 16), el('div.callout-body', {}, el('div.callout-title', { text: t('AI 答题用不了') }), el('div.callout-desc', { text: llm.reason || t('AI 服务还没设置好') })), el('button.btn.btn-sm', { type: 'button', onClick: aiSettings }, t('去设置'))),
         )
         return
       }
@@ -396,10 +399,8 @@ VIEWS.live = {
     ctx.on('slide', onSlide)
     ctx.on('notes', renderNotes)
     ctx.on('answer', (a) => {
-      for (const id of a?.segIds ?? []) {
-        const b = qBoxes.get(id)
-        if (b) fillQBox(b, a)
-      }
+      const box = qBoxes.get(a?.segIds?.at(-1))
+      if (box) fillQBox(box, a)
       const fresh = a?.id && !cards.has(a.id) && a.reason !== 'click'
       renderAnswers()
       if (fresh && sideTab !== 'answers') {

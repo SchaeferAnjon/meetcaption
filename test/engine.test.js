@@ -1014,3 +1014,45 @@ test('engine: a question cut in two by a pause is answered once, as one sentence
   assert.match(c, /对方的问题：What is the best way to roll out a schema change without downtime\./)
   assert.doesNotMatch(c, /铺垫/)
 })
+
+// 主窗口点提问句：回答要对着被点的那一句（segIds 最后一段），不是随便哪个带上它的回答
+async function answerOfSegFn() {
+  const fs = await import('node:fs')
+  const src = fs.readFileSync(new URL('../src/renderer/control/view-live.js', import.meta.url), 'utf8')
+  return Function(`${src.match(/function answerOfSeg[\s\S]*?\n}\n/)[0]}; return answerOfSeg`)()
+}
+
+test('engine: after auto answers for two questions and a hotkey answer, clicking the first question finds its own answer, and a question with none gets a new one', async (t) => {
+  const ctx = await start(await setup(), t)
+  const [sys] = ctx.providers
+  const answers = new Map()
+  ctx.assistant.on('answer', (a) => answers.set(a.id, a))
+  sys.emit('final', { key: 'a', text: 'Alice will send the crash report to the team by Friday.' })
+  sys.emit('final', { key: 'b', text: 'Bob, can you fix the headset bug before the release next Wednesday?' })
+  await tick(30)
+  sys.emit('final', { key: 'c', text: 'What do you think is the biggest risk for the launch?' })
+  await tick(30)
+  assert.equal(ctx.asks.length, 2)
+  assert.ok(ctx.engine.askLast().ok)
+  await tick(30)
+  assert.equal(ctx.asks.length, 3)
+  const all = [...answers.values()]
+  const hotkey = all.find((a) => a.reason === 'hotkey')
+  // 按快捷键答的那次把前面几句也带上了：它的 segIds 里有 Bob 那句，但它答的是最大风险
+  assert.ok(hotkey.segIds.includes('system:b'))
+  assert.equal(hotkey.segIds.at(-1), 'system:c')
+  const answerOfSeg = await answerOfSegFn()
+  const forBob = answerOfSeg(all, 'system:b')
+  assert.equal(forBob.reason, 'auto')
+  assert.equal(forBob.segIds.at(-1), 'system:b')
+  assert.match(forBob.question, /Bob, can you fix/)
+  assert.equal(answerOfSeg(all, 'system:c').segIds.at(-1), 'system:c')
+  assert.equal(answerOfSeg(all, 'system:a'), null)
+  // 没有回答的那句：点了就新答一张，答的是它自己
+  const r = ctx.engine.askSegment('system:a')
+  assert.ok(r.ok)
+  await tick(30)
+  const click = [...answers.values()].find((a) => a.reason === 'click')
+  assert.equal(click.segIds.at(-1), 'system:a')
+  assert.equal(answerOfSeg([...answers.values()], 'system:a').id, click.id)
+})

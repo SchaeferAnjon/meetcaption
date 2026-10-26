@@ -38,7 +38,7 @@ function memberCard() {
   let warn = false
   if (state.member?.error && !info) {
     title = t('会员')
-    text = t(`连不上会员服务器：{0}`, state.member.error)
+    text = state.member.error
     warn = true
   } else if (info) {
     const trial = info.kind !== 'paid'

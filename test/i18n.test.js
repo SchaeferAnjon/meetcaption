@@ -78,3 +78,21 @@ test('官网的八张语言表覆盖页面脚本里所有 t() 的原文，占位
     assert.deepEqual(broken.slice(0, 5), [], `${lang} 占位符或链接对不上`)
   }
 })
+
+test('提示里写的「设置 → 某页」，那一页在设置窗口里真的有', () => {
+  const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8')
+  const pages = [...read('src/renderer/settings/app.js').matchAll(/\{ id: '[a-z]+', label: t\('([^']+)'\)/g)].map((m) => m[1])
+  assert.ok(pages.includes('账号与 AI') && pages.length >= 10, pages.join())
+  const bad = []
+  const walk = (d) => {
+    for (const f of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, f.name)
+      if (f.isDirectory()) walk(p)
+      else if (/\.(js|cjs)$/.test(f.name) && !f.name.includes('styleguide')) {
+        for (const m of fs.readFileSync(p, 'utf8').matchAll(/(?<!系统)设置 → ([^」）)，。：、`]*)/g)) if (!pages.some((x) => m[1].startsWith(x))) bad.push(`${path.relative(ROOT, p)}: ${m[0]}`)
+      }
+    }
+  }
+  walk(path.join(ROOT, 'src'))
+  assert.deepEqual(bad, [])
+})

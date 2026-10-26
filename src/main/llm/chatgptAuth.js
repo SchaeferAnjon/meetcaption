@@ -486,7 +486,7 @@ export class ChatGPTAuth extends EventEmitter {
       return this.#creds(d)
     }
     let d = this.#current()
-    if (!d) throw new LlmError('not-logged-in', this.lastError ?? t('还没用 ChatGPT 账号登录（设置 → AI 服务）'))
+    if (!d) throw new LlmError('not-logged-in', this.lastError ?? t('还没用 ChatGPT 账号登录（设置 → 账号与 AI）'))
     if (needsRefresh({ accessToken: d.tokens.access_token, lastRefresh: d.lastRefresh })) {
       try {
         await this.#refresh()

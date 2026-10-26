@@ -94,7 +94,7 @@ VIEWS.home = {
           title: t('AI 服务还没连上'),
           desc: state.llm?.reason ? t(`{0}。翻译、会后纪要和 AI 答题都要用。`, state.llm.reason) : t('用 ChatGPT 账号登录或填 API Key，翻译、会后纪要和 AI 答题才能用。'),
           label: s.llmProvider === 'chatgpt' ? t('去登录') : t('去设置'),
-          run: () => openSettings('ai'),
+          run: aiSettings,
         })
       if (!ob.voiceprint && s.captureMic !== false)
         steps.push({ title: t('还没录声纹'), desc: t('录 12 秒，软件就能分清哪句是你说的，外放时串进麦克风的对方声音也能滤掉。'), label: t('去录声纹'), run: () => openSettings('voiceprint') })

@@ -21,12 +21,16 @@ export const PACKS = [
 ]
 
 export class MemberError extends Error {
-  constructor(code, message, status) {
+  /** message 是给用户看的一句中文；detail 是原始报错（fetch failed、ECONNREFUSED），只进调试日志。 */
+  constructor(code, message, status, detail) {
     super(message)
     this.code = code
     this.status = status
+    this.detail = detail
   }
 }
+
+const debug = process.env.MEETCAPTION_DEBUG ? (...a) => console.error(new Date().toISOString().slice(11, 23), ...a) : () => {}
 
 const run = (cmd, args) =>
   new Promise((resolve) => execFile(cmd, args, { timeout: 5000, windowsHide: true }, (err, out) => resolve(err ? '' : String(out))))
@@ -84,7 +88,9 @@ export class Member extends EventEmitter {
         signal: AbortSignal.timeout(20_000),
       })
     } catch (e) {
-      throw new MemberError('network', t(`连不上会员服务器：{0}`, e.cause?.code ?? e.message))
+      const detail = e.cause?.code ?? e.message
+      debug('member', method, p, detail)
+      throw new MemberError('network', t('连不上会员服务器，稍后再试'), undefined, detail)
     }
     const data = await res.json().catch(() => ({}))
     if (res.ok) return data

@@ -260,7 +260,10 @@ test('Summarizer：生成纪要、提取待办存进 session.summary.items，会
   assert.equal(store.load(s.id).summary.items.length, 2)
 
   const off = new Summarizer({ store, projects: ps, llm, aiStatus: () => ({ ready: false, reason: '还没用 ChatGPT 账号登录' }) })
-  await assert.rejects(() => off.generate(s.id), /还没用 ChatGPT 账号登录/)
+  await assert.rejects(() => off.generate(s.id), /还没用 ChatGPT 账号登录（设置 → 账号与 AI）/)
+  // 会员没有 Key：原因里已经说了去哪改，不再补「账号与 AI」
+  const member = new Summarizer({ store, projects: ps, llm, aiStatus: () => ({ ready: false, provider: 'member', reason: '连不上会员服务器，AI 暂时用不了' }) })
+  await assert.rejects(() => member.generate(s.id), (e) => e.message === '连不上会员服务器，AI 暂时用不了')
 })
 
 /* ---------------- 纪要里写明的截止日期（Windows 第二轮：Bonferroni 那条纪要写了 2026-09-28，待办里是空的） ---------------- */

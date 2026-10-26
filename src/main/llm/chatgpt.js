@@ -217,7 +217,7 @@ export async function chatgptComplete(auth, opts) {
     url = CODEX_RESPONSES_URL,
     fetch: fetchImpl = globalThis.fetch,
   } = opts
-  if (!auth) throw new LlmError('not-logged-in', t('还没用 ChatGPT 账号登录（设置 → AI 服务）'))
+  if (!auth) throw new LlmError('not-logged-in', t('还没用 ChatGPT 账号登录（设置 → 账号与 AI）'))
   const body = JSON.stringify(buildResponsesBody({ model, system, messages, effort, json }))
   const ctl = requestControl({ signal, timeoutMs, idleMs })
   const st = newStreamState()
