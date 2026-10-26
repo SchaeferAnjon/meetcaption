@@ -1976,6 +1976,8 @@ app.whenReady().then(async () => {
   projects = new ProjectStore({ root: rootDir, trash })
   store = new SessionStore({ projects, trash })
   const library = initLibrary()
+  // 升级（initLibrary 里的 upgradePatch）可能定了界面语言（0.6 以前的老用户保持中文）：窗口还没开，按升级后的再定一次
+  setUiLang(settings.get().uiLang, app.getPreferredSystemLanguages()[0] ?? app.getLocale())
   capture = new RendererCapture({ preload: path.join(root, 'preload/capture.cjs'), page: path.join(root, 'renderer/capture/index.html') })
   chatgptAuth = new ChatGPTAuth({ file: path.join(app.getPath('userData'), 'chatgpt-auth.json'), safeStorage })
   assistant = new Assistant({ complete: llm, captureScreen, screenReady: () => screenPermission() === 'granted' })
