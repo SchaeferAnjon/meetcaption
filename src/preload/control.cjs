@@ -117,6 +117,7 @@ contextBridge.exposeInMainWorld('app', {
   llmStatus: invoke('llm:status'),
   requestPermission: invoke('permission:request'), // 'microphone' | 'screen' | 'systemAudio'
   permissionStatus: invoke('permission:status'), // → { microphone, screen }
+  probeSystemAudio: invoke('permission:probeSystemAudio'), // 真起一次系统声音采集，→ 'granted' | 'denied'（引导重开后确认电脑声音）
   openPrivacy: invoke('shell:openPrivacy'), // openPrivacy('microphone' | 'screen')
   relaunch: invoke('app:relaunch'), // 重启应用（屏幕录制权限给了要重启才生效）；正在记录时 → { ok: false, error }
   openExternal: invoke('shell:openExternal'),

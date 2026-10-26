@@ -21,7 +21,7 @@ import { SonioxStreamASR } from './asr/soniox.js'
 import { LocalStreamASR, localAsrAvailable, prewarmLocalAsr, stopLocalAsr } from './asr/local.js'
 import { MODEL_ID, VoiceprintStore, loadVoiceprintModel } from './audio/voiceprint.js'
 import { WavCapture } from './audio/wav.js'
-import { MacSystemAudio, macTapSupported } from './audio/macTap.js'
+import { MacSystemAudio, macTapSupported, probeSystemAudioOnce } from './audio/macTap.js'
 import { dbfs } from './audio/gate.js'
 import { recordVoiceprint } from './enroll.js'
 import { DragHelper } from './dragHelper.js'
@@ -1774,6 +1774,12 @@ function wireIpc() {
   ipcMain.handle('shell:openExternal', (_e, url) => /^https:/.test(url) && shell.openExternal(url))
   ipcMain.handle('screen:permission', () => screenPermission())
   ipcMain.handle('permission:status', () => permissionStatus())
+  // 引导重开后真查一次电脑声音能不能录（MEETCAPTION_FAKE_SYSTEM 时不碰真设备：默认能，MEETCAPTION_FAKE_SYSTEM_PERM=denied 模拟没生效）
+  ipcMain.handle('permission:probeSystemAudio', async () => {
+    if (!isMac) return 'granted'
+    if (fakeFiles.system) return process.env.MEETCAPTION_FAKE_SYSTEM_PERM === 'denied' ? 'denied' : 'granted'
+    return macTapSupported() ? probeSystemAudioOnce() : 'denied'
+  })
 
   // ChatGPT 账号登录（status 里没有 token，可以直接给界面）
   ipcMain.handle('chatgpt:status', () => chatgptAuth.status())

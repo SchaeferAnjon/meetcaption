@@ -20,6 +20,28 @@ function binaryPath() {
   return path.join(path.dirname(entry), '..', 'bin', 'audiotee').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)
 }
 
+/**
+ * 真探一次电脑声音能不能录（系统录音没有查询接口）：起一次 audiotee，timeoutMs 内出了数据就是能录；
+ * 出错或一直没数据（没授权时它一个字节都不给，系统在弹框）就是不能。数据丢掉。→ 'granted' | 'denied'
+ */
+export function probeSystemAudioOnce({ timeoutMs = 5000, spawnTap = null } = {}) {
+  return new Promise((resolve) => {
+    const tap = new MacSystemAudio({ sampleRate: 16000, spawnTap })
+    let timer
+    const done = (result) => {
+      clearTimeout(timer)
+      tap.removeAllListeners()
+      tap.on('error', () => {}) // stop() 之后 audiotee 退出也可能再报一次，没人听会抛
+      tap.stop()
+      resolve(result)
+    }
+    tap.once('data', () => done('granted'))
+    tap.on('error', () => done('denied'))
+    timer = setTimeout(() => done('denied'), timeoutMs)
+    tap.start()
+  })
+}
+
 // 换输出设备（戴上 / 摘下耳机、连上蓝牙）时 audiotee 可能退出，也可能还活着但不再出数据：
 // 退出了就重开，出过数据又停了 GAP_MS 也重开（正常时安静也会一直出静音数据）。重开连着失败才报错。
 const GAP_MS = 4000
