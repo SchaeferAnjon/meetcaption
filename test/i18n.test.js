@@ -2,10 +2,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { setUiLang, systemUiLang, t, UI_LANGS } from '../src/main/i18n.js'
 
 // 界面语言的表：代码里每个 t('…') 的原文在八张表里都要有译文，占位符 {0} 和 HTML 标签不能丢。
-const ROOT = new URL('..', import.meta.url).pathname
+// fileURLToPath：Windows 上 URL 的 pathname 是 /D:/…，拼出来成了 D:\D:\…
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 function codeKeys() {
   const keys = new Set()
   const files = []
