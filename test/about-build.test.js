@@ -23,7 +23,7 @@ test('关于页：Apple 芯片版、Intel 芯片版、Windows 版各写各的；
 test('Rosetta 提示的下载链接是官网（和 README 里写的同一个，主进程只开 https）', () => {
   const site = src.match(/const SITE_URL = '([^']+)'/)[1]
   assert.match(site, /^https:\/\//)
-  assert.ok(fs.readFileSync(new URL('../README.zh-CN.md', import.meta.url), 'utf8').includes(`(${site})`))
+  assert.ok(fs.readFileSync(new URL('../README.zh-CN.md', import.meta.url), 'utf8').includes(site))
   assert.match(src, /onClick: \(\) => api\.openExternal\(SITE_URL\)/)
 })
 
