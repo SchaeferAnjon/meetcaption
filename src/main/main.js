@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { externalUrl } from './externalUrl.js'
 import { SettingsStore, keywordList } from './settings.js'
 import { accelLabel, menuItemWithKey, patchFor, registerHotkey } from './hotkeys.js'
 import { upgradePatch } from './defaults.js'
@@ -713,6 +714,17 @@ function wireWindowKeys(win) {
       openSettings()
     }
   })
+}
+
+// 界面里的按钮想打开网页或写邮件：只放行 externalUrl 认的；MEETCAPTION_NO_EXTERNAL 时不真打开，只打印收到的地址（自测用）
+function openExternalChecked(url) {
+  const target = externalUrl(url)
+  if (!target) return false
+  if (process.env.MEETCAPTION_NO_EXTERNAL) {
+    console.log('[openExternal]', target)
+    return true
+  }
+  return shell.openExternal(target)
 }
 
 function wireLinks(win) {
@@ -1783,7 +1795,7 @@ function wireIpc() {
   ipcMain.handle('permission:request', (_e, kind) => requestPermission(kind))
   ipcMain.handle('shell:openPrivacy', (_e, kind) => shell.openExternal(privacyUrl(kind)))
   ipcMain.handle('app:relaunch', () => relaunchApp())
-  ipcMain.handle('shell:openExternal', (_e, url) => /^https:/.test(url) && shell.openExternal(url))
+  ipcMain.handle('shell:openExternal', (_e, url) => openExternalChecked(url))
   ipcMain.handle('screen:permission', () => screenPermission())
   ipcMain.handle('permission:status', () => permissionStatus())
   // 引导重开后真查一次电脑声音能不能录（MEETCAPTION_FAKE_SYSTEM 时不碰真设备：默认能，MEETCAPTION_FAKE_SYSTEM_PERM=denied 模拟没生效）
