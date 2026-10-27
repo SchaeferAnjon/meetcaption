@@ -525,6 +525,7 @@
  "场次": "Sitzungen",
  "场次用完了。字幕照常（本地识别），AI 要再买场次。": "Deine Sitzungen sind aufgebraucht. Untertitel laufen wie gewohnt weiter (lokale Erkennung), aber KI erfordert weitere Sitzungen.",
  "场次用完了会怎样？": "Was passiert, wenn die Sitzungen aufgebraucht sind?",
+ "场次用完了，买了场次 AI 才能用": "Sitzungen aufgebraucht. Kaufe Sitzungen, um KI zu nutzen",
  "声纹": "Stimmabdruck",
  "声纹和登录": "Stimmabdruck und Anmeldung",
  "声纹已删除": "Stimmabdruck gelöscht",

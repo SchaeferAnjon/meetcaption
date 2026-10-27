@@ -525,6 +525,7 @@
  "场次": "Sessions",
  "场次用完了。字幕照常（本地识别），AI 要再买场次。": "Vous n'avez plus de sessions. Les sous-titres continuent comme d'habitude (reconnaissance locale), mais l'IA nécessite plus de sessions.",
  "场次用完了会怎样？": "Que se passe-t-il lorsque les sessions sont épuisées ?",
+ "场次用完了，买了场次 AI 才能用": "Séances épuisées. Achetez des séances pour utiliser l'IA",
  "声纹": "Empreinte vocale",
  "声纹和登录": "Empreinte vocale et connexion",
  "声纹已删除": "Empreinte vocale supprimée",

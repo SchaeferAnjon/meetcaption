@@ -13,14 +13,15 @@ import { LlmError } from '../src/main/llm/errors.js'
 const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mc-member-ai-')), 'member.json')
 
 // 假会员服务器：试用 1 场，开完余额 0；status 回 kind 和余额
-function trialServer({ kind = 'trial', granted = true } = {}) {
+// left：开一场之后还剩几场（买过好几场的用 left > 0）
+function trialServer({ kind = 'trial', granted = true, left = 0 } = {}) {
   const calls = []
   let balance = granted ? 1 : 0
   let n = 0
   const routes = {
     '/v1/trial/start': () => ({ status: 200, body: { token: `mcd_${++n}`, kind, balance, trialGranted: granted } }),
     '/v1/license/status': () => ({ status: 200, body: { kind, balance, trialGranted: granted } }),
-    '/v1/session/start': () => ((balance = 0), { status: 200, body: { session: 'mcs_1', sessionId: 1, remainingMs: 3600_000, charged: 1, balance } }),
+    '/v1/session/start': () => ((balance = left), { status: 200, body: { session: 'mcs_1', sessionId: 1, remainingMs: 3600_000, charged: 1, balance } }),
     '/v1/session/heartbeat': () => ({ status: 200, body: { remainingMs: 0, charged: 1, exhausted: true, idle: false, balance } }),
     '/v1/session/end': () => ({ status: 200, body: { balance } }),
   }
@@ -88,8 +89,8 @@ test('会后的票只给那一场自己用：重做以前的会议不记在它�
   assert.match(m.noAiReason(lastWeek), /试用场次用完/)
   assert.equal(m.noAi, false, '不说哪一场时（侧栏的 AI 状态）还按有票算')
 
-  // 买过的：以前的会议走设备令牌（每天的会后额度），这一场自己的还用这一场的票
-  const paid = trialServer({ kind: 'paid' })
+  // 买过、还有场次：以前的会议走设备令牌（每天的会后额度），这一场自己的还用这一场的票
+  const paid = trialServer({ kind: 'paid', left: 2 })
   const p = make(tmpFile(), paid.f)
   await p.refresh()
   await p.startSession()
@@ -98,8 +99,19 @@ test('会后的票只给那一场自己用：重做以前的会议不记在它�
   assert.equal(p.aiKey(lastWeek), 'mcd_1')
   assert.equal(p.noAiFor(lastWeek), false)
   assert.equal(p.aiKey(mine), 'mcs_1')
+  // 买过（包括退了款）、余额 0：跟没买过一样，以前的会议做不了，只有这一场 24 小时内还能做
+  const paid0 = trialServer({ kind: 'paid' })
+  const z = make(tmpFile(), paid0.f)
+  await z.refresh()
+  await z.startSession()
+  const mine0 = Date.now()
+  await z.endSession()
+  assert.equal(z.noAiFor(lastWeek), true)
+  assert.match(z.noAiReason(lastWeek), /^场次用完了/)
+  assert.equal(z.noAiFor(mine0), false)
   m.stop()
   p.stop()
+  z.stop()
 })
 
 test('免费试用名额发完了才装的：AI 关着，原因说名额发完了，不说试用用完了', async () => {
@@ -190,7 +202,7 @@ test('试用余额 0、这一场没开成（退回本地识别）：AI 关着，
 })
 
 test('401 换凭据：会后的场次票不认了就改用设备令牌；设备令牌失效就重新领；进行中那一场不换', async () => {
-  const paid = trialServer({ kind: 'paid' })
+  const paid = trialServer({ kind: 'paid', left: 2 })
   const m = make(tmpFile(), paid.f)
   await m.refresh()
   await m.startSession()
@@ -213,7 +225,7 @@ test('401 换凭据：会后的场次票不认了就改用设备令牌；设备�
 })
 
 test('withMemberAuth：会员通道 401 换凭据用新设置再试一次；别的错误、自带 Key 的不重试', async () => {
-  const paid = trialServer({ kind: 'paid' })
+  const paid = trialServer({ kind: 'paid', left: 2 })
   const m = make(tmpFile(), paid.f)
   await m.refresh()
   await m.startSession()

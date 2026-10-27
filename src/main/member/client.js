@@ -326,23 +326,24 @@ export class Member extends EventEmitter {
   }
 
   /**
-   * AI 用不了：这一场的时间用完了；或者试用用完、没买过，手上又没有 24 小时内的场次票。
+   * AI 用不了：这一场的时间用完了；或者余额 0（买过、退过款的也一样），手上又没有 24 小时内的场次票。
    * 场次不够、这一场退回了本地识别（fallback）时也关着：上一场的票留给上一场做纪要，不拿来翻译这一场。
    */
   get noAi() {
     return this.noAiFor(null)
   }
 
-  /** 给某次记录做纪要、课堂笔记时 AI 能不能用（at 同 aiKey）：试用用完、没买过时，只有最近那一场 24 小时内还能做。 */
+  /** 给某次记录做纪要、课堂笔记时 AI 能不能用（at 同 aiKey）：余额 0 时只有最近那一场 24 小时内还能做（2026-10-27 用户定，买过的也一样）。 */
   noAiFor(at) {
     if (this.#live(at)) return Boolean(this.session.exhausted)
-    if (!this.info || this.info.balance > 0 || this.info.kind === 'paid') return false
+    if (!this.info || this.info.balance > 0) return false
     return (at == null && this.fallback) || !this.#ticket(at)
   }
 
   /** AI 用不了时给用户看的原因（会员没有 Key 可填，不能说「没填 Key」）。 */
   noAiReason(at = null) {
     if (this.#live(at) && this.session.exhausted) return t('这一场的会员时间用完了，翻译和答题先关着')
+    if (this.info?.kind === 'paid') return t('场次用完了，买了场次 AI 才能用')
     return this.info?.trialGranted === false ? t('免费试用的名额发完了，买了场次 AI 才能用') : t('试用场次用完了，买了场次 AI 才能用')
   }
 

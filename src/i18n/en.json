@@ -525,6 +525,7 @@
  "场次": "Sessions",
  "场次用完了。字幕照常（本地识别），AI 要再买场次。": "You're out of sessions. Captions continue as usual (local recognition), but AI requires more sessions.",
  "场次用完了会怎样？": "What happens when sessions run out?",
+ "场次用完了，买了场次 AI 才能用": "Sessions used up. Buy sessions to use AI",
  "声纹": "Voiceprint",
  "声纹和登录": "Voiceprint and sign-in",
  "声纹已删除": "Voiceprint deleted",
