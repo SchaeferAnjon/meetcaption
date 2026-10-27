@@ -1,93 +1,152 @@
-# MeetCaption 会议字幕
+<p align="center"><img src="docs/readme/icon.png" width="96" height="96" alt="MeetCaption"></p>
 
-[English](README.md) · **简体中文** · 官网：[meetcaption.us-cloud.uk](https://meetcaption.us-cloud.uk)
+<h1 align="center">MeetCaption</h1>
 
-开 Zoom、Teams、腾讯会议或者上网课时，把电脑里放出来的声音实时转成字幕，浮在所有窗口最上层，每句话下面跟一句译文，意思对应的片段用同一种颜色，难词鼠标停上去就有解释。对方一问完，旁边的答题框马上给出能照着说的回答。按一个快捷键字幕和答题框立刻消失，再按一下立刻出现。每句话带时间自动存档，会开完一键让 AI 整理出要点、要改的地方、待办和截止日期。上课也能用：边听边出实时笔记，下课生成整理好的课堂笔记。
+<p align="center"><b>会议、面试、网课的实时双语字幕：对方说的每一句，中文就在下面。</b></p>
 
-不需要对方开字幕，不需要虚拟声卡，也不用把手机架在屏幕前。Mac 和 Windows 都能用，源码以 GPL-3.0 开源。
+<p align="center">
+<a href="https://github.com/SchaeferAnjon/meetcaption/releases/latest/download/MeetCaption-win-x64.exe"><b>下载 Windows 版</b></a> ·
+<a href="https://github.com/SchaeferAnjon/meetcaption/releases/latest/download/MeetCaption-mac-arm64.dmg"><b>Mac 版（Apple 芯片）</b></a> ·
+<a href="https://github.com/SchaeferAnjon/meetcaption/releases/latest/download/MeetCaption-mac-x64.dmg">Mac 版（Intel 芯片）</a>
+</p>
 
-下载：[最新版本](https://github.com/SchaeferAnjon/meetcaption/releases/latest)
+<p align="center"><a href="https://meetcaption.us-cloud.uk/?lang=zh"><img src="docs/readme/zh/website.svg" width="270" height="36" alt="官网：meetcaption.us-cloud.uk"></a></p>
 
-## 语言
+<p align="center">
+<a href="https://github.com/SchaeferAnjon/meetcaption/releases/latest"><img src="https://img.shields.io/github/v/release/SchaeferAnjon/meetcaption?label=%E6%9C%80%E6%96%B0%E7%89%88&color=1d1d1f" alt="最新版"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-1d1d1f" alt="GPL-3.0"></a>
+<img src="https://img.shields.io/badge/Windows-10%2B-1d1d1f" alt="Windows 10+">
+<img src="https://img.shields.io/badge/macOS-14.2%2B-1d1d1f" alt="macOS 14.2+">
+</p>
 
-- **识别和翻译支持 60 种语言**：中文、英语、日语、韩语、德语、法语、西班牙语、意大利语、葡萄牙语、俄语等等，字幕能翻成其中任意一种，另加繁体中文。
-- **本地识别**（免费、不联网、在你电脑上跑）认中文、英文和中英夹杂，其他语言用云识别。
-- **断网时**：用云识别开中文或英文会议，网一断，本地识别从云端停下的地方接着认；网络恢复几秒后自动换回云识别。其他语言要等网络恢复，最近 60 秒的话连上后会补出来。
-- **界面有 9 种语言**：简体中文、繁體中文、English、日本語、한국어、Deutsch、Français、Español、Italiano。默认跟系统，在 **设置** 的 **通用** 里改 **界面语言**。
-- 纪要、笔记、待办、术语解释和答题的要点都用你翻成的那种语言写；回答本身默认跟提问的语言，方便直接说出口。
+<p align="center"><sub><a href="README.md">English</a> · <b>简体中文</b></sub></p>
 
-语言在哪里设：
+<p align="center"><img src="docs/readme/zh/captions.webp" width="840" alt="Zoom 会议里的字幕：每句英文下面跟中文，意思对应的片段同一种颜色，难词鼠标停上去有解释"></p>
 
-- 对方说什么语言：每个项目的 **资料** 里。
-- 翻成什么语言：**设置** 的 **字幕与答题框** 里，或者在项目里单独设。
-- 新装的时候两样都按系统语言先定好。
+## 它做什么
 
-## 安装
+开 Zoom、Teams、腾讯会议或者上网课，电脑里放出来的声音实时变成字幕，浮在所有窗口最上层，每句下面跟一句译文。不用对方做任何事，也不用装虚拟声卡。
 
-- **Apple 芯片的 Mac（M1 到 M4）**：`MeetCaption-版本-mac-arm64.dmg`
-- **Intel 芯片的 Mac**：`MeetCaption-版本-mac-x64.dmg`
-- **Windows 10 和 11**：`MeetCaption-版本-win-x64.exe`
+- **双语字幕**：意思对应的片段同一种颜色，难词鼠标停上去就有解释。
+- **AI 答题**：对方一问完，屏幕角上给出能照着说的回答。
+- **课堂笔记**：每两分钟整理一版实时笔记，截下课件，下课生成图文并茂的课堂笔记。
+- **纪要和待办**：会开完一键整理，*下周五* 会换算成具体日期。
+- **分得清是谁在说**：录 12 秒声纹，就能分清你和对方。
+- **共享屏幕时隐藏**：共享屏幕、录屏、截图里都没有字幕和答题框。
+- **60 种语言**的识别和翻译，软件界面有 9 种语言。
+- **都是普通文件**：每场会议存成 Markdown，放在文稿文件夹里的 会议字幕 文件夹（可以在 **设置** 里改），一个项目一个文件夹。
 
-Mac 需要 macOS 14.2 或更新。第一次打开如果提示无法验证开发者：打开 **系统设置** 里的 **隐私与安全性**，拉到最下面，点 **仍要打开**。
+## AI 答题
 
-Windows 第一次运行如果弹出 **Windows 已保护你的电脑**，先点 **更多信息**，再点 **仍要运行**。
+<p align="center"><img src="docs/readme/zh/answer.webp" width="840" alt="对方提问，答题框给出回答，下面带译文；按快捷键回答刚才那句"></p>
 
-装好以后会自动更新：每次打开和之后每隔 6 小时去 GitHub 看有没有新版本，有就在后台下载，下好后主窗口提示 **重启更新**。正在记录时不会重启；不点也行，下次退出时自动装上。会议记录和设置都不动。不想要的话，在 **设置** 的 **通用** 里关掉 **自动更新**。
+听出是在问你，答题框马上给出能照着说的回答，下面带译文。没自动出来就按 <kbd>⌘</kbd> <kbd>⌥</kbd> <kbd>A</kbd>（Windows 上 <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>A</kbd>）。共享屏幕时，对方看不到答题框。
 
-## 第一次打开
+## 课堂笔记
 
-第一次打开会出一个引导窗口，左边六步：欢迎、授权、语言、试听、声纹（可以跳过，以后在 **设置** 的 **声纹** 里录）、开始。授权要两项：麦克风，以及 Mac 上录制系统声音。点 **打开系统设置** 后，系统设置旁边会浮出兔子图标，把它拖进 **仅系统录音** 列表就行。macOS 要求退出并重新打开时，重新打开后引导会从刚才那一步接着来。试听用本地识别，不算场次。走完可以让它在主窗口上指一遍开始会议、字幕、答题卡和语言按钮在哪。
+<p align="center"><img src="docs/readme/zh/notes.webp" width="840" alt="讲梯度下降的一节课，右边实时笔记一条条补上，截下一页课件"></p>
 
-字幕用本地识别马上就能出，不用填任何 Key。新用户送 **1 场**（最长 1 小时），云识别和 AI 都包含。
+先选 **教室现场**（用麦克风听老师）还是 **网课**（听电脑里的声音）。实时笔记大约每两分钟更新一次：小节大纲、公式、老师强调的考点、作业和截止时间。下课点 **生成课堂笔记**，得到完整笔记，还有一份图文版，课件插在老师讲到它的地方。
 
-## 价格
+## 真机截图
 
-软件开源免费。翻译、答题、笔记要用 AI，两种选法：
+Mac 上的真实窗口，用合成的人声放一段示例会议、面试和讲课。
 
-- **自带 Key**：永久免费，不限场次，费用直接付给你选的服务商（DeepSeek、通义、Kimi、豆包、智谱、OpenAI 等，有 ChatGPT Plus 或 Pro 可以直接登录）。句子从你电脑直接发给服务商。
-- **会员**：不用配任何 Key，云识别和 AI 都包含。按场买，场次不过期，不自动续费。一场就是一次记录，最长 2 小时。
+<table>
+<tr>
+<td colspan="2" align="center"><img src="docs/readme/shots/captions-mac.jpg" width="800" alt="Mac 上的字幕：两句英文，每句下面跟中文"><br><sub>Mac 上的字幕</sub></td>
+</tr>
+<tr>
+<td width="38%" align="center"><img src="docs/readme/zh/answer-card.jpg" width="300" alt="面试模式的答题框：能照着说的回答，分成几小段，每段前面一个短标签"><br><sub>答题框，面试模式</sub></td>
+<td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/zh/class-notes-dark.jpg"><img src="docs/readme/zh/class-notes-light.jpg" width="480" alt="主窗口里的图文课堂笔记：一页课件，老师讲到的几行框了出来"></picture><br><sub>图文课堂笔记</sub></td>
+</tr>
+</table>
 
-| 套餐 | 1 场 | 10 场 | 30 场 | 100 场 |
+## 三种用法
+
+| | 怎么开始 | 费用 |
+|---|---|---|
+| **送的 1 场** | 下载打开就能用，什么都不用填 | 1 场，最长 1 小时，云识别和 AI 都包含 |
+| **自带 Key** | 填 DeepSeek、通义、Kimi、豆包、智谱或 OpenAI 的 Key，有 ChatGPT Plus 可以直接登录（[配置教程](https://meetcaption.us-cloud.uk/?lang=zh#page=guide)，5 分钟） | **永久免费，不限场次**；费用直接付给服务商 |
+| **会员** | 不用配 Key，在应用里或[官网](https://meetcaption.us-cloud.uk/?lang=zh#page=pricing)按场买 | ¥12.8 一场起 |
+
+用本地识别出字幕，哪种用法都免费，不用 Key。
+
+<details>
+<summary>会员场次价格</summary>
+
+| | 1 场 | 10 场 | 30 场 | 100 场 |
 |---|---|---|---|---|
 | 人民币 | ¥12.8 | ¥108 | ¥298 | ¥888 |
 | 美元 | $1.99 | $15 | $42 | $125 |
 
-在应用里买，场次自动加上；在[官网](https://meetcaption.us-cloud.uk/#page=pricing)买，会拿到授权码。一个授权码最多用在 2 台电脑上。没用过的场次购买后 14 天内可以退款。
+场次不过期，不自动续费。一场就是一次记录，最长 2 小时。一个授权码最多用在 2 台电脑上。没用过的场次购买后 14 天内可以退款。
 
-## 三种模式
+价格、授权码和退款说明在[官网](https://meetcaption.us-cloud.uk/?lang=zh#page=pricing)上也有。
 
-- **会议**：字幕、翻译、术语、自动答题。
-- **面试**：和会议一样，答题框更显眼，自动答题默认开着，会用上项目里的 **我的资料**（比如简历要点）。
-- **课堂**：先选 **教室现场**（用麦克风听老师）还是 **网课**（听电脑里的声音）。右边的实时笔记大约每两分钟更新一次：小节大纲、要点、公式、老师强调的考点、作业和截止时间。按 `⌘⌥P` / `Ctrl+Alt+P` 截下当前课件。下课点 **生成课堂笔记**，得到完整笔记（大纲、公式、例子、考点、作业、术语表、自测题），还有一份图文版，课件插在老师讲到它的地方。
+</details>
 
-## 开会时
+## 安装
 
-1. 在主窗口选好项目，点 **开始会议**；或者在会议软件里直接按 `⌘⌥R` / `Ctrl+Alt+R`，再按一次停止。
-2. 对方说话，屏幕下方就出字幕。
-3. `⌘⌥S` / `Ctrl+Alt+S` 显示或隐藏字幕和答题框。
-4. 对方问了问题，答题框会给出可以照着说的回答；没自动出来就按 `⌘⌥A` / `Ctrl+Alt+A`。
-5. 共享屏幕时对方看不到字幕和答题框。
+| | 下载 | 系统 |
+|---|---|---|
+| **Windows** | [`MeetCaption-win-x64.exe`](https://github.com/SchaeferAnjon/meetcaption/releases/latest/download/MeetCaption-win-x64.exe) | Windows 10 或 11 |
+| **Apple 芯片的 Mac**（M1 到 M4） | [`MeetCaption-mac-arm64.dmg`](https://github.com/SchaeferAnjon/meetcaption/releases/latest/download/MeetCaption-mac-arm64.dmg) | macOS 14.2 或更新 |
+| **Intel 芯片的 Mac** | [`MeetCaption-mac-x64.dmg`](https://github.com/SchaeferAnjon/meetcaption/releases/latest/download/MeetCaption-mac-x64.dmg) | macOS 14.2 或更新 |
+
+[官网](https://meetcaption.us-cloud.uk/?lang=zh)上有同样的下载，还有 9 种语言的使用教程。旧版本在 [Releases 页面](https://github.com/SchaeferAnjon/meetcaption/releases)。
+
+<details>
+<summary>第一次打开</summary>
+
+- **Mac**：提示无法验证开发者时，打开 **系统设置** 里的 **隐私与安全性**，拉到最下面点 **仍要打开**。
+- **Windows**：弹出 **Windows 已保护你的电脑** 时，先点 **更多信息**，再点 **仍要运行**。
+- 引导窗口要两个权限：麦克风，以及 Mac 上的系统录音，把兔子图标拖进 **仅系统录音** 列表就行。
+- 装好以后会自动更新，正在记录时不会重启。
+
+</details>
+
+<details>
+<summary>快捷键</summary>
+
+| | Mac | Windows |
+|---|---|---|
+| 开始或停止记录 | <kbd>⌘</kbd> <kbd>⌥</kbd> <kbd>R</kbd> | <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>R</kbd> |
+| 显示或隐藏字幕和答题框 | <kbd>⌘</kbd> <kbd>⌥</kbd> <kbd>S</kbd> | <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>S</kbd> |
+| 回答刚才的问题 | <kbd>⌘</kbd> <kbd>⌥</kbd> <kbd>A</kbd> | <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>A</kbd> |
+| 上课时截下当前课件 | <kbd>⌘</kbd> <kbd>⌥</kbd> <kbd>P</kbd> | <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>P</kbd> |
 
 所有快捷键都能在 **设置** 的 **快捷键** 里改。
 
-## 会后
+</details>
 
-在会议里点 **生成纪要**，AI 会写出一句话总结、讨论要点、对方的修改意见、我要做的事（带截止日期，附原话和时间点）、截止日期表（*下周五* 这种说法会换算成具体日期）和需要再确认的地方。待办会归到它所属的项目，在 **待办** 页能勾掉。
+<details>
+<summary>全部 60 种语言</summary>
 
-所有记录存在 **文稿** 里的 **会议字幕** 文件夹（设置里可以改），一个项目一个文件夹，每场会一个文件夹，都是普通的 Markdown 文件。
+英语、中文、日语、韩语、德语、法语、西班牙语、意大利语、葡萄牙语、俄语、南非荷兰语、阿尔巴尼亚语、阿拉伯语、阿塞拜疆语、巴斯克语、白俄罗斯语、孟加拉语、波斯尼亚语、保加利亚语、加泰罗尼亚语、克罗地亚语、捷克语、丹麦语、荷兰语、爱沙尼亚语、芬兰语、加利西亚语、希腊语、古吉拉特语、希伯来语、印地语、匈牙利语、印度尼西亚语、卡纳达语、哈萨克语、拉脱维亚语、立陶宛语、马其顿语、马来语、马拉雅拉姆语、马拉地语、挪威语、波斯语、波兰语、旁遮普语、罗马尼亚语、塞尔维亚语、斯洛伐克语、斯洛文尼亚语、斯瓦希里语、瑞典语、菲律宾语、泰米尔语、泰卢固语、泰语、土耳其语、乌克兰语、乌尔都语、越南语、威尔士语。字幕还能翻成繁体中文。
+
+本地识别（免费、不联网）认中文、英文和中英夹杂，其他语言用云识别。软件界面有简体中文、繁體中文、English、日本語、한국어、Deutsch、Français、Español、Italiano。
+
+</details>
 
 ## 隐私
 
 - 不用注册，没有账号。
 - 用本地识别时，声音不出你的电脑。
-- 会员的云识别：声音从你的电脑直接发给 Soniox 识别，我们的服务器只发一把一次性的临时 Key。
-- 要翻译、要回答的句子发给你选的 AI 服务。自带 Key 时直接发给服务商；会员经我们的服务器转给 DeepSeek，处理完不保存。服务器只记每场用了多长时间和多少 token。
+- 会员的云识别：声音从你的电脑直接发给 Soniox，我们的服务器只发一把一次性的临时 Key。
+- 要翻译、要回答的句子发给你选的 AI 服务：自带 Key 时直接发给服务商，会员经我们的服务器转发，处理完不保存。
 - 声纹、记录、笔记和你填的 Key 都只在你的电脑上。
 
-## 开发
+## 从源码构建
 
-开发说明见[英文版](README.md#development)。
+```bash
+npm install
+npm run models   # 下载本地识别模型，170 MB，不在 git 里
+npm start
+```
+
+测试、发版、自测和代码结构见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)（英文）。
 
 ## 许可证
 
-[GPL-3.0-or-later](LICENSE)。随安装包分发的第三方模型和原生库（sherpa-onnx、ONNX Runtime、CAM++、X-ASR）的许可证见 [resources/models/NOTICE.txt](resources/models/NOTICE.txt)。
+[GPL-3.0-or-later](LICENSE)。随安装包分发的模型和原生库的许可证见 [NOTICE.txt](resources/models/NOTICE.txt)。

@@ -42,7 +42,7 @@ if (publish) {
   if (!fs.existsSync(notes)) fail(`还没写发布说明：${notes}`)
   const files = prev.files.map((f) => path.join(out, f))
   for (const f of files) if (!fs.existsSync(f)) fail(`核对过的文件不见了：${f}`)
-  run('gh', ['release', 'create', tag, '--verify-tag', '--title', `会议字幕 ${version}`, '--notes-file', notes, ...files], { stdio: 'inherit' })
+  run('gh', ['release', 'create', tag, '--verify-tag', '--title', `MeetCaption ${version}`, '--notes-file', notes, ...files], { stdio: 'inherit' })
   console.log(`已发布 ${tag}：装着旧版的正式版会在启动 30 秒内、或者 6 小时内查到并下载`)
   process.exit(0)
 }
@@ -87,9 +87,17 @@ const need = (dir, re, label) => {
   files.push(...hit)
   return hit
 }
-need(path.join(out, 'mac'), new RegExp(`^MeetCaption-${version}-mac-(arm64|x64)\\.dmg$`), ' Mac 的 dmg')
+const dmgs = need(path.join(out, 'mac'), new RegExp(`^MeetCaption-${version}-mac-(arm64|x64)\\.dmg$`), ' Mac 的 dmg')
 need(path.join(out, 'mac'), new RegExp(`^MeetCaption-${version}-mac-(arm64|x64)\\.zip(\\.blockmap)?$`), ' Mac 的 zip')
-need(path.join(out, 'win'), new RegExp(`^MeetCaption-${version}-win-x64\\.exe(\\.blockmap)?$`), ' Windows 的 exe')
+const exes = need(path.join(out, 'win'), new RegExp(`^MeetCaption-${version}-win-x64\\.exe$`), ' Windows 的 exe')
+need(path.join(out, 'win'), new RegExp(`^MeetCaption-${version}-win-x64\\.exe\\.blockmap$`), ' Windows 的 exe.blockmap')
+// 不带版本号的三份拷贝：README 和官网链到 releases/latest/download/<文件名>，点一下就开始下载，不用在文件列表里找
+// （自动更新读的 latest*.yml 只写带版本号的名字，这三份不影响它）
+for (const f of [...dmgs, ...exes]) {
+  const stable = path.join(out, path.basename(f).replace(`-${version}`, ''))
+  fs.copyFileSync(f, stable)
+  files.push(stable)
+}
 const [macYml] = need(path.join(out, 'mac'), /^latest-mac\.yml$/, ' latest-mac.yml')
 const [winYml] = need(path.join(out, 'win'), /^latest\.yml$/, ' latest.yml')
 for (const [yml, want] of [
