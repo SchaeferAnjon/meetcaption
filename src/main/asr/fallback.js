@@ -4,7 +4,7 @@ import { t } from '../i18n.js'
 // 云识别断线时本地识别接手：断开 afterMs 还没连上，就开本地识别，从云端最后一个定稿的字的终点（最多往回 60 秒）接着认；
 // 云端再连上时连接先挂着（Soniox 的 hold），等本地这一句说完（最多等 handoverWaitMs），从本地最后一句的终点交回云端补发。
 // 本地还在说的那一句作废（'drop'），云端从那里重认，所以前后不重复也不丢字。
-// 对外和别的识别一样：connect / sendAudio / close，事件 partial / final / drop / status / warn / member / fatal；
+// 对外和别的识别一样：connect / sendAudio / close，事件 partial / final / drop / status / warn / weak（本地识别跟不上）/ member / fatal；
 // status 多两种：'fallback'（本地接手了）和 'back'（换回云端了）。
 // 本地识别只认中英文：别的语言不用这一层（engine.js 决定）。
 
@@ -94,6 +94,7 @@ export class LocalFallbackASR extends EventEmitter {
       if (this.handover && !l.openKey) this.#backToCloud()
     })
     l.asr.on('warn', (msg) => !l.retired && this.emit('warn', msg))
+    l.asr.on('weak', (w) => !l.retired && this.emit('weak', w))
     l.asr.on('fatal', (e) => !l.retired && this.#localFailed(l, e))
     try {
       await l.asr.connect()

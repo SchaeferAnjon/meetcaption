@@ -219,7 +219,8 @@ export class LocalStreamASR extends EventEmitter {
         for (const e of events) this.#emit(e)
         if (!this.warned && samples != null && this.total - this.chanStart - samples > LAG_WARN_SAMPLES + this.backlog) {
           this.warned = true
-          this.emit('warn', '电脑太忙，本地识别跟不上，字幕会慢一些。可以关掉别的程序，或者在「设置 → 语音识别」里换成豆包或 OpenAI。')
+          // 引擎决定怎么提示：用本地识别的推荐换云识别或会员，云识别断线时本地接手的只说一声慢
+          this.emit('weak', { reason: 'busy', lagSeconds: Math.round((this.total - this.chanStart - samples) / core.SAMPLE_RATE) })
         }
       },
       onError: (e) => this.emit('warn', `本地识别出错：${e.message}`),

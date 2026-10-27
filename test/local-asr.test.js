@@ -102,7 +102,7 @@ test('local: 识别进程重开后 span 接着这一路的时间往后算；跟�
   const warns = []
   const status = []
   asr.on('final', (e) => got.push(e))
-  asr.on('warn', (m) => warns.push(m))
+  asr.on('weak', (m) => warns.push(m))
   asr.on('status', (s) => status.push(s))
   await asr.connect()
   const first = host.opened[0]

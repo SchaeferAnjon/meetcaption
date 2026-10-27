@@ -9,6 +9,7 @@ import { VolcStreamASR } from './asr/volc.js'
 import { LocalStreamASR, localAsrAvailable } from './asr/local.js'
 import { SonioxStreamASR } from './asr/soniox.js'
 import { LocalFallbackASR } from './asr/fallback.js'
+import { LocalWeakWatch } from './asr/localQuality.js'
 import { isCutOff, isQuestion, pickLastQuestion } from './assist/question.js'
 import { splitAnswer } from './assist/answerPrompt.js'
 import { checkFix, chunkCoverage, enhanceMessages, noDashes, parseEnhance, streamedHead, translateMessages } from './prompts.js'
@@ -195,6 +196,8 @@ export class MeetingEngine extends EventEmitter {
     this.enhRunning = new Set() // 已经发出去、还没回来的译文请求（答题时 ChatGPT 通道上要让路）
     this.enhWarned = false
     this.assistWarned = false
+    this.weakShown = false // 这一场已经提示过本地识别效果不好
+    this.weakWatch = null // 本地识别效果不好的判断（asr/localQuality.js），只在自己选了本地识别时有
     this.fake = null
     this.fakeCapture = null
     this.vp = null
@@ -310,8 +313,38 @@ export class MeetingEngine extends EventEmitter {
     if (this.state !== 'idle') this.cfg = this.#settingsFor(this.settings.get())
   }
 
-  notice(level, text, code) {
-    this.emit('notice', { level, text, code })
+  notice(level, text, code, extra) {
+    this.emit('notice', { level, text, code, ...extra })
+  }
+
+  // 本地识别效果不好要不要提示：只对自己选了本地识别的用户（会员选本地、场次用完退回本地的另有提示；云识别断线时本地接手的也不算）
+  #weakEligible() {
+    return this.cfg?.engine === 'local' && this.cfg?.plan !== 'member'
+  }
+
+  /**
+   * 本地识别效果不好（reason：busy 电脑跟不上 | language 对方说的不是中英文 | fragments 识别结果大多是零碎短句 | corrections AI 纠错改得很多），
+   * 提示换云识别或买会员。一场会（包括中间暂停再继续）只提示一次，三条里先到的那条。判断的门槛见 asr/localQuality.js。
+   */
+  #weak(reason, detail = {}) {
+    if (!this.#weakEligible()) {
+      if (reason === 'busy') this.notice('warn', t('电脑太忙，本地识别跟不上，字幕会慢一些。可以关掉别的程序。'))
+      return
+    }
+    if (this.weakShown) return
+    this.weakShown = true
+    const lang = detail.lang ? shownLang(detail.lang) : ''
+    const text =
+      reason === 'busy'
+        ? t('电脑太忙，本地识别跟不上，字幕会慢一些。关掉别的程序会好一点；换成云识别或开通会员，识别在云端做，不占这台电脑。')
+        : reason === 'language'
+          ? lang
+            ? t(`对方在说{0}，本地识别只认中文和英文，字幕会很不准。换成云识别，或者开通会员直接用。`, lang)
+            : t('对方说的好像不是中文或英文，本地识别只认中文和英文，字幕会很不准。换成云识别，或者开通会员直接用。')
+          : reason === 'fragments'
+            ? t('最近的字幕大多是零碎的几个字，本地识别在这段声音上效果不好（可能杂音大，或者声音太小）。可以试试云识别，或者开通会员。')
+            : t('AI 一直在大段改本地识别出来的字，说明识别错得比较多。可以试试云识别，或者开通会员。')
+    this.notice('warn', text, 'local-weak', { reason, ...detail })
   }
 
   /**
@@ -349,6 +382,8 @@ export class MeetingEngine extends EventEmitter {
     this.#releaseEnhance()
     this.enhWarned = false
     this.assistWarned = false
+    this.weakShown = false
+    this.weakWatch = this.#weakEligible() ? new LocalWeakWatch({ onWeak: (reason, detail) => this.#weak(reason, detail) }) : null
     this.meta.clear()
     this.askedAt.clear()
     this.answered.clear()
@@ -376,7 +411,9 @@ export class MeetingEngine extends EventEmitter {
       this.sources = [...(classMic ? [] : ['system']), ...(withMic ? ['mic'] : [])]
       this.hotwords = hotwordList(s, extraKeywords)
       this.#buildPipelines(s)
-      if (needsMultilingual(s.language) && s.engine !== 'openai' && s.engine !== 'soniox')
+      // 自己选了本地识别、对方语言是外语：换成带「换云识别」「买会员」的提示（见 #weak）；豆包和会员退回本地的照旧
+      const weakLang = needsMultilingual(s.language) && this.#weakEligible()
+      if (needsMultilingual(s.language) && s.engine !== 'openai' && s.engine !== 'soniox' && !weakLang)
         warnings.push({ text: t(`{0}只认中文和英文，听不懂{1}。在「设置 → 语音识别」里换成 Soniox 或 OpenAI 再开始。`, s.engine === 'local' ? t('本地识别') : t('豆包'), shownLang(s.language)), code: 'asr-language' })
       const vpLoad = withMic ? this.#loadVoiceprint(warnings) : null
       await Promise.all([...this.pipelines.values()].map((p) => p.provider.connect()))
@@ -393,6 +430,7 @@ export class MeetingEngine extends EventEmitter {
       this.#setState('running')
       this.#warmUp(s)
       for (const w of warnings) this.notice('warn', w.text, w.code)
+      if (weakLang) this.#weak('language', { lang: s.language, source: 'setting' })
       this.#startWatchdog()
       this.#startSilenceFiller()
     } catch (err) {
@@ -709,6 +747,7 @@ export class MeetingEngine extends EventEmitter {
     })
     provider.on('final', ({ key, text, span }) => {
       debug(source, 'FINAL', key.slice(-6), JSON.stringify(text), span ? `${Math.round(span.start)}-${Math.round(span.end)}ms` : '')
+      if (this.#defaultWho(source) === 'other') this.weakWatch?.final(text)
       this.#onText(source, key, text, true, span)
     })
     // 识别服务改了断句，之前的未定稿句子作废（豆包）：从实时记录里拿掉
@@ -725,6 +764,7 @@ export class MeetingEngine extends EventEmitter {
       if (st === 'back') this.notice('info', t('网络恢复了，已换回云识别'), 'reconnected')
     })
     provider.on('warn', (msg) => this.notice('warn', msg))
+    provider.on('weak', (w) => this.#weak(w.reason, w))
     // 会员服务器停了识别（场次用完、没说话自动暂停）：主进程决定暂停还是换本地识别
     provider.on('member', (type) => this.emit('member', { type, source }))
     provider.on('fatal', (e) => {
@@ -1262,6 +1302,7 @@ export class MeetingEngine extends EventEmitter {
           if (job.gen !== this.gen) return this.#applyToStored(job.sessionId, job.text, r)
           this.enh.set(job.text, r)
           this.enhEarly.delete(job.text)
+          if (job.correct) this.weakWatch?.corrected(job.text, r.fixed ? checkFix(job.text, r.fixed) : null)
           this.#applyEnhance(job.text, r)
           // 网络好了：收回之前的失败提示，再失败时还会提示
           if (this.enhWarned) {
