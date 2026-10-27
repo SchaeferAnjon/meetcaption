@@ -42,7 +42,7 @@ if (publish) {
   if (!fs.existsSync(notes)) fail(`还没写发布说明：${notes}`)
   const files = prev.files.map((f) => path.join(out, f))
   for (const f of files) if (!fs.existsSync(f)) fail(`核对过的文件不见了：${f}`)
-  run('gh', ['release', 'create', tag, '--verify-tag', '--title', `会议字幕 ${version}`, '--notes-file', notes, ...files], { stdio: 'inherit' })
+  run('gh', ['release', 'create', tag, '--verify-tag', '--title', `MeetCaption ${version}`, '--notes-file', notes, ...files], { stdio: 'inherit' })
   console.log(`已发布 ${tag}：装着旧版的正式版会在启动 30 秒内、或者 6 小时内查到并下载`)
   process.exit(0)
 }
