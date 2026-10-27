@@ -515,7 +515,7 @@ function clearNotices() {
 }
 
 // 只在记录进行中才有意义的提示（没听到声音、识别在重连）：记录结束就收掉，不带到结束页和纪要页；出错原因这类留着
-const LIVE_NOTICES = new Set(['no-audio', 'mac-no-audio', 'no-audio-f2f', 'no-mic-audio', 'mac-permission', 'reconnecting', 'reconnected'])
+const LIVE_NOTICES = new Set(['no-audio', 'mac-no-audio', 'no-audio-f2f', 'no-mic-audio', 'mac-permission', 'reconnecting', 'reconnected', 'local-weak'])
 
 function clearLiveNotices() {
   const before = notices.length
@@ -569,6 +569,9 @@ function onEngineNotice(n) {
       return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('去设置'), run: aiSettings }] })
     case 'asr-language':
       return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('去换识别服务'), run: () => openSettings('asr') }] })
+    // 本地识别效果不好：换云识别（设置 → 语音识别）或买会员（设置 → 会员）
+    case 'local-weak':
+      return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('换云识别'), run: () => openSettings('asr') }, { label: t('买会员'), run: () => openSettings('member') }] })
     case 'voiceprint':
       return addNotice('warn', n.text, { code: n.code, actions: [{ label: t('声纹设置'), run: () => openSettings('voiceprint') }] })
     case 'save-dir':
