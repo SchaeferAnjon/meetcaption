@@ -61,11 +61,13 @@ const ISOLATE = `html,body{background:transparent!important;overflow:hidden!impo
   #stabs,.stage-note{display:none!important}`;
 
 async function recordGroup(browser, site, lang, index, tmp) {
-  const ctx = await browser.newContext({ viewport: { width: 1000, height: 720 }, colorScheme: 'light', deviceScaleFactor: 1 });
+  const ctx = await browser.newContext({ viewport: { width: 1000, height: 800 }, colorScheme: 'light', deviceScaleFactor: 1 });
   const page = await ctx.newPage();
   await page.goto(`${site}/?lang=${lang}`, { waitUntil: 'networkidle' });
   await page.addStyleTag({ content: ISOLATE });
-  const box = await page.evaluate(() => { const r = document.querySelector('#stage').getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }; });
+  // The stage is 640 x 400 scaled to fit its box; wait for the fit, then crop the whole stage.
+  await page.waitForTimeout(500);
+  const box = await page.evaluate(() => { const r = document.querySelector('#stage').getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round((r.width * 400) / 640) }; });
   // Log when each scene is built (Date.now(), the same clock as the screencast frame timestamps).
   await page.evaluate(() => {
     window.__scenes = [];
@@ -87,7 +89,7 @@ async function recordGroup(browser, site, lang, index, tmp) {
     fs.writeFileSync(path.join(dir, name), Buffer.from(f.data, 'base64'));
     frames.push({ name, t: f.metadata.timestamp * 1000 });
   });
-  await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1, maxWidth: 1000, maxHeight: 720 });
+  await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1, maxWidth: 1000, maxHeight: 800 });
   await page.waitForTimeout(300);
   recording = true;
   // Clicking the tab restarts the group from its first scene.
