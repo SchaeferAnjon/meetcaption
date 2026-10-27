@@ -63,6 +63,8 @@ export class Member extends EventEmitter {
     this.hb = null
     this.poll = null
     this.error = null
+    this.refreshing = null // 正在问的 refresh()，同时来的几次合成一次
+    this.checkedAt = 0 // 上次问服务器场次的时间
   }
 
   #read() {
@@ -131,15 +133,25 @@ export class Member extends EventEmitter {
     }
   }
 
-  async refresh() {
-    try {
-      const token = await this.ensureDevice()
-      this.#setInfo(await this.#call('GET', '/v1/license/status', { token }))
-    } catch (e) {
-      this.error = e.message
-      this.emit('update', this.snapshot())
-    }
-    return this.snapshot()
+  /**
+   * 向服务器要最新的场次（退款、别的电脑用掉了都只有服务器知道）。连不上就留着旧的数据。
+   * maxAge：有数据且上次问过不到这么久就不再问（回到主窗口、打开会员页时用，别每次切窗口都打服务器）。
+   */
+  async refresh({ maxAge = 0 } = {}) {
+    if (this.refreshing) return this.refreshing
+    if (maxAge && this.info && Date.now() - this.checkedAt < maxAge) return this.snapshot()
+    this.refreshing = (async () => {
+      try {
+        const token = await this.ensureDevice()
+        this.#setInfo(await this.#call('GET', '/v1/license/status', { token }))
+      } catch (e) {
+        this.error = e.message
+        this.emit('update', this.snapshot())
+      }
+      this.checkedAt = Date.now()
+      return this.snapshot()
+    })().finally(() => (this.refreshing = null))
+    return this.refreshing
   }
 
   async activate(code) {
@@ -197,7 +209,14 @@ export class Member extends EventEmitter {
   /** 开始记录前调：扣一场（或接上 30 分钟内断开的那场）。没余额抛 code=no-balance。 */
   async startSession() {
     const token = await this.ensureDevice()
-    const r = await this.#call('POST', '/v1/session/start', { token })
+    let r
+    try {
+      r = await this.#call('POST', '/v1/session/start', { token })
+    } catch (e) {
+      // 服务器说没场次了（退款、别的电脑用掉了）：马上把卡片和会员页对齐成服务器的数，别跟弹出的横幅说的不一样
+      if (e.code === 'no-balance') await this.refresh()
+      throw e
+    }
     this.session = { token: r.session, sessionId: r.sessionId, remainingMs: r.remainingMs, charged: r.charged, exhausted: false, idle: false }
     // 接上 30 分钟内断开的同一场：开始时间还是那一场最早的，断开前记的那段会议也算这一场
     const same = this.state.last?.token === r.session

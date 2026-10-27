@@ -955,6 +955,8 @@ function go(name, { focusNav = false } = {}) {
   if (id === 'mic') refreshMics()
   if (id === 'permissions') refreshPerms()
   if (id === 'ai') refreshModels()
+  // 会员页：跟服务器对一次场次（主进程 60 秒内问过、或用的是自带 Key 就不问）
+  if (id === 'member') P.call('memberRefresh')
   if (id === 'assist') {
     refreshLlm()
     refreshScreen()
@@ -1057,6 +1059,7 @@ async function boot() {
     if (current === 'assist') refreshScreen()
     if (current === 'mic') refreshMics()
     if (current === 'permissions') refreshPerms()
+    if (current === 'member') P.call('memberRefresh')
   })
 }
 

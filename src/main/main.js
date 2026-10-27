@@ -806,6 +806,7 @@ function createControl() {
   controlWin = uiWindow({ ...CONTROL_SIZE, minWidth: 820, minHeight: 560, title: t('会议字幕') })
   controlWin.loadFile(path.join(root, 'renderer/control/index.html'))
   controlWin.once('ready-to-show', () => bringToFront(controlWin))
+  controlWin.on('focus', () => syncMember())
   controlWin.webContents.once('did-finish-load', () =>
     setTimeout(() => {
       rootNotice()
@@ -1009,6 +1010,16 @@ function watchMemberIdle() {
     if (!member?.session || engine.state !== 'running' || engine.paused) return
     if (Date.now() - heardAt > MEMBER_IDLE_MS) onMemberStop({ type: 'idle' }).catch((e) => console.error('[member]', e))
   }, 30_000).unref?.()
+}
+
+/**
+ * 回到主窗口、打开会员页或收费页时跟服务器对一次场次（退款、别的电脑用掉了只有服务器知道）；
+ * 60 秒内问过就不再问，自带 Key 时不问。
+ */
+const MEMBER_SYNC_MS = 60_000
+function syncMember() {
+  if (!member || settings.get().plan !== 'member') return member?.snapshot() ?? null
+  return member.refresh({ maxAge: MEMBER_SYNC_MS })
 }
 
 /** 把主窗口叫出来、打开收费页。场次用完时（字幕不停，照常用本地识别记）先选好单买 1 场。 */
@@ -1766,7 +1777,7 @@ function wireIpc() {
       return { ok: false, error: e.message, code: e.code }
     }
   }
-  ipcMain.handle('member:refresh', memberCall(() => member.refresh()))
+  ipcMain.handle('member:refresh', memberCall(() => syncMember()))
   ipcMain.handle('member:activate', memberCall((code) => member.activate(String(code ?? ''))))
   ipcMain.handle('member:unbind', memberCall(() => member.unbind()))
   ipcMain.handle(

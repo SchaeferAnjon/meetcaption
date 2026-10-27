@@ -337,7 +337,8 @@ function openPricing({ pack } = {}) {
   document.querySelector('.app')?.append(backdrop) ?? document.body.append(backdrop)
   document.addEventListener('keydown', onKey, true)
   requestAnimationFrame(() => backdrop.classList.add('is-open'))
-  if (state.settings?.plan === 'member' && !state.member?.info) call('memberRefresh')
+  // 打开收费页时跟服务器对一次场次（主进程 60 秒内问过就不再问）
+  if (state.settings?.plan === 'member') call('memberRefresh')
   pricing = { close, render }
   return pricing
 }

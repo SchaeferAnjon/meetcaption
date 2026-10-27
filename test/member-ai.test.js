@@ -267,3 +267,81 @@ test('自带 Key 没填：说没填 Key，指到「设置 → 账号与 AI」（
   assert.equal(e.code, 'not-logged-in')
   assert.equal(e.message, '还没配置 AI 服务的 Key（设置 → 账号与 AI）')
 })
+
+// 买过 11 场的假服务器：余额能改（退款、别的电脑用掉）；没场次时开会回 no-balance
+function paidServer(start = 11) {
+  const calls = []
+  const srv = { balance: start, calls }
+  const info = () => ({ kind: 'paid', code: 'MC-TEST', balance: srv.balance, devices: 1, recent: [] })
+  const routes = {
+    '/v1/trial/start': () => ({ status: 200, body: { token: 'mcd_1', ...info() } }),
+    '/v1/license/status': () => ({ status: 200, body: info() }),
+    '/v1/session/start': () =>
+      srv.balance > 0
+        ? ((srv.balance -= 1), { status: 200, body: { session: 'mcs_1', sessionId: 1, remainingMs: 7200_000, charged: 1, balance: srv.balance } })
+        : { status: 402, body: { error: { code: 'no-balance', message: '场次用完了' } } },
+    '/v1/session/end': () => ({ status: 200, body: { balance: srv.balance } }),
+  }
+  srv.f = async (url, init) => {
+    const p = new URL(url).pathname
+    calls.push(p)
+    const r = routes[p]()
+    return { ok: r.status === 200, status: r.status, json: async () => r.body }
+  }
+  return srv
+}
+
+test('退款后服务器余额变 0：开会被拒（no-balance）时马上重新拉一次，卡片显示 0 场，跟横幅一致', async () => {
+  const srv = paidServer(11)
+  const m = make(tmpFile(), srv.f)
+  await m.refresh()
+  assert.equal(m.info.balance, 11)
+  const seen = []
+  m.on('update', (s) => seen.push(s.info?.balance))
+  srv.balance = 0 // 后台退了款
+  const err = await m.startSession().catch((e) => e)
+  assert.equal(err.code, 'no-balance')
+  assert.equal(m.info.balance, 0)
+  assert.equal(seen.at(-1), 0, '界面收到了 0 场')
+  assert.equal(srv.calls.filter((p) => p === '/v1/license/status').length, 2)
+  m.stop()
+})
+
+test('开会成功：余额用服务器这次回的（别的电脑用掉了几场也对得上）', async () => {
+  const srv = paidServer(11)
+  const m = make(tmpFile(), srv.f)
+  await m.refresh()
+  srv.balance = 4 // 别的电脑用掉了 7 场
+  await m.startSession()
+  assert.equal(m.info.balance, 3)
+  await m.endSession()
+  m.stop()
+})
+
+test('回到主窗口、打开会员页的刷新有节流：60 秒内只问一次服务器，同时来的合成一次，连不上留着旧数据', async () => {
+  const srv = paidServer(11)
+  const m = make(tmpFile(), srv.f)
+  const status = () => srv.calls.filter((p) => p === '/v1/license/status').length
+  await Promise.all([m.refresh({ maxAge: 60_000 }), m.refresh({ maxAge: 60_000 })])
+  assert.equal(status(), 1, '还没数据时要问；同时来的两次只问一次')
+  srv.balance = 0
+  const s = await m.refresh({ maxAge: 60_000 })
+  assert.equal(status(), 1, '60 秒内不再问')
+  assert.equal(s.info.balance, 11)
+  m.checkedAt = Date.now() - 61_000
+  await m.refresh({ maxAge: 60_000 })
+  assert.equal(status(), 2)
+  assert.equal(m.info.balance, 0)
+
+  // 断网：保持旧数据，只记一句错误（界面不弹窗）
+  const real = m.fetch
+  m.fetch = async () => {
+    throw new TypeError('fetch failed')
+  }
+  m.checkedAt = 0
+  const off = await m.refresh({ maxAge: 60_000 })
+  assert.equal(off.info.balance, 0)
+  assert.match(off.error, /连不上会员服务器/)
+  m.fetch = real
+  m.stop()
+})
