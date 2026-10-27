@@ -68,6 +68,56 @@ test('试用开完唯一一场：会后 AI 用这一场的票（不是空 Key）
   m.stop()
 })
 
+test('会后的票只给那一场自己用：重做以前的会议不记在它上面，试用用完没买过就做不了（2026-10-27 用户定）', async () => {
+  const { f } = trialServer()
+  const m = make(tmpFile(), f)
+  await m.refresh()
+  const lastWeek = Date.now() - 5 * 24 * 3600_000
+  await m.startSession()
+  const thisOne = Date.now() // 本地会话在服务器开场之后才建
+  // 会中：这一场的翻译、答题用这一场的票；以前那节课的纪要不用
+  assert.equal(m.aiKey(), 'mcs_1')
+  assert.equal(m.aiKey(thisOne), 'mcs_1')
+  assert.equal(m.noAiFor(lastWeek), true, '试用余额 0：会中重做以前的课也不行')
+  await m.endSession()
+  assert.equal(compatConfig(memberSettings(S, m, thisOne)).key, 'mcs_1', '刚结束那场自己的纪要照常')
+  assert.equal(m.noAiFor(thisOne), false)
+  assert.equal(m.noAiFor(lastWeek), true)
+  assert.equal(compatConfig(memberSettings(S, m, lastWeek)).key, '')
+  assert.equal(llmStatus(memberSettings(S, m, lastWeek)).ready, false)
+  assert.match(m.noAiReason(lastWeek), /试用场次用完/)
+  assert.equal(m.noAi, false, '不说哪一场时（侧栏的 AI 状态）还按有票算')
+
+  // 买过的：以前的会议走设备令牌（每天的会后额度），这一场自己的还用这一场的票
+  const paid = trialServer({ kind: 'paid' })
+  const p = make(tmpFile(), paid.f)
+  await p.refresh()
+  await p.startSession()
+  const mine = Date.now()
+  await p.endSession()
+  assert.equal(p.aiKey(lastWeek), 'mcd_1')
+  assert.equal(p.noAiFor(lastWeek), false)
+  assert.equal(p.aiKey(mine), 'mcs_1')
+  m.stop()
+  p.stop()
+})
+
+test('断线 30 分钟内接上同一场：断开前那段记录也还算这一场', async () => {
+  const { f } = trialServer({ kind: 'paid' })
+  const m = make(tmpFile(), f)
+  await m.refresh()
+  await m.startSession()
+  const before = Date.now()
+  const st = m.state.last.startedAt
+  m.stop() // 崩溃
+  await new Promise((r) => setTimeout(r, 15))
+  await m.startSession() // 服务器回的还是 mcs_1
+  assert.equal(m.state.last.startedAt, st)
+  await m.endSession()
+  assert.equal(m.aiKey(before), 'mcs_1')
+  m.stop()
+})
+
 test('没走到结束就退出（崩溃）：按开始时间算 24 小时', async () => {
   const file = tmpFile()
   const { f } = trialServer()

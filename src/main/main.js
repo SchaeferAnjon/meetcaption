@@ -97,14 +97,16 @@ const toAnswer = (ch, p) => send(answerWin, ch, p)
 const senderWin = (e) => BrowserWindow.fromWebContents(e.sender) ?? controlWin
 
 // 实际用的设置：会员模式下识别和 AI 换成经我们服务器的通道（设置窗口看到的还是用户自己存的）
-const effective = (s = settings.get()) => (member ? memberSettings(s, member) : s)
+// at：这次 AI 请求是给哪次记录的（本地会话的开始时间）；会员的会后凭据只给那一场自己用
+const effective = (s = settings.get(), at = null) => (member ? memberSettings(s, member, at) : s)
 
 // 翻译、纪要、答题统一走 A 模块的 complete；每次取最新设置，切换 AI 服务不用重建什么。会员通道回 401 换凭据再试一次
-const llm = (o) => withMemberAuth(member, effective, (s) => complete(s, chatgptAuth, o))
-const aiStatus = (s = effective()) => {
+const llm = ({ sessionStartedAt = null, ...o }) =>
+  withMemberAuth(member, () => effective(settings.get(), sessionStartedAt), (s) => complete(s, chatgptAuth, o))
+const aiStatus = (s = effective(), at = null) => {
   const st = llmStatus(s, chatgptAuth)
   // 会员没有 Key 可填：AI 用不了时说是场次的事
-  return s.llmProvider === 'member' && member?.noAi ? { ...st, ready: false, reason: member.noAiReason() } : st
+  return s.llmProvider === 'member' && (at == null ? member?.noAi : member?.noAiFor(at)) ? { ...st, ready: false, reason: member.noAiReason(at) } : st
 }
 
 function vpProfile() {
@@ -2076,7 +2078,7 @@ app.whenReady().then(async () => {
     assistant,
     voiceprint: { profile: vpProfile, loadModel: () => loadVoiceprintScorer() },
   })
-  summarizer = new Summarizer({ store, projects, llm, aiStatus: () => aiStatus(), modelName: (m) => resolveModel(effective(), m), loadImage: slideDataUrl, renderPdf })
+  summarizer = new Summarizer({ store, projects, llm, aiStatus: (at) => aiStatus(effective(settings.get(), at), at), modelName: (m) => resolveModel(effective(), m), loadImage: slideDataUrl, renderPdf })
 
   if (useFakes) engine.useFakeSources(fakeFiles)
 

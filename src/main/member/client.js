@@ -199,7 +199,9 @@ export class Member extends EventEmitter {
     const token = await this.ensureDevice()
     const r = await this.#call('POST', '/v1/session/start', { token })
     this.session = { token: r.session, sessionId: r.sessionId, remainingMs: r.remainingMs, charged: r.charged, exhausted: false, idle: false }
-    this.state.last = { token: r.session, startedAt: Date.now(), endedAt: null }
+    // 接上 30 分钟内断开的同一场：开始时间还是那一场最早的，断开前记的那段会议也算这一场
+    const same = this.state.last?.token === r.session
+    this.state.last = { token: r.session, startedAt: same ? this.state.last.startedAt : Date.now(), endedAt: null }
     this.#write()
     this.running = true
     this.info = this.info ? { ...this.info, balance: r.balance } : this.info
@@ -278,15 +280,30 @@ export class Member extends EventEmitter {
     }
   }
 
-  // 最近一场的票，结束 24 小时内才给
-  #ticket(now = Date.now()) {
+  // 这次记录（本地会话的开始时间 at）是不是最近那一场：开始时间落在那一场的起止之间（本地会话在服务器开场之后几秒才建）
+  #mine(at, now = Date.now()) {
     const l = this.state.last
-    return l?.token && now - (l.endedAt ?? l.startedAt) < AI_AFTER_END_MS ? l.token : null
+    return Boolean(l?.token) && at >= l.startedAt - 5000 && at <= (l.endedAt ?? now)
   }
 
-  /** AI 用哪个凭据：进行中或 24 小时内结束那场的票；没有就用设备令牌（服务器给每天的会后整理额度）。 */
-  aiKey() {
-    return this.session?.token ?? this.#ticket() ?? this.state.token ?? ''
+  // 最近一场的票，结束 24 小时内才给。给了 at 就只给那一场自己用：重做以前的会议不记在这一场上，走设备令牌（2026-10-27 用户定）
+  #ticket(at = null, now = Date.now()) {
+    const l = this.state.last
+    if (!l?.token || now - (l.endedAt ?? l.startedAt) >= AI_AFTER_END_MS) return null
+    return at == null || this.#mine(at, now) ? l.token : null
+  }
+
+  // 进行中的这一场管不管这次请求：没给 at（会中的翻译、答题）或者 at 就是这一场
+  #live(at) {
+    return Boolean(this.session) && (at == null || this.#mine(at))
+  }
+
+  /**
+   * AI 用哪个凭据：进行中或 24 小时内结束那场的票；没有就用设备令牌（服务器给每天的会后整理额度）。
+   * at：这次请求是给哪次记录的（本地会话的开始时间，纪要、课堂笔记会给）；不是最近那一场的就用设备令牌。
+   */
+  aiKey(at = null) {
+    return (this.#live(at) ? this.session.token : null) ?? this.#ticket(at) ?? this.state.token ?? ''
   }
 
   /**
@@ -294,14 +311,19 @@ export class Member extends EventEmitter {
    * 场次不够、这一场退回了本地识别（fallback）时也关着：上一场的票留给上一场做纪要，不拿来翻译这一场。
    */
   get noAi() {
-    if (this.session) return Boolean(this.session.exhausted)
+    return this.noAiFor(null)
+  }
+
+  /** 给某次记录做纪要、课堂笔记时 AI 能不能用（at 同 aiKey）：试用用完、没买过时，只有最近那一场 24 小时内还能做。 */
+  noAiFor(at) {
+    if (this.#live(at)) return Boolean(this.session.exhausted)
     if (!this.info || this.info.balance > 0 || this.info.kind === 'paid') return false
-    return this.fallback || !this.#ticket()
+    return (at == null && this.fallback) || !this.#ticket(at)
   }
 
   /** AI 用不了时给用户看的原因（会员没有 Key 可填，不能说「没填 Key」）。 */
-  noAiReason() {
-    return this.session?.exhausted ? t('这一场的会员时间用完了，翻译和答题先关着') : t('试用场次用完了，买了场次 AI 才能用')
+  noAiReason(at = null) {
+    return this.#live(at) && this.session.exhausted ? t('这一场的会员时间用完了，翻译和答题先关着') : t('试用场次用完了，买了场次 AI 才能用')
   }
 
   /**
@@ -331,7 +353,7 @@ export class Member extends EventEmitter {
  * 会员模式下实际用的设置：识别换成 Soniox，应用拿场次票向我们的服务器换临时 Key 直连（选了本地识别、或场次用完退回时用本地），
  * AI 换成会员通道。只在主进程内部用；设置窗口看到的还是用户自己存的设置。
  */
-export function memberSettings(s, m) {
+export function memberSettings(s, m, at = null) {
   if (s.plan !== 'member') return s
   const local = s.memberAsr === 'local' || m.fallback || !m.session
   return {
@@ -343,7 +365,7 @@ export function memberSettings(s, m) {
     llmFastModel: 'deepseek-flash',
     llmSummaryModel: 'deepseek-flash',
     llmAnswerModel: 'deepseek-flash',
-    llmKeys: { ...s.llmKeys, member: m.noAi ? '' : m.aiKey() },
+    llmKeys: { ...s.llmKeys, member: (at == null ? m.noAi : m.noAiFor(at)) ? '' : m.aiKey(at) },
   }
 }
 

@@ -648,6 +648,7 @@ test('Summarizer: class sessions get class notes with slides as images, homework
   assert.match(content[0].text, /额外要求：多给例子/)
   assert.equal(content.at(-1).dataUrl, `data:image/jpeg;base64,${Buffer.from('img7').toString('base64')}`)
   assert.match(calls[1].system, /课堂助理/)
+  assert.ok(calls.every((c) => c.sessionStartedAt === s.startedAt), '每次 AI 请求都说明是给哪次记录的')
   assert.equal(r.items.length, 1)
   assert.equal(r.items[0].projectId, ml.id) // 全部归到这节课的项目
   assert.equal(r.items[0].owner, 'me')

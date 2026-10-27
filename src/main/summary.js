@@ -58,7 +58,7 @@ export function dropMissingImages(markdown, dir) {
 export class Summarizer extends EventEmitter {
   /**
    * store：SessionStore；projects：ProjectStore；llm(opts) → Promise<string>（complete 门面）；
-   * aiStatus() → { ready, reason }；modelName(alias) → 实际模型名（记进 summary.model）。
+   * aiStatus(at) → { ready, reason }（at 是这次记录的开始时间）；modelName(alias) → 实际模型名（记进 summary.model）。
    */
   constructor({ store, projects, llm, aiStatus, modelName = (m) => m, loadImage = readImage, renderPdf = null }) {
     super()
@@ -76,8 +76,9 @@ export class Summarizer extends EventEmitter {
     this.jobs.get(id)?.abort()
   }
 
-  #ready() {
-    const st = this.aiStatus()
+  // session：这次是给哪次记录做的（会员的会后凭据只给那一场自己用，见 member/client.js aiKey）
+  #ready(session) {
+    const st = this.aiStatus(session.startedAt)
     // 会员的原因里已经带了去哪改；没有 Key 可填，不能指到「账号与 AI」
     if (!st.ready) throw new Error(st.provider === 'member' ? st.reason : t(`{0}（设置 → 账号与 AI）`, st.reason))
   }
@@ -119,8 +120,8 @@ export class Summarizer extends EventEmitter {
 
   /** 生成纪要（课堂会议是课堂笔记）和待办。→ { markdown, items, title, itemsError } */
   async generate(id, extraAsk) {
-    this.#ready()
     const session = this.store.load(id)
+    this.#ready(session)
     const isClass = session.mode === 'class'
     if (!session.segments.some((x) => x.text)) throw new Error(isClass ? t('这节课没有识别到内容') : t('这场会议没有识别到内容'))
     const ctrl = this.#begin(id)
@@ -156,6 +157,7 @@ export class Summarizer extends EventEmitter {
           await this.llm({
             model: 'smart',
             effort: 'low',
+            sessionStartedAt: session.startedAt,
             signal: ctrl.signal,
             system: system.content,
             messages: [{ role: 'user', content }],
@@ -184,8 +186,8 @@ export class Summarizer extends EventEmitter {
 
   /** 只重新提取待办（纪要不动）。 */
   async extract(id) {
-    this.#ready()
     const s = this.store.load(id)
+    this.#ready(s)
     if (!s.summary?.markdown && !s.segments.some((x) => x.text)) throw new Error(t('这场会议没有识别到内容'))
     const ctrl = this.#begin(id)
     try {
@@ -197,8 +199,8 @@ export class Summarizer extends EventEmitter {
 
   /** 只重新做图文版课堂笔记（课堂笔记的 Markdown 不动）。→ { html, htmlError } */
   async buildHtml(id) {
-    this.#ready()
     const s = this.store.load(id)
+    this.#ready(s)
     if (!s.summary?.markdown) throw new Error(t('还没生成课堂笔记'))
     const ctrl = this.#begin(id)
     try {
@@ -219,7 +221,7 @@ export class Summarizer extends EventEmitter {
     const sections = outlineSections(markdown)
     try {
       const [system, user] = slideMapMessages({ session, markdown, sections, materialsText: text })
-      const raw = await this.llm({ model: 'smart', effort: 'low', json: true, signal, timeoutMs: 180_000, system: system.content, messages: [user] })
+      const raw = await this.llm({ model: 'smart', effort: 'low', json: true, signal, timeoutMs: 180_000, sessionStartedAt: session.startedAt, system: system.content, messages: [user] })
       return { slideMap: parseSlideMap(raw, { pages, sections }), pages, error: null }
     } catch (e) {
       if (signal.aborted) throw e
@@ -250,7 +252,7 @@ export class Summarizer extends EventEmitter {
       const [system, user] = isClass
         ? classTodoMessages({ session, summary: markdown, project, liveNotes: session.liveNotes ?? null })
         : todoMessages({ session, summary: markdown, project, projects })
-      const raw = await this.llm({ model: 'smart', effort: 'low', json: true, signal, timeoutMs: 120_000, system: system.content, messages: [user] })
+      const raw = await this.llm({ model: 'smart', effort: 'low', json: true, signal, timeoutMs: 120_000, sessionStartedAt: session.startedAt, system: system.content, messages: [user] })
       // 课堂的作业全部归到这节课的项目；提取时没给日期、纪要里写明了截止日期的，用纪要的日期补上
       parsed = parseTodoItems(raw, { projects: isClass ? [] : projects, fallbackProjectId: project?.id ?? INBOX_ID, startedAt: session.startedAt, summary: markdown })
       if (isClass) for (const x of parsed.items) x.owner ??= 'me'
