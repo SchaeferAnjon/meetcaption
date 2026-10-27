@@ -106,12 +106,13 @@ test('enhance: 429 backs off for all sentences, sends one probe at a time, and f
   let peak = 0
   const llm = async (o) => {
     if (o.model === 'smart') return '{}'
-    calls.push({ at: Date.now(), down })
+    const wasDown = down // 按发出那一刻算：限流时发出的请求，晚回来也是 429，不然恢复后补发的次数会偶尔少一次
+    calls.push({ at: Date.now(), down: wasDown })
     active++
     peak = Math.max(peak, active)
     await tick(5)
     active--
-    if (down) throw new LlmError('rate-limit', 'AI 服务额度用完或太频繁（429）：busy', { status: 429, retryable: true })
+    if (wasDown) throw new LlmError('rate-limit', 'AI 服务额度用完或太频繁（429）：busy', { status: 429, retryable: true })
     return `译文：${sentenceOf(o)}`
   }
   const ctx = harness(t, { llm })
