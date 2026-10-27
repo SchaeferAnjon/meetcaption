@@ -1066,3 +1066,28 @@ test('engine: voiceprint scoring runs outside the main thread: segments settle o
   assert.equal(last('mic:m3').who, 'me')
   assert.equal(ctx.session().segments.find((x) => x.id === 'mic:m3').who, 'me')
 })
+
+test('engine: a question in the middle of a long segment is answered by itself, without the rest of the segment or the segment before it', async (t) => {
+  const ctx = await start(await setup(), t)
+  const [sys] = ctx.providers
+  // 2026-10-26 Intel 实测：本地识别一段定稿十几秒，对方问完不停顿接着说了三句，整场没出一张卡
+  sys.emit('final', { key: 'a', text: 'The budget is forty thousand dollars, split between search ads and short video ads. Now I have a question for you.' })
+  sys.emit('final', {
+    key: 'b',
+    text: "How would you reduce the payment timeout without changing the payment provider? Please think about retries, caching, and the user interface. Let's move on to hiring. We have two open positions, one backend engineer and one product designer.",
+  })
+  // 自问自答的长段不触发
+  sys.emit('final', { key: 'c', text: 'Why does this matter? Because the baseline is weak. We fixed that. Then we reran everything.' })
+  await tick()
+  const last = (id) => ctx.segs.filter((s) => s.id === id).at(-1)
+  assert.ok(!last('system:a').question)
+  assert.equal(last('system:b').question, true)
+  assert.ok(!last('system:c').question)
+  assert.equal(ctx.asks.length, 1)
+  const c = ctx.asks[0].messages[0].content
+  assert.match(c, /对方的问题：How would you reduce the payment timeout without changing the payment provider\? Please think about retries, caching, and the user interface\./)
+  assert.doesNotMatch(c, /hiring|铺垫/)
+  assert.match(c, /最近的对话：\n对方：The budget is forty thousand/, '前一段只作为上文，不进问题')
+  assert.equal(ctx.assistant.list()[0].question, 'How would you reduce the payment timeout without changing the payment provider? Please think about retries, caching, and the user interface.')
+  assert.equal(ctx.session().answers[0].segId, 'system:b')
+})

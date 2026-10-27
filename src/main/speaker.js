@@ -1,6 +1,6 @@
 // 麦克风这一路的两个判断：一段话是不是外放漏进来的对方的声音（和对方最近的字幕比词重合），
 // 以及对方连着说的几段怎么拼成一个完整的问题（问题前面的铺垫句也带上）。
-import { dropSmallTalk } from './assist/question.js'
+import { dropSmallTalk, questionPart } from './assist/question.js'
 
 // 汉字一个字一个词，其他文字按连续的字母数字切
 const TOKEN = /\p{Script=Han}|[^\s\p{P}\p{S}\p{Script=Han}]+/gu
@@ -54,7 +54,10 @@ export function isCrosstalk(text, others, { minUni = 0.6, minBi = 0.4 } = {}) {
  */
 export function questionRun(ordered, seg, { gapMs = 4000, maxSegs = 3, maxChars = 600, askedAt = new Map(), answered = () => false, reaskMs = 8000, now = Date.now(), endedAt = (x) => x.endedAt } = {}) {
   const head = dropSmallTalk(seg.text)
-  const run = [head ? { ...seg, text: head } : seg]
+  // 提问落在一段话中间、后面还接着说了别的：只答那一句，前面的话不当铺垫带上（questionPart）
+  const asked = head ? questionPart(head) : ''
+  const run = [head ? { ...seg, text: asked } : seg]
+  if (head && asked !== head) return run
   let chars = run[0].text.length
   let next = seg
   const i = ordered.findIndex((x) => x.id === seg.id)
