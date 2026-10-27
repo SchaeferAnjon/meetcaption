@@ -3,7 +3,7 @@ import { SpeechGate } from './audio/gate.js'
 import { MacSystemAudio, macTapSupported } from './audio/macTap.js'
 import { AudioRing } from './audio/ring.js'
 import { WavCapture } from './audio/wav.js'
-import { pcm16ToFloat32, resample, scoreSegment } from './audio/voiceprint.js'
+import { cosine, pcm16ToFloat32, resample, scoreSegment } from './audio/voiceprint.js'
 import { OpenAIRealtimeASR } from './asr/openai.js'
 import { VolcStreamASR } from './asr/volc.js'
 import { LocalStreamASR, localAsrAvailable } from './asr/local.js'
@@ -31,7 +31,7 @@ const LIVE_KEEP = 300
 const PENDING = Symbol('pending')
 const DEFER_MS = 1500 // 麦克风段不像我、对方那一路又还在出字：等对方字幕跟上再判串音
 const SCORE_STEP_MS = 1500 // 说话过程中每多 1.5 秒重新打一次分，到 8 秒为止
-const SCORE_MAX = 6 * 16000 // 打分最多用 6 秒音频（取中间）：打分在主进程同步跑，音频越长卡得越久
+const SCORE_MAX = 6 * 16000 // 打分最多用 6 秒音频（取中间）：音频越长算得越久
 const SHORT_FOLLOW_MS = 20_000
 const MAX_HOTWORDS = 100
 const CROSSTALK_WINDOW_MS = 10_000
@@ -198,6 +198,7 @@ export class MeetingEngine extends EventEmitter {
     this.fake = null
     this.fakeCapture = null
     this.vp = null
+    this.scoring = new Set() // 声纹进程里还在算的分（麦克风段的判断）：停止、暂停时等它们落定
     this.micCheck = false // 麦克风的定稿要不要判（比声纹、查串音）：有声纹，或者同时在录电脑声音（没声纹也要滤串音）
     this.lastMicWho = null
     this.askedAt = new Map()
@@ -772,7 +773,7 @@ export class MeetingEngine extends EventEmitter {
     if (source === 'mic' && this.micCheck) {
       if (final) {
         m.awaiting = true
-        this.#decideMic(seg, m)
+        this.#track(this.#decideMic(seg, m))
         return
       }
       if (this.vp) this.#scorePartial(seg, m)
@@ -804,21 +805,16 @@ export class MeetingEngine extends EventEmitter {
 
   /* ---------------- 麦克风这段是谁说的 ---------------- */
 
-  // 声纹分数；音频不够（去掉静音不到 1 秒）或没有声纹返回 null
-  #score(span) {
+  // 声纹分数；音频不够（去掉静音不到 1 秒）或没有声纹返回 null。向量在声纹进程里算（model.scorePcm），不卡主进程
+  async #score(span) {
     const ring = this.micRing
-    if (!this.vp || !span || !ring) return null
+    const vp = this.vp
+    if (!vp || !span || !ring) return null
     const pcm = ring.read(span.start - 150, span.end + 150)
     if (!pcm || pcm.length < ring.rate) return null
-    let x = pcm16ToFloat32(pcm)
-    if (ring.rate !== 16000) x = resample(x, ring.rate, 16000)
-    if (x.length > SCORE_MAX) {
-      const off = (x.length - SCORE_MAX) >> 1
-      x = x.subarray(off, off + SCORE_MAX)
-    }
     try {
       const t0 = performance.now()
-      const r = scoreSegment(this.vp.model, this.vp.profile, x)
+      const r = await this.#scoreAudio(vp, pcm, ring.rate)
       this.emit('trace', { type: 'score', ms: Math.round(performance.now() - t0), seconds: r?.seconds ?? null })
       return r ? Math.round(r.score * 100) / 100 : null
     } catch (e) {
@@ -827,35 +823,74 @@ export class MeetingEngine extends EventEmitter {
     }
   }
 
+  async #scoreAudio({ model, profile }, pcm, rate) {
+    if (model.scorePcm) {
+      const r = await model.scorePcm(pcm, rate)
+      return r && profile.modelId === model.modelId ? { score: cosine(profile.embedding, r.embedding), seconds: r.seconds } : null
+    }
+    // 模型在进程内同步算的（单测、自测）
+    let x = pcm16ToFloat32(pcm)
+    if (rate !== 16000) x = resample(x, rate, 16000)
+    if (x.length > SCORE_MAX) {
+      const off = (x.length - SCORE_MAX) >> 1
+      x = x.subarray(off, off + SCORE_MAX)
+    }
+    return scoreSegment(model, profile, x)
+  }
+
+  // 登记一个还在算的判断，算完（成不成都算）自动注销；停止、暂停时 #settleScoring 等它们
+  #track(job) {
+    this.scoring.add(job)
+    const done = () => this.scoring.delete(job)
+    job.then(done, done)
+    return job
+  }
+
+  async #settleScoring() {
+    while (this.scoring.size) await Promise.allSettled([...this.scoring])
+  }
+
   #threshold() {
     return this.cfg?.voiceprint?.threshold ?? 0.5
   }
 
   // 说话过程中先给个临时判断：像我就是我；不像我而且对方那一路安静（面对面），先显示成对方；
-  // 对方正在说话时多半是串音，先当我（字幕窗默认不显示我的话），定稿再判。
+  // 对方正在说话时多半是串音，先当我（字幕窗默认不显示我的话），定稿再判。分数在声纹进程里算，回来以后改了再广播一次。
   #scorePartial(seg, m) {
     const span = m.span
     if (!span) return
     const len = span.end - span.start
     const done = m.scoredLen ?? 0
     if (len < SCORE_STEP_MS || len - done < SCORE_STEP_MS || done >= 8000) return
+    if (this.scoring.size) return // 声纹进程还在算别的（定稿的判断不能等），这次不打，下次出字再来
     m.scoredLen = len
-    const score = this.#score(span)
-    if (score == null) return
-    seg.vp = score
-    const who = score >= this.#threshold() || this.#systemActive() || this.#crosstalk(seg) ? 'me' : 'other'
-    seg.who = who
-    seg.speaker = this.#label(who)
+    const gen = this.gen
+    this.#track(
+      this.#score(span).then((score) => {
+        if (score == null || gen !== this.gen || seg.final || m.awaiting || m.settled) return
+        seg.vp = score
+        const who = score >= this.#threshold() || this.#systemActive() || this.#crosstalk(seg) ? 'me' : 'other'
+        if (who === seg.who) return
+        seg.who = who
+        seg.speaker = this.#label(who)
+        this.#update(seg, false)
+      }),
+    )
   }
 
   // 没声纹时 #score 是 null：只剩串音这一条，和对方的字幕高度重合就丢，不重合按麦克风的默认算
-  #decideMic(seg, m) {
+  async #decideMic(seg, m) {
     if (!seg.text) {
       m.settled = true
       this.#update(seg, true)
       return
     }
-    const score = this.#score(m.span)
+    let score = null
+    if (this.vp && m.span) {
+      const gen = this.gen
+      score = await this.#score(m.span)
+      if (gen !== this.gen || m.settled) return
+    }
     if (score != null) seg.vp = score
     else delete seg.vp
     if (score != null && score >= this.#threshold()) return this.#settle(seg, 'me', 'voiceprint')
@@ -1481,6 +1516,7 @@ export class MeetingEngine extends EventEmitter {
     await this.#teardown()
     this.#stopNotes()
     this.#finishOpen()
+    await this.#settleScoring()
     if (this.paused) this.#endPause()
     this.paused = false
     const session = this.session
@@ -1517,7 +1553,7 @@ export class MeetingEngine extends EventEmitter {
       else if (!seg.text || m.awaiting) continue
       else if (seg.source === 'mic' && this.micCheck) {
         m.awaiting = true
-        this.#decideMic(seg, m)
+        this.#track(this.#decideMic(seg, m))
       } else this.#update(seg, true)
     }
   }
@@ -1540,6 +1576,7 @@ export class MeetingEngine extends EventEmitter {
       await Promise.all([...this.pipelines.values()].map((p) => p.provider.close().catch(() => {})))
       this.pipelines.clear()
       this.#finishOpen()
+      await this.#settleScoring()
       const s = this.session
       if (s && this.state === 'running') {
         s.pauses ??= []

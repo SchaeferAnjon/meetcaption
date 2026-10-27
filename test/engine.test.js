@@ -1056,3 +1056,80 @@ test('engine: after auto answers for two questions and a hotkey answer, clicking
   assert.equal(click.segIds.at(-1), 'system:a')
   assert.equal(answerOfSeg([...answers.values()], 'system:a').id, click.id)
 })
+
+// 开会时声纹在别的进程里算（scorePcm 是异步的）：主进程不等它，算完才定下是谁说的；停止时等还在算的
+test('engine: voiceprint scoring runs outside the main thread: segments settle once the score comes back, partials are re-sent only when who changes, stop waits', async (t) => {
+  const scored = []
+  const asyncModel = {
+    modelId: 'fake',
+    async scorePcm(pcm, rate) {
+      scored.push(pcm.length / rate)
+      await tick(60)
+      let s = 0
+      for (const v of pcm) s += (v / 32768) ** 2
+      return Math.sqrt(s / pcm.length) > 0.2 ? { embedding: Float32Array.from([1, 0]), seconds: pcm.length / rate } : { embedding: Float32Array.from([0, 1]), seconds: pcm.length / rate }
+    },
+  }
+  const ctx = await setup()
+  ctx.engine.voiceprint = { profile: () => profile, loadModel: async () => asyncModel }
+  await ctx.engine.start()
+  t.after(() => ctx.engine.stop())
+  const [, mic] = ctx.providers
+  const e = ctx.engine
+  e.feed('mic', tone(2000, 0.5)) // 0 到 2 秒：我
+  e.feed('mic', Buffer.alloc(16000 * 2)) // 2 到 3 秒：静音
+  e.feed('mic', tone(2000, 0.05)) // 3 到 5 秒：别人
+  const before = Date.now()
+  mic.emit('final', { key: 'm1', text: 'I think the second dataset is noisier.', span: { start: 0, end: 2000 } })
+  assert.ok(Date.now() - before < 30, '定稿不等声纹')
+  const last = (id) => ctx.segs.filter((s) => s.id === id).at(-1)
+  assert.equal(last('mic:m1'), undefined, '分数还没回来，先不广播')
+  await tick(120)
+  assert.equal(last('mic:m1').who, 'me')
+  assert.equal(last('mic:m1').vp, 1)
+
+  // 说话过程中的临时判断：1.5 秒以上才打分；分数回来不像我，改成对方并再广播一次
+  mic.emit('partial', { key: 'm2', text: 'Where do you keep', span: { start: 3000, end: 4800 } })
+  assert.equal(last('mic:m2').who, 'me', '回来之前先按默认')
+  await tick(120)
+  assert.equal(last('mic:m2').who, 'other')
+  assert.equal(last('mic:m2').final, false)
+  const n = ctx.segs.filter((s) => s.id === 'mic:m2').length
+  mic.emit('partial', { key: 'm2', text: 'Where do you keep', span: { start: 3000, end: 4900 } })
+  await tick(120)
+  assert.equal(ctx.segs.filter((s) => s.id === 'mic:m2').length, n + 1, '没到下一个 1.5 秒不重打，也没有多余的广播')
+
+  // 停止时还在算的那一段也要落定存档
+  e.feed('mic', tone(2000, 0.5))
+  mic.emit('partial', { key: 'm3', text: 'Thanks and one more thing', span: { start: 5000, end: 7000 } })
+  await tick(5)
+  await e.stop()
+  assert.equal(last('mic:m3').final, true)
+  assert.equal(last('mic:m3').who, 'me')
+  assert.equal(ctx.session().segments.find((x) => x.id === 'mic:m3').who, 'me')
+})
+
+test('engine: a question in the middle of a long segment is answered by itself, without the rest of the segment or the segment before it', async (t) => {
+  const ctx = await start(await setup(), t)
+  const [sys] = ctx.providers
+  // 2026-10-26 Intel 实测：本地识别一段定稿十几秒，对方问完不停顿接着说了三句，整场没出一张卡
+  sys.emit('final', { key: 'a', text: 'The budget is forty thousand dollars, split between search ads and short video ads. Now I have a question for you.' })
+  sys.emit('final', {
+    key: 'b',
+    text: "How would you reduce the payment timeout without changing the payment provider? Please think about retries, caching, and the user interface. Let's move on to hiring. We have two open positions, one backend engineer and one product designer.",
+  })
+  // 自问自答的长段不触发
+  sys.emit('final', { key: 'c', text: 'Why does this matter? Because the baseline is weak. We fixed that. Then we reran everything.' })
+  await tick()
+  const last = (id) => ctx.segs.filter((s) => s.id === id).at(-1)
+  assert.ok(!last('system:a').question)
+  assert.equal(last('system:b').question, true)
+  assert.ok(!last('system:c').question)
+  assert.equal(ctx.asks.length, 1)
+  const c = ctx.asks[0].messages[0].content
+  assert.match(c, /对方的问题：How would you reduce the payment timeout without changing the payment provider\? Please think about retries, caching, and the user interface\./)
+  assert.doesNotMatch(c, /hiring|铺垫/)
+  assert.match(c, /最近的对话：\n对方：The budget is forty thousand/, '前一段只作为上文，不进问题')
+  assert.equal(ctx.assistant.list()[0].question, 'How would you reduce the payment timeout without changing the payment provider? Please think about retries, caching, and the user interface.')
+  assert.equal(ctx.session().answers[0].segId, 'system:b')
+})

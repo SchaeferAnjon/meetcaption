@@ -166,10 +166,39 @@ test('会员：每条连接换一把临时 Key；快到点在句末换连接；�
   // 服务器不再给 Key（场次用完）：不再重连，发 member
   refuse = 'exhausted'
   f.conns[3].ws.terminate()
-  await until(() => ev.some((e) => e.name === 'member'))
+  await until(() => ev.some((e) => e.name === 'member'), 6000) // 前面几次没连上、这条又连上不久就断：间隔没清零，退到 4 秒
   assert.equal(ev.find((e) => e.name === 'member').value, 'exhausted')
   await sleep(100)
   assert.equal(f.conns.length, 4)
   await asr.close()
   f.close()
+})
+
+test('服务器握手后马上断开：重连间隔 0、1、2 秒往上退，不发「重新连上」；服务器好了，新连接连够 stableMs 才发 ready、间隔清零', async (t) => {
+  const server = http.createServer()
+  const wss = new WebSocketServer({ server })
+  const mode = { flap: true, count: 0 }
+  wss.on('connection', (ws) => {
+    mode.count++
+    if (mode.flap) ws.terminate()
+  })
+  await new Promise((r) => server.listen(0, '127.0.0.1', r))
+  t.after(() => (wss.close(), server.close()))
+  const asr = new SonioxStreamASR({ key: 'sk', url: `ws://127.0.0.1:${server.address().port}/`, timing: { watchMs: 50, stableMs: 200 } })
+  const ev = collect(asr)
+  await asr.connect()
+  const t0 = Date.now()
+  await sleep(2600)
+  // 以前每秒几百次：现在 0 秒、1 秒、3 秒各一次
+  assert.ok(mode.count >= 3 && mode.count <= 5, `连了 ${mode.count} 次`)
+  assert.ok(!ev.some((e) => e.value === 'ready'))
+  assert.equal(asr.steady, false)
+  assert.ok(asr.flaps >= 2)
+  mode.flap = false
+  await until(() => ev.some((e) => e.value === 'ready'), 5000)
+  assert.ok(Date.now() - t0 >= 3000, '要等到下一次重连（第 3 秒）')
+  assert.equal(asr.steady, true)
+  assert.equal(asr.flaps, 0)
+  assert.equal(asr.retries, 0)
+  await asr.close()
 })

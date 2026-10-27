@@ -15,6 +15,9 @@ import { t } from '../i18n.js'
 // 没定稿的尾巴新连接重新认；一个字都没定稿的这一句作废（'drop'）。
 // 断线要发现得快：每 2 秒 ping 一次，6 秒既没回消息也没回 pong 就当断了（送着音频时 Soniox 大约每秒回一条，静音也回）。
 //
+// 握手成功不等于连好了：服务器有时接受连接又马上断开（限流、故障）。连上不到 STABLE_MS 就断的算失败：重连的间隔照样 0、1、2、4…秒
+// 往上退（最多 15 秒，本地识别接手时 5 秒），也不发「重新连上」，让上面的换本地识别照常数 4 秒；连上够久了才清零。
+//
 // 断线期间本地识别接手（fallback.js）：hold() 之后连上的连接先不送音频，只发 keepalive，发 'online'；
 // 本地识别交回时 resumeFrom(样本序号) 从那里补发，接着正常送。
 
@@ -24,6 +27,7 @@ const ROTATE_BEFORE_MS = 90_000 // 离 Key 到点不到这么久，就在下一�
 const FORCE_BEFORE_MS = 20_000 // 到这时还没等到句末（一直有人在说）：让 Soniox 把手上的字都定稿（finalize），定完就换
 const DEAD_AFTER_MS = 20_000 // 送着音频、这么久一条回复都没有，当连接死了
 const SILENT_AFTER_MS = 6_000 // 这么久既没回消息也没回 pong：网断了
+const STABLE_MS = 3_000 // 连上这么久没断，才算真的连好了：重连间隔清零、才发「重新连上」。比换本地识别的 4 秒（fallback.js）短，闪断后接上的不会被换走
 const KEEPALIVE_MS = 5_000 // 挂着不送音频时隔多久发一次 keepalive（Soniox 20 秒收不到就断开）
 // 会员服务器不再给 Key 的几种情况（错误码 → 交给上层的类型）
 const MEMBER_STOPS = { exhausted: 'exhausted', idle: 'idle', ended: 'ended', 'bad-session': 'ended' }
@@ -54,13 +58,14 @@ export class SonioxStreamASR extends EventEmitter {
   constructor({ key = '', getKey = null, language = 'auto', context = '', hotwords = [], model = 'stt-rt-v5', url = 'wss://stt-rt.soniox.com/transcribe-websocket', timing = {} }) {
     super()
     this.opts = { key, getKey, language, context, hotwords, model, url }
-    this.tm = { rotateBeforeMs: ROTATE_BEFORE_MS, forceBeforeMs: FORCE_BEFORE_MS, deadAfterMs: DEAD_AFTER_MS, silentAfterMs: SILENT_AFTER_MS, keepaliveMs: KEEPALIVE_MS, watchMs: 2000, ...timing }
+    this.tm = { rotateBeforeMs: ROTATE_BEFORE_MS, forceBeforeMs: FORCE_BEFORE_MS, deadAfterMs: DEAD_AFTER_MS, silentAfterMs: SILENT_AFTER_MS, keepaliveMs: KEEPALIVE_MS, stableMs: STABLE_MS, watchMs: 2000, ...timing }
     this.conn = null
     this.closing = false
     this.history = [] // [{ at: 这一路的样本序号, buf }]，最近 60 秒
     this.sent = 0 // 这一路一共送了多少样本
     this.finalEnd = 0 // 上一句定稿在这一路音频里的终点（样本序号）
     this.retries = 0
+    this.flaps = 0 // 连着几条连接是连上不久就断的；连够久的一条清零
     this.retryTimer = null
     this.seq = 0
     this.standby = false // 本地识别接手中：新连接连上后先挂着
@@ -81,6 +86,11 @@ export class SonioxStreamASR extends EventEmitter {
   /** 连着、在正常送音频 */
   get online() {
     return Boolean(this.conn?.open && !this.conn.held && !this.conn.retired)
+  }
+
+  /** 连着，而且不是接上又断、断了又接上的那种 */
+  get steady() {
+    return this.online && this.flaps === 0
   }
 
   /** 本地识别接手：之后连上的连接先挂着不送音频，发 'online' 等 resumeFrom。 */
@@ -113,6 +123,7 @@ export class SonioxStreamASR extends EventEmitter {
     clearTimeout(this.retryTimer)
     const c = this.conn
     this.conn = null
+    if (c) clearTimeout(c.stableTimer)
     if (!c) return
     await this.#retire(c, 3000)
   }
@@ -141,7 +152,7 @@ export class SonioxStreamASR extends EventEmitter {
         ws.on('open', () => {
           ws.send(JSON.stringify(this.#config(conn)))
           conn.open = true
-          conn.lastMsgAt = conn.aliveAt = conn.keptAt = Date.now()
+          conn.lastMsgAt = conn.aliveAt = conn.keptAt = conn.openAt = Date.now()
           if (this.standby) conn.held = true
           else this.#replay(conn)
           resolve()
@@ -164,7 +175,6 @@ export class SonioxStreamASR extends EventEmitter {
           conn.ws.send(JSON.stringify({ type: 'keepalive' }))
         }
       }, this.tm.watchMs)
-      this.retries = 0
     })()
     return conn
   }
@@ -209,6 +219,10 @@ export class SonioxStreamASR extends EventEmitter {
     if (conn.retired || conn !== this.conn || this.closing) return
     this.#drop(conn)
     if (err instanceof FatalError) return this.emit('fatal', err)
+    if (conn.open) {
+      if (Date.now() - conn.openAt >= this.tm.stableMs) this.flaps = this.retries = 0
+      else this.flaps++
+    }
     this.emit('status', 'reconnecting')
     // 本地识别接手时最多 5 秒试一次：网络一好就能尽快换回云端
     const delay = this.retries === 0 ? 0 : Math.min(this.standby ? 5000 : 15_000, 1000 * 2 ** (this.retries - 1))
@@ -222,7 +236,16 @@ export class SonioxStreamASR extends EventEmitter {
     const oldest = this.history[0]?.at ?? this.sent
     const next = this.#open(Math.max(this.finalEnd, oldest))
     next.ready.then(
-      () => this.emit('status', next.held ? 'online' : 'ready'),
+      () => {
+        const announce = () => this.emit('status', next.held ? 'online' : 'ready')
+        if (!this.flaps) return announce()
+        // 前面几条连上不久就断了：这一条也要连够 stableMs 才算数
+        next.stableTimer = setTimeout(() => {
+          if (next !== this.conn || next.retired || !next.open) return
+          this.flaps = this.retries = 0
+          announce()
+        }, Math.max(0, this.tm.stableMs - (Date.now() - next.openAt)))
+      },
       (e) => {
         if (MEMBER_STOPS[e.code]) return this.#memberStop(next, MEMBER_STOPS[e.code])
         if (e instanceof FatalError) return this.emit('fatal', e)
@@ -237,6 +260,7 @@ export class SonioxStreamASR extends EventEmitter {
     if (conn !== this.conn) return
     conn.retired = true
     clearInterval(conn.watch)
+    clearTimeout(conn.stableTimer)
     conn.ws?.terminate()
     this.#reconnect()
   }
@@ -336,6 +360,7 @@ export class SonioxStreamASR extends EventEmitter {
   #drop(conn) {
     conn.retired = true
     clearInterval(conn.watch)
+    clearTimeout(conn.stableTimer)
     const seg = conn.seg
     const text = seg.text.trim()
     if (text) this.emit('final', { key: seg.key, text, span: this.#span(conn, { start: seg.start, end: seg.fend ?? seg.end }) })

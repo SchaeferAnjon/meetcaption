@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dropSmallTalk, isCutOff, isQuestion, pickLastQuestion } from '../src/main/assist/question.js'
+import { dropSmallTalk, isCutOff, isQuestion, pickLastQuestion, questionPart } from '../src/main/assist/question.js'
 
 const QUESTIONS = [
   // 英文
@@ -236,4 +236,59 @@ test('isCutOff: a question stopped mid-way by a pause', () => {
   assert.ok(!isCutOff('What is the plan?'))
   assert.ok(!isCutOff('What is the plan'))
   assert.ok(!isCutOff('We picked the.'))
+})
+
+/* ---------------- 2026-10-26 Intel 实测：本地识别一段定稿十几秒，问题落在中间 ---------------- */
+
+// 报告里 session.json 的三段原文（answers 为 []）
+const MISSED_SEGMENTS = [
+  'The budget is forty thousand dollars, split between search ads and short video ads. Tom, can you send the final creative assets to the agency by Friday? That is an action item for you. Now I have a question for you.',
+  "How would you reduce the payment timeout without changing the payment provider? Please think about retries, caching, and the user interface. Let's move on to hiring. We have two open positions, one backend engineer and one product designer.",
+  'Another question for you what is your experience with Kubernetes and how did you handle a production outage in your last project? Finally, budget review. We spent eighty five percent of the quarterly budget so far.',
+]
+
+test('isQuestion: a question in the middle of a long segment counts when it is aimed at the listener', () => {
+  assert.ok(isQuestion(MISSED_SEGMENTS[1]), '问完接着说了三句')
+  assert.ok(isQuestion(MISSED_SEGMENTS[2]), '问完接着说了两句')
+  assert.ok(isQuestion('Thanks for joining. Can you tell me about a time you failed? I will take notes. Then we move on. Okay.'))
+  assert.ok(isQuestion('你好，欢迎。请问你为什么离开上一家公司？我们这边有三个岗位。下面介绍一下薪资。大家有问题随时说。'))
+  assert.ok(isQuestion('Willkommen. Warum möchten Sie Ihre aktuelle Firma verlassen? Wir haben drei offene Stellen. Das Team ist neu. Danke.'))
+  // 最后两句里的，照旧
+  assert.ok(isQuestion('We ran it twice. The numbers are close. So what changed between the runs?'))
+})
+
+test('isQuestion: mid-segment questions that are not for the listener stay statements (self-answered, meeting chores, named tasks)', () => {
+  // 自问自答
+  assert.ok(!isQuestion('Why does this matter? Because the baseline is weak. We fixed that. Then we reran everything.'))
+  assert.ok(!isQuestion('So what does that mean for you? Well, it means you can ship earlier. We measured it twice. It held.'))
+  assert.ok(!isQuestion('What did we learn? We learned that caching helps. The tail latency dropped. Everyone was happy.'))
+  assert.ok(!isQuestion('这个为什么重要？因为 baseline 太弱了。我们换了一个。结果好很多。'))
+  // 报告第一段：给 Tom 派活，后面是「我有个问题」的预告（问题在下一段）
+  assert.ok(!isQuestion(MISSED_SEGMENTS[0]))
+  assert.ok(!isQuestion('Okay. Could you share your screen? Great, thanks. We start with the roadmap. Then the budget.'))
+  // 不是冲着听的人问的
+  assert.ok(!isQuestion('Does the cache help here? It does. The numbers show it. We keep it. Done.'))
+  // 中间的陈述句仍然是陈述句
+  assert.ok(!isQuestion('You said the deadline is Friday. You can send the slides later. You know what I mean. Right. Okay then.'))
+})
+
+test('questionPart: the question sentence (plus a following "Please…"), not the rest of the segment', () => {
+  assert.equal(questionPart(MISSED_SEGMENTS[1]), 'How would you reduce the payment timeout without changing the payment provider? Please think about retries, caching, and the user interface.')
+  assert.equal(questionPart(MISSED_SEGMENTS[2]), 'Another question for you what is your experience with Kubernetes and how did you handle a production outage in your last project?')
+  // 提问在最后两句里：整段（前面是铺垫），和以前一样
+  const tail = 'So we looked at your results on the second dataset. Could you walk me through why the ablation drops so much there?'
+  assert.equal(questionPart(tail), tail)
+  // 认不出提问（被停顿切断的下半句）：整段
+  assert.equal(questionPart('best way to roll out a schema change without downtime.'), 'best way to roll out a schema change without downtime.')
+  assert.equal(questionPart(''), '')
+})
+
+test('pickLastQuestion: a mid-segment question gives back just that sentence', () => {
+  const now = 1_000_000
+  const segs = [{ id: 1, who: 'other', text: MISSED_SEGMENTS[1], startedAt: now - 5000 }]
+  assert.deepEqual(pickLastQuestion(segs, { now }), {
+    text: 'How would you reduce the payment timeout without changing the payment provider? Please think about retries, caching, and the user interface.',
+    segId: 1,
+    matched: true,
+  })
 })

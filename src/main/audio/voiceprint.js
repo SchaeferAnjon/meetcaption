@@ -51,11 +51,14 @@ function fail(code, message, cause) {
 
 let loading = null
 
-/** 加载一次，之后复用。embed 是同步的原生调用，8 秒音频几十毫秒。 */
-export function loadVoiceprintModel({ numThreads = 1 } = {}) {
+/**
+ * 加载一次，之后复用。embed 是同步的原生调用，8 秒音频几十毫秒（Rosetta 下一两百毫秒），加载本身一两秒：
+ * 开会时的打分不在主进程做，放在 voiceprintHost.cjs 的 utilityProcess 里（paths 由主进程查好传进去）。
+ */
+export function loadVoiceprintModel({ numThreads = 1, paths = null } = {}) {
   if (loading) return loading
   loading = (async () => {
-    const { model, native } = voiceprintPaths()
+    const { model, native } = paths ?? voiceprintPaths()
     if (!native) throw fail('no-native', `声纹组件缺失：找不到 sherpa-onnx（${platformTag()}）`)
     if (!model) throw fail('no-model', `声纹模型缺失：找不到 ${MODEL_FILE}`)
     // 模型文件不完整时 onnxruntime 会直接 abort 整个进程，先看大小
@@ -257,6 +260,22 @@ export function scoreSegment(model, profile, float32At16k, { minSeconds = 1 } = 
   const { samples, seconds } = trimSilence(float32At16k)
   if (seconds < Math.max(minSeconds, MIN_EMBED_SECONDS)) return null
   return { score: cosine(profile.embedding, model.embed(samples)), seconds }
+}
+
+/**
+ * 开会时给一段麦克风 PCM16 打分用：去静音后算向量，不比较（比较在主进程，向量只有几百个数）。
+ * 有效语音不到 minSeconds 秒返回 null。rate 不是 16k 先重采样；maxSamples：太长取中间（音频越长算得越久）。
+ */
+export function embedPcm(model, pcm, rate, { minSeconds = 1, maxSamples = 6 * SAMPLE_RATE } = {}) {
+  let x = pcm16ToFloat32(pcm)
+  if (rate !== SAMPLE_RATE) x = resample(x, rate, SAMPLE_RATE)
+  if (x.length > maxSamples) {
+    const off = (x.length - maxSamples) >> 1
+    x = x.subarray(off, off + maxSamples)
+  }
+  const { samples, seconds } = trimSilence(x)
+  if (seconds < Math.max(minSeconds, MIN_EMBED_SECONDS)) return null
+  return { embedding: model.embed(samples), seconds }
 }
 
 /** 声纹存档：userData/voiceprint.json，0600，先写临时文件再改名。 */

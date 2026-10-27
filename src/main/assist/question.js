@@ -273,11 +273,65 @@ function splitSentences(text) {
     .filter(Boolean)
 }
 
-/** 是不是在提问。只看最后两句：长段发言中间的设问不算。 */
+/* ---------------- 段落中间的提问 ---------------- */
+
+// 本地识别一段定稿常有十几秒、好几句，对方问完不停顿接着往下说，问题就落在中间。
+// 最后两句里的提问照旧按单句规则认；再往前的句子要求更严，因为长段发言中间常有自问自答（Why does this matter? Because…）：
+// 必须是冲着听的人问的（你、您、大家、you、Sie），后面紧跟的不是自己的回答，也不是会上的事务请求。
+const LISTENER = {
+  latin: /\b(?:you|your|yours|yourself|you're|you've|you'd|you'll)\b|\b(?:Sie|Ihr|Ihre[mnrs]?|Ihnen|du|dein\w*)\b/i,
+  zh: /你|您|大家|各位|同学/,
+  ja: /あなた|皆さん|みなさん|ください|下さい|ますか|でしょうか/,
+}
+// 紧跟在设问后面、像在自己回答的：Because… / Well, / The answer is… / 因为…
+const SELF_ANSWER = {
+  latin: /^(?:because|since|well\b|the (?:answer|reason|short answer)|let me|i(?:'d say| think| guess)|it(?:'s| is| means)\b|that(?:'s| is)\b|this is\b|basically|simply|honestly)/i,
+  zh: /^(?:因为|所以|其实|答案|原因|我(?:们)?(?:来|先|觉得|认为)|就是|这是因为)/,
+}
+// 点名：Tom, can you send… / Jack, how would you… 去掉名字再判，Tom, can you send the assets 就是会上的事务请求
+const VOCATIVE = /^[A-Z][\p{L}'-]{1,15},\s+(?=\S)/u
+// 问题后面紧跟的补充要求（Please think about retries）一起带上
+const FOLLOW_UP = /^(?:please\b|bitte\b|请|麻烦)/i
+
+function midSentenceIsQuestion(s, next) {
+  const kind = kindOf(s)
+  if (kind === 'other') return false
+  const bare = kind === 'latin' ? s.replace(VOCATIVE, '') : s
+  if (!sentenceIsQuestion(bare) || !LISTENER[kind].test(bare)) return false
+  const answer = SELF_ANSWER[kind]
+  return !(answer && next && (answer.test(next) || answer.test(next.replace(EN_FILLER, '').trim())))
+}
+
+// 一段话里哪几句是提问
+function questionIndexes(sentences) {
+  const out = []
+  sentences.forEach((s, i) => {
+    if (i >= sentences.length - 2 ? sentenceIsQuestion(s) : midSentenceIsQuestion(s, sentences[i + 1])) out.push(i)
+  })
+  return out
+}
+
+const squash = (text) => String(text ?? '').replace(/\s+/g, ' ').trim()
+
+/** 是不是在提问。最后两句按单句规则认；再往前的句子只认冲着听的人问的（见上面）。 */
 export function isQuestion(text) {
-  const t = String(text ?? '').replace(/\s+/g, ' ').trim()
-  if (!t) return false
-  return splitSentences(t).slice(-2).some(sentenceIsQuestion)
+  const t = squash(text)
+  return Boolean(t) && questionIndexes(splitSentences(t)).length > 0
+}
+
+/**
+ * 要回答的是这一段里的哪部分。提问在最后两句里：整段（前面是铺垫，一直这么答）；
+ * 提问落在中间（后面还接着说了别的）：只取最后那句提问，加上紧跟的「Please…」补充要求，别把后面说的事务也当成问题。认不出提问就整段。
+ */
+export function questionPart(text) {
+  const t = squash(text)
+  const sentences = splitSentences(t)
+  const hits = questionIndexes(sentences)
+  const last = hits.at(-1)
+  if (last == null || last >= sentences.length - 2) return t
+  let end = last + 1
+  while (end < sentences.length && FOLLOW_UP.test(sentences[end])) end++
+  return sentences.slice(last, end).join(' ')
 }
 
 /** 话没说完就停了（What is the / Can you tell me about your）：和接着的下一段连起来才是完整的问题。 */
@@ -306,7 +360,7 @@ export function pickLastQuestion(segments, { now = Date.now(), windowMs = 90_000
   const pool = recent.length ? recent : other.slice(-2)
   for (let i = pool.length - 1; i >= 0; i--) {
     // question：引擎定稿时标的（连着前一段没说完的话才认得出的问题也标了）
-    if (pool[i].question || isQuestion(pool[i].text)) return { text: pool[i].text.trim(), segId: pool[i].id, matched: true }
+    if (pool[i].question || isQuestion(pool[i].text)) return { text: questionPart(pool[i].text), segId: pool[i].id, matched: true }
   }
   return { text: pool.slice(-2).map((s) => s.text.trim()).join(' '), segId: pool.at(-1).id, matched: false }
 }
