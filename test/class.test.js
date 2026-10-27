@@ -494,6 +494,9 @@ test('class prompts: live notes, class notes and homework extraction carry the r
   const [cs, cu] = classNotesMessages({ session: lecture, project, extraAsk: '多给例子', slides: lecture.slides, liveNotes: { sections: [] } })
   for (const h of ['本节概览', '大纲与知识点', '公式与推导', '例子', '老师强调和可能的考点', '作业与截止', '术语表', '自测题', '没听清需要确认的地方']) assert.match(cs.content, new RegExp(`## ${h}`))
   assert.match(cs.content, /!\[简短说明\]\(slides\/文件名\.jpg\)/)
+  const [bare] = classNotesMessages({ session: { ...lecture, slides: [] }, project, slides: [] })
+  assert.doesNotMatch(bare.content, /slides\/文件名/) // 没截图就不教它引用截图
+  assert.match(bare.content, /没给就不插/)
   assert.match(cu.content, /这节课属于「机器学习」/)
   assert.match(cu.content, /slides\/14\.01\.10\.jpg（\[01:10\] 截的）/)
   assert.match(cu.content, /额外要求：多给例子/)
@@ -506,6 +509,30 @@ test('class prompts: live notes, class notes and homework extraction carry the r
 })
 
 /* ---------------- 截图和导出 ---------------- */
+
+test('dropMissingImages: images that point at no file in the session folder are removed, real slides and material pages stay', async () => {
+  const { dropMissingImages } = await import('../src/main/summary.js')
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-img-'))
+  fs.mkdirSync(path.join(dir, 'slides'))
+  fs.writeFileSync(path.join(dir, 'slides', '14.03.07.jpg'), 'a')
+  fs.mkdirSync(path.join(dir, 'materials', 'lec1'), { recursive: true })
+  fs.writeFileSync(path.join(dir, 'materials', 'lec1', 'p003.jpg'), 'b')
+  const md = [
+    '- 用 read_csv 读入。',
+    '![read_csv 读入后的前几行](slides/magic_df_head.jpg)',
+    '![板书](slides/14.03.07.jpg)',
+    '  ![第 3 页](materials/lec1/p003.jpg)',
+    '见图 ![网上的图](https://example.com/a.png) 和 ![外面](../secret.jpg)。',
+    '## 公式与推导',
+  ].join('\n')
+  assert.equal(
+    dropMissingImages(md, dir),
+    ['- 用 read_csv 读入。', '![板书](slides/14.03.07.jpg)', '  ![第 3 页](materials/lec1/p003.jpg)', '见图  和 。', '## 公式与推导'].join('\n'),
+  )
+  assert.equal(dropMissingImages('结尾\n![x](slides/none.jpg)', dir), '结尾\n')
+  assert.equal(dropMissingImages('还在写 ![x](slides/no', dir), '还在写 ![x](slides/no') // 流式写到一半的不动
+  fs.rmSync(dir, { recursive: true, force: true })
+})
 
 test('saveSlide: slides/<time>.jpg, same second gets a suffix', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-slide-'))
@@ -627,6 +654,7 @@ test('Summarizer: class sessions get class notes with slides as images, homework
   assert.equal(r.items[0].due, resolveRelativeDate('next Wednesday', s.startedAt)) // 模型没给日期，兜底换算
   assert.equal(store.load(s.id).title, '梯度下降')
   assert.ok(fs.existsSync(path.join(dir, '课堂笔记.md')))
+  assert.equal(store.load(s.id).summary.markdown, '## 本节概览\n梯度下降。\n') // 模型编的图片（文件夹里没有）去掉了
   fs.rmSync(root, { recursive: true, force: true })
 })
 

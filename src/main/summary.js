@@ -32,6 +32,29 @@ export function answersNote(session) {
   return `\n\n会中 AI 给我的答题提示（我不一定照着说了；只用来理解对方问了什么，纪要内容以识别稿为准）：\n${lines.join('\n')}`
 }
 
+/**
+ * 去掉指不到会话文件夹里真实文件的图片：模型没拿到截图也会编 ![…](slides/xxx.jpg)，笔记里就成了一个个破图框。
+ * 网址和跳出会话文件夹的路径也去掉（笔记要离线能看）。单独一行的图片连同那一行一起去掉。
+ */
+export function dropMissingImages(markdown, dir) {
+  const seen = new Map()
+  const exists = (src) => {
+    if (!seen.has(src)) {
+      let p = src
+      try {
+        p = decodeURI(src)
+      } catch {}
+      const full = path.resolve(dir, p)
+      seen.set(src, full.startsWith(path.resolve(dir) + path.sep) && fs.existsSync(full))
+    }
+    return seen.get(src)
+  }
+  const IMG = /!\[[^\]\n]*\]\(<?([^)\s>]+)>?(?:\s+"[^"]*")?\)/g
+  return markdown
+    .replace(new RegExp(`^[ \\t]*${IMG.source}[ \\t]*(?:\\n|$)`, 'gm'), (all, src) => (exists(src) ? all : ''))
+    .replace(IMG, (all, src) => (exists(src) ? all : ''))
+}
+
 export class Summarizer extends EventEmitter {
   /**
    * store：SessionStore；projects：ProjectStore；llm(opts) → Promise<string>（complete 门面）；
@@ -124,24 +147,25 @@ export class Summarizer extends EventEmitter {
         system = sys
         content = user.content + answersNote(session)
       }
-      // 全局约定不许破折号：prompt 里说了模型偶尔还是会写，流式和存盘前都换掉
+      // 全局约定不许破折号：prompt 里说了模型偶尔还是会写，流式和存盘前都换掉；编出来的图片（会话文件夹里没有这个文件）也一样去掉
+      const clean = (text) => dropMissingImages(noDashes(text), this.store.dir(id))
       let markdown
       let cut = null
       try {
-        markdown = noDashes(
+        markdown = clean(
           await this.llm({
             model: 'smart',
             effort: 'low',
             signal: ctrl.signal,
             system: system.content,
             messages: [{ role: 'user', content }],
-            onDelta: (text) => this.emit('progress', { id, phase: 'summary', text: noDashes(text) }),
+            onDelta: (text) => this.emit('progress', { id, phase: 'summary', text: clean(text) }),
           }),
         )
       } catch (e) {
         // 写到一半被截断：先存下这半截再报错，长课的笔记不至于一个字都没留下
         if (ctrl.signal.aborted || !e?.partial?.trim()) throw e
-        markdown = noDashes(e.partial.trim())
+        markdown = clean(e.partial.trim())
         cut = e
       }
       // 先把纪要存下来：待办提取失败了纪要也不丢；旧的待办先留着，提取完再换

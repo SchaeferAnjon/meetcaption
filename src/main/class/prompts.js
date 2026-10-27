@@ -153,7 +153,7 @@ export function classNotesMessages({ session, project = null, extraAsk = '', sli
 - 只根据识别稿、实时笔记和截图写，不编造；识别稿里念出来的公式（比如 "y i minus theta transpose x i, squared"）还原成 LaTeX；拿不准的标「${w.tbc}」。
 - 时间戳用识别稿里的 [mm:ss]。
 - 相对日期换算成具体日期：上课日期是 ${dateLabel(session.startedAt)}，「next Wednesday」「this Sunday」「下周三」都算出日期并保留原话；「next + 星期几」按下一周的那一天算。
-- 给了课件截图时，在讲到对应内容的地方用 ![${w.shotAlt}](slides/文件名.jpg) 引用截图，路径照抄下面给的，没用上的截图不用硬塞。${
+- ${slides.length ? `在讲到对应内容的地方用 ![${w.shotAlt}](slides/文件名.jpg) 引用课上截图，路径照抄下面给的，没用上的截图不用硬塞；` : ''}只插下面给了路径的图片，没给就不插，不要自己编图片文件名。${
     withMaterials
       ? `
 - 给了老师的课件时，对照课件和识别稿一起写：课件是老师准备的讲义，识别稿是老师实际讲的。大纲按老师讲的顺序；定义、公式、符号、术语和人名的写法以课件为准（识别稿里听错的按课件改）；老师口头补充的解释、例子、强调和课件上没有的内容都写进去；课件上有、课上没讲的简要写，标「${w.slideOnly}」。
