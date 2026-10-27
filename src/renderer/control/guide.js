@@ -86,6 +86,7 @@ async function openGuide() {
     guide = null
     call('updateSettings', { onboarding: { demo: true } })
     ui.toast({ title: t('以后在 设置 → 通用 → 首次引导 里能再看一遍导览') })
+    askUsageConsent()
   }
 
   function onKey(e) {

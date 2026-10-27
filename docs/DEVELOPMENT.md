@@ -41,7 +41,7 @@ End-to-end without devices: add `--fake-system=a.wav --fake-mic=b.wav` to `--sel
 ## Environment variables
 
 - `MEETCAPTION_USERDATA=<folder>`: keep settings, voiceprint and sign-ins in a test folder instead of your own data.
-- `MEETCAPTION_API=<url>`: point the membership client at another backend.
+- `MEETCAPTION_API=<url>`: point the membership client and the daily usage ping at another backend. Runs from source and dev builds only send the ping when this is set.
 - `MEETCAPTION_UPDATE_URL=<url>`: check a local update server (a folder with `latest-mac.yml` and the zip) instead of GitHub, to test automatic updates with a packaged build.
 - `MEETCAPTION_SONIOX_URL=<ws url>`: connect Soniox recognition through another address (for testing network drops through a local relay).
 - `MEETCAPTION_NO_EXTERNAL=1`: do not open the system browser (for tests).
@@ -53,6 +53,7 @@ End-to-end without devices: add `--fake-system=a.wav --fake-mic=b.wav` to `--sel
 - `src/renderer/capture/`: WASAPI loopback on Windows and the microphone on both systems
 - `src/main/asr/`: local recognition (X-ASR in a utility process), Soniox, OpenAI and Doubao streaming recognition
 - `src/main/member/`: membership client (trial, sessions, temporary recognition keys, purchases)
+- `src/main/usagePing.js`: the anonymous daily check-in (`POST /v1/ping`, once per local day, only after the user agrees: `usageConsent` is `""` not asked yet, `yes` or `no`; asked once in onboarding (step 6) or, for people who have not answered, in a dialog when the main window opens (`src/renderer/control/consent.js`, text in `src/renderer/shared/consent.js`); switch in Settings › General)
 - `src/main/i18n.js`, `src/renderer/shared/i18n.js`, `src/i18n/`: interface languages, keyed by the Simplified Chinese source text
 - `src/main/languages.js`: the 60 recognition and translation languages
 - `src/main/engine.js`: capture, recognition, sentences, me/other, translation and terms, answers, saving

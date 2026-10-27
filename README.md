@@ -136,6 +136,7 @@ Local recognition (free, offline) understands Chinese, English and a mix of both
 - With membership cloud recognition, audio goes from your computer straight to Soniox; our server only hands out a one-time key.
 - Sentences to translate or answer go to the AI service you choose: straight to your provider with your own key, or through our server with membership, not stored.
 - Your voiceprint, recordings, notes and keys stay on your computer.
+- Anonymous usage statistics, only if you agree: once a day the app tells our server a random ID, the version, the operating system and chip, membership or your own key, and the interface language. No meeting content, keys, names or email. Without your consent nothing is sent; switch it on or off any time in **Settings**, page **General**, **Anonymous usage statistics**.
 
 ## Build from source
 

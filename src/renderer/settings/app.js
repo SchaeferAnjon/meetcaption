@@ -28,6 +28,13 @@ function toggleLine(key, text) {
   return el('label.toggle-line', {}, input, el('span', { text }))
 }
 
+// 匿名使用统计：设置里是三态（'' 没问过 | yes | no），只有 yes 显示为开；这里打开算同意、关掉算不同意
+function consentLine(text) {
+  const input = ui.toggle({ ariaLabel: text, onChange: (v) => api.setUsageConsent(v) })
+  P.watch((s) => (input.checked = s.usageConsent === 'yes'))
+  return el('label.toggle-line', {}, input, el('span', { text }))
+}
+
 function linkButton(text, onClick) {
   return el('button.link-btn', { type: 'button', onClick }, el('span', { text }), icon('chevron-right', 13))
 }
@@ -96,7 +103,12 @@ function buildGeneral() {
         t('每个项目一个文件夹，会议记录和纪要都在里面。换位置不会搬走已有的会议，想一起带走就把整个文件夹拷过去再选它。'),
       ),
     ),
-    P.section(t('隐私'), null, P.row(t('屏幕共享'), toggleLine('hideFromScreenShare', t('共享屏幕时隐藏字幕和答题框')), t('对方看你的共享屏幕、录屏或截图时都看不到这两个窗口，只有你自己看得见。'))),
+    P.section(
+      t('隐私'),
+      null,
+      P.row(t('屏幕共享'), toggleLine('hideFromScreenShare', t('共享屏幕时隐藏字幕和答题框')), t('对方看你的共享屏幕、录屏或截图时都看不到这两个窗口，只有你自己看得见。')),
+      P.row(t('匿名使用统计'), consentLine(t('每天发一次匿名统计')), t('开着时每天发一次：随机编号、版本号、系统和芯片、用会员还是自带 Key、界面语言，只用来统计每天有多少人在用。不发会议内容、Key、名字和邮箱；关着什么都不发。')),
+    ),
     buildUpdate(),
     P.section(
       t('首次引导'),

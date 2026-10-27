@@ -946,3 +946,16 @@ body.is-win .ob-top {
     opacity: 1;
   }
 }
+.ob-consent {
+  margin-top: var(--sp-2);
+  font-size: var(--fs);
+}
+/* 「同意」「不用了」一样宽（取长的那个），都不是主按钮 */
+.ob-consent-btns {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+.ob-consent-btn {
+  min-width: 112px;
+}

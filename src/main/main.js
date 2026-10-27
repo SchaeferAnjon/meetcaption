@@ -13,7 +13,7 @@ import { NOTES_HTML, Summarizer } from './summary.js'
 import { aggregateTodos, openTodoCounts, patchTodo } from './todos.js'
 import { searchLibrary } from './search.js'
 import { MeetingEngine } from './engine.js'
-import { Member, memberSettings, withMemberAuth, PACKS as MEMBER_PACKS } from './member/client.js'
+import { API as MEMBER_API, Member, memberSettings, withMemberAuth, PACKS as MEMBER_PACKS } from './member/client.js'
 import { RendererCapture } from './rendererCapture.js'
 import { ChatGPTAuth, complete, listModels, llmStatus, resolveModel, isAbort, PROVIDERS } from './llm/index.js'
 import { OpenAIRealtimeASR } from './asr/openai.js'
@@ -28,6 +28,7 @@ import { dbfs } from './audio/gate.js'
 import { recordVoiceprint } from './enroll.js'
 import { DragHelper } from './dragHelper.js'
 import { Updater } from './updater.js'
+import { consented, consentPatch, needsConsent, UsagePing } from './usagePing.js'
 import { Assistant } from './assist/assistant.js'
 import { captureScreen, screenPermission } from './assist/screen.js'
 import { createAnswerWindow, keepFrontApp, resetAnswerBounds, setAnswerEditMode, showAnswerWindow } from './assist/answerWindow.js'
@@ -80,6 +81,7 @@ let listening = null // 引导里的试听：{ stop }
 let onboardingResumed = false // 这次启动是引导被系统授权的「退出并重新打开」打断后接着出的
 let dragHelper = null
 let updater = null
+let usagePing = null
 let pointerLast = null
 let overlayHit = null // 字幕框在字幕窗里的位置（页面报），鼠标在上面时接管点击，可以拖
 let overlayGrab = false
@@ -825,6 +827,11 @@ function createControl() {
     e.preventDefault()
     controlWin.hide()
   })
+}
+
+/** 匿名使用统计：用户同意（true）或不同意（false），存进设置。设置里的开关在用，以后的询问弹窗也直接调它（渲染层 app.setUsageConsent）。 */
+function setUsageConsent(agree) {
+  return settings.update(consentPatch(agree))
 }
 
 /** 设置窗口：单实例，section 是要打开的分区（general、ai、asr、voiceprint、assist、overlay、hotkeys、mic、about）。 */
@@ -1597,6 +1604,7 @@ function wireIpc() {
     currentProjectId: currentProjectId(),
     onboarding: onboardingStatus(),
     onboardingResumed,
+    askUsage: !uiSelfTest && needsConsent(settings.get()), // 匿名使用统计没回答过时主窗口问一次（control/consent.js）；界面自测截图时不弹
     appName: systemListName(),
     sysNames: systemSettingsNames(),
     update: updater?.status() ?? null,
@@ -1743,6 +1751,7 @@ function wireIpc() {
 
   // 窗口和引导
   ipcMain.handle('window:openSettings', (_e, section) => openSettings(section))
+  ipcMain.handle('usage:consent', (_e, agree) => setUsageConsent(agree === true))
   ipcMain.handle('window:openOnboarding', () => openOnboarding())
   ipcMain.handle('window:showMain', () => showControl())
   ipcMain.handle('onboarding:status', () => onboardingStatus())
@@ -2000,6 +2009,8 @@ function wireEngine() {
     if (prev.engine === 'local' && next.engine !== 'local' && engine.state === 'idle') stopLocalAsr()
     if (next.theme !== prev.theme) nativeTheme.themeSource = themeSource(next.theme)
     if (next.launchAtLogin !== prev.launchAtLogin) applyLaunchAtLogin(next.launchAtLogin)
+    // 刚同意「匿名使用统计」：今天还没报过的现在就报，不等下一个小时
+    if (consented(next) && !consented(prev) && usagePing?.timers.length) usagePing.tick()
     if (next.saveDir !== prev.saveDir) {
       // 换了根目录：重新扫描，那边根目录下的旧会议一样挪进「未归类」
       try {
@@ -2144,6 +2155,14 @@ app.whenReady().then(async () => {
   updater.on('quitting', () => (quitting = true))
   nativeUpdater.on('before-quit-for-update', () => (quitting = true))
   updater.start()
+  // 每天匿名报到一次，用户同意了才报（设置里「匿名使用统计」）。只有正式版报；开发版、源码运行、自测不报，测试时给 MEETCAPTION_API 指到本机假服务器才报
+  usagePing = new UsagePing({
+    file: path.join(app.getPath('userData'), 'usage-ping.json'),
+    api: MEMBER_API,
+    enabled: () => consented(settings.get()),
+    info: () => ({ version: app.getVersion(), plan: settings.get().plan, lang: uiLang() }),
+  })
+  if (!selfTest && ((app.isPackaged && !isDevBuild()) || process.env.MEETCAPTION_API)) usagePing.start()
   createTray()
   registerHotkeys()
   // 第一次启动：先出引导，完成后再开主窗口。没走完就被系统授权重启打断的，接着出（从同一步）；自己关掉的以后从设置里再打开

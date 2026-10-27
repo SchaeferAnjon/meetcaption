@@ -2714,3 +2714,38 @@ body.mica .app-main {
 .hud .kbd {
   background: rgba(255, 255, 255, 0.08);
 }
+
+/* ---------- 匿名使用统计的询问（shared/consent.js）：主窗口弹窗和引导那一步共用 ---------- */
+
+.consent p {
+  margin: 0 0 var(--sp-2);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.consent-list {
+  margin: 0 0 var(--sp-2);
+  padding-left: 1.25em;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.consent-list li + li {
+  margin-top: 4px;
+}
+
+.consent-list li::marker {
+  color: var(--text-3);
+}
+
+/* 「同意」「不用了」一样大、一样的样式 */
+.modal.is-consent .modal-footer > .btn {
+  flex: 1 1 0;
+}
+
+/* 焦点放在对话框本身（两个按钮都不预先选中），对话框不画焦点框 */
+.modal.is-consent:focus,
+.modal.is-consent:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-modal);
+}

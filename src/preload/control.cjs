@@ -98,6 +98,7 @@ contextBridge.exposeInMainWorld('app', {
 
   // 窗口和引导
   openSettings: invoke('window:openSettings'),
+  setUsageConsent: invoke('usage:consent'), // setUsageConsent(true | false)：匿名使用统计同意 / 不同意，存进设置（usageConsent 'yes' | 'no'）
   openOnboarding: invoke('window:openOnboarding'),
   finishOnboarding: invoke('onboarding:finish'), // finishOnboarding({ tour })：tour 为真时进主窗口后导览四处
   showDragHelper: invoke('onboarding:helper'), // ('sys' | 'scr' | 'mic')：打开系统设置，旁边浮出能拖的兔子图标；不给参数就收起

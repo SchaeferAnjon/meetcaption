@@ -1,6 +1,6 @@
 'use strict'
 // 首次引导（design/onboarding-v2 方向 A「侧栏五步加导览」，另加一步录声纹）：左边步骤栏，右边一屏只做一件事，
-// 欢迎 → 授权（拖兔子图标进系统设置）→ 语言 → 试听 → 声纹（可跳过）→ 可以开始；走完在主窗口上导览四处（control/guide.js）。
+// 欢迎 → 授权（拖兔子图标进系统设置）→ 语言 → 试听 → 声纹（可跳过）→ 匿名使用统计（同意 / 不用了）→ 可以开始；走完在主窗口上导览四处（control/guide.js）。
 // 每换一步存下步号：被系统授权的「退出并重新打开」打断的，重开后从这一步接着来；换界面语言重新载入也停在这一步。
 const api = window.app
 const P = window.parts
@@ -44,7 +44,7 @@ const S = {
   vpBusy: false,
 }
 
-const STEPS = ['welcome', 'perm', 'lang', 'listen', 'voice', 'ready']
+const STEPS = ['welcome', 'perm', 'lang', 'listen', 'voice', 'stats', 'ready']
 const idx = () => STEPS.indexOf(S.step)
 const uiCode = () => window.UI_LANG || 'zh'
 const sep = () => (['zh', 'zh-Hant', 'ja'].includes(uiCode()) ? '、' : ', ')
@@ -63,6 +63,7 @@ function stepInfo() {
     lang: [t('语言'), t('对方说的、翻成的')],
     listen: [t('试听'), t('确认字幕出来了')],
     voice: [t('声纹'), t('分清你和对方，可跳过')],
+    stats: [t('使用统计'), t('匿名，可以不同意')],
     ready: [t('开始'), isMember() ? t('送你 1 场') : t('快捷键')],
   }
 }
@@ -73,6 +74,7 @@ function stepDone(key) {
   if (key === 'lang') return S.seen > 2 && Boolean(S.tgt)
   if (key === 'listen') return S.listen.sys && Boolean(S.listen.text)
   if (key === 'voice') return Boolean(P.voiceprint()?.enrolled)
+  if (key === 'stats') return Boolean(init.settings?.usageConsent)
   return false
 }
 
@@ -608,7 +610,21 @@ function stepVoice() {
   ]
 }
 
-/* ---------------- 第 6 步：可以开始了 ---------------- */
+/* ---------------- 第 6 步：匿名使用统计 ---------------- */
+
+// 正文和主窗口的弹窗共用（shared/consent.js）；两个按钮在底栏，一样大、都不是主按钮（回车不替用户选）
+function stepStats() {
+  const body = consentBody()
+  body.classList.add('ob-consent')
+  return [el('h1.ob-h1', { text: consentCopy().title }), body]
+}
+
+async function answerStats(agree) {
+  await api.setUsageConsent(agree)
+  go('ready')
+}
+
+/* ---------------- 第 7 步：可以开始了 ---------------- */
 
 function giftText() {
   const m = S.member
@@ -681,11 +697,16 @@ function bar() {
   } else if (S.step === 'voice') {
     const enrolled = Boolean(P.voiceprint()?.enrolled)
     hint = enrolled ? t('录好了，以后在 设置 → 声纹 里能重录') : t('可以跳过，以后在 设置 → 声纹 里录')
-    btns = enrolled ? [back, nextBtn()] : [back, el('button.btn.btn-ghost', { type: 'button', disabled: S.vpBusy, onClick: () => go('ready') }, t('先跳过')), nextBtn(t('继续'), { disabled: true })]
+    btns = enrolled ? [back, nextBtn()] : [back, el('button.btn.btn-ghost', { type: 'button', disabled: S.vpBusy, onClick: () => go('stats') }, t('先跳过')), nextBtn(t('继续'), { disabled: true })]
+  } else if (S.step === 'stats') {
+    const c = consentCopy()
+    const v = init.settings?.usageConsent
+    hint = v === 'yes' ? t('已选：{0}', c.agree) : v === 'no' ? t('已选：{0}', c.decline) : ''
+    btns = [back, el('span.ob-consent-btns', {}, el('button.btn.btn-lg.ob-consent-btn', { type: 'button', onClick: () => answerStats(true) }, c.agree), el('button.btn.btn-lg.ob-consent-btn', { type: 'button', onClick: () => answerStats(false) }, c.decline))]
   } else {
     btns = [back, el('button.btn.btn-lg', { type: 'button', onClick: () => finish(false) }, t('直接开始')), nextBtn(t('带我看一遍主窗口'), { onClick: () => finish(true) })]
   }
-  if (S.vpBusy) for (const b of btns) if (b) b.disabled = true
+  if (S.vpBusy) for (const b of btns) if (b?.tagName === 'BUTTON') b.disabled = true
   return el('div.ob-bar', {}, el('span.ob-hint', { text: hint }), btns)
 }
 
@@ -719,7 +740,7 @@ function render(anim = false) {
   }
   if (S.step === 'welcome') startWelcomeTimers()
   else stopWelcomeTimers()
-  const body = { welcome: stepWelcome, perm: stepPerm, lang: stepLang, listen: stepListen, voice: stepVoice, ready: stepReady }[S.step]()
+  const body = { welcome: stepWelcome, perm: stepPerm, lang: stepLang, listen: stepListen, voice: stepVoice, stats: stepStats, ready: stepReady }[S.step]()
   const main = el('main.ob-main.app-main', {}, uiLangButton(), el('div.ob-body', { class: [anim ? 'is-anim' : '', S.step === 'welcome' ? 'is-welcome' : ''].join(' '), id: 'obBody' }, body), bar())
   document.getElementById('ob').replaceChildren(sidebar(), main)
   fitTitle(document.getElementById('wTitle'))
@@ -757,7 +778,7 @@ async function boot() {
   if (init.onboardingResumed && ob.inList?.length) api.updateSettings({ onboarding: { inList: [] } })
   // 语言：没选过时对方默认 English，翻成跟界面语言；两个撞上（英文界面）时翻成留空，必须选一个
   const proj = await api.getProject(init.currentProjectId || 'inbox')
-  if (ob.done || ob.step === 'listen' || ob.step === 'voice' || ob.step === 'ready') {
+  if (ob.done || ['listen', 'voice', 'stats', 'ready'].includes(ob.step)) {
     S.src = proj?.language ?? init.settings.language ?? 'en'
     S.tgt = proj?.target || init.settings.translateTarget || ''
     S.guessed = false
