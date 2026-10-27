@@ -1,0 +1,10 @@
+# 所有平台拉下来都用 LF 换行：测试里按 \n 从源码截函数，Windows 上转成 CRLF 会截不到
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary
+*.onnx binary
+*.wav binary
+*.webp binary
+*.gif binary
