@@ -7,6 +7,7 @@ window.consentBody = () =>
   ui.el(
     'div.consent',
     { dataset: { part: '匿名使用统计' } },
+    ui.el('p', { text: t('我们会给前 100 位用户免费额度，所以需要统计有多少人在用。统计是匿名的。') }),
     ui.el('p', { text: t('同意后，会议字幕每天会发给我们一次：') }),
     ui.el(
       'ul.consent-list',
