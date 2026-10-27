@@ -13,13 +13,13 @@ import { LlmError } from '../src/main/llm/errors.js'
 const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mc-member-ai-')), 'member.json')
 
 // 假会员服务器：试用 1 场，开完余额 0；status 回 kind 和余额
-function trialServer({ kind = 'trial' } = {}) {
+function trialServer({ kind = 'trial', granted = true } = {}) {
   const calls = []
-  let balance = 1
+  let balance = granted ? 1 : 0
   let n = 0
   const routes = {
-    '/v1/trial/start': () => ({ status: 200, body: { token: `mcd_${++n}`, kind, balance } }),
-    '/v1/license/status': () => ({ status: 200, body: { kind, balance } }),
+    '/v1/trial/start': () => ({ status: 200, body: { token: `mcd_${++n}`, kind, balance, trialGranted: granted } }),
+    '/v1/license/status': () => ({ status: 200, body: { kind, balance, trialGranted: granted } }),
     '/v1/session/start': () => ((balance = 0), { status: 200, body: { session: 'mcs_1', sessionId: 1, remainingMs: 3600_000, charged: 1, balance } }),
     '/v1/session/heartbeat': () => ({ status: 200, body: { remainingMs: 0, charged: 1, exhausted: true, idle: false, balance } }),
     '/v1/session/end': () => ({ status: 200, body: { balance } }),
@@ -100,6 +100,16 @@ test('会后的票只给那一场自己用：重做以前的会议不记在它�
   assert.equal(p.aiKey(mine), 'mcs_1')
   m.stop()
   p.stop()
+})
+
+test('免费试用名额发完了才装的：AI 关着，原因说名额发完了，不说试用用完了', async () => {
+  const { f } = trialServer({ granted: false })
+  const m = make(tmpFile(), f)
+  await m.refresh()
+  assert.equal(m.info.balance, 0)
+  assert.equal(m.noAi, true)
+  assert.match(m.noAiReason(), /名额发完了/)
+  m.stop()
 })
 
 test('断线 30 分钟内接上同一场：断开前那段记录也还算这一场', async () => {

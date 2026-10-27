@@ -323,7 +323,8 @@ export class Member extends EventEmitter {
 
   /** AI 用不了时给用户看的原因（会员没有 Key 可填，不能说「没填 Key」）。 */
   noAiReason(at = null) {
-    return this.#live(at) && this.session.exhausted ? t('这一场的会员时间用完了，翻译和答题先关着') : t('试用场次用完了，买了场次 AI 才能用')
+    if (this.#live(at) && this.session.exhausted) return t('这一场的会员时间用完了，翻译和答题先关着')
+    return this.info?.trialGranted === false ? t('免费试用的名额发完了，买了场次 AI 才能用') : t('试用场次用完了，买了场次 AI 才能用')
   }
 
   /**

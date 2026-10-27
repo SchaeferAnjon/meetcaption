@@ -45,7 +45,12 @@ function memberCard() {
     title = trial ? t('免费试用') : t('会员')
     if (n > 0) text = t(`还剩 {0} 场，每场最长 {1} 小时{2}`, n, sessionHours(info), live ? t('。这一场正在计时') : '')
     else if (live && !live.exhausted) text = t(`最后一场正在计时，最长 {0} 小时`, sessionHours(info))
-    else {
+    else if (trial && info.trialGranted === false) {
+      // 免费试用只发前 100 份（服务器 trialsTotal）：没领到的不能说「试用用完了」
+      title = t('会员')
+      text = t('免费试用的名额已经发完了。字幕照常（本地识别），AI 要买场次或换自带 Key。')
+      warn = true
+    } else {
       text = trial ? t('试用用完了。字幕照常（本地识别），AI 要买场次或换自带 Key。') : t('场次用完了。字幕照常（本地识别），AI 要再买场次。')
       warn = true
     }
@@ -146,7 +151,7 @@ function openPricing({ pack } = {}) {
 
     // 免费试用
     const trialBtn = el('button.btn.pricing-btn', { type: 'button', disabled: true }, el('span', {
-      text: !info ? t('打开会员后自动领取') : info.kind === 'paid' ? t('已是会员') : trialLeft > 0 ? t(`试用中 · 剩 {0} 场`, trialLeft) : t('试用已用完'),
+      text: !info ? t('打开会员后自动领取') : info.kind === 'paid' ? t('已是会员') : trialLeft > 0 ? t(`试用中 · 剩 {0} 场`, trialLeft) : info.trialGranted === false ? t('试用名额已发完') : t('试用已用完'),
     }))
     if (info && !isMember()) {
       trialBtn.disabled = false
@@ -155,7 +160,7 @@ function openPricing({ pack } = {}) {
     }
     const trial = column({
       name: t('免费试用'),
-      tags: [{ text: t('新用户') }],
+      tags: [{ text: t('前 100 位新用户') }],
       price: t('1 场'),
       unit: t('· 最长 1 小时'),
       sub: t('装好就能用，不用填任何 Key'),
