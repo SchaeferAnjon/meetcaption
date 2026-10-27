@@ -121,6 +121,8 @@ function updateError(msg, version = '') {
 }
 
 const SITE_URL = 'https://meetcaption.us-cloud.uk'
+const APPS_URL = 'https://apps.us-cloud.uk'
+const CONTACT_EMAIL = 'infoschaeferanjon@gmail.com'
 
 // 装的是哪个包：Mac 看包的芯片（arch），Intel 版在 Apple 芯片的 Mac 上是 Rosetta 转译跑的（translated），这时提示换原生版
 function buildKind({ platform, arch, translated }) {
@@ -865,6 +867,38 @@ function buildAbout() {
   ]
 }
 
+function buildAboutUs() {
+  const value = (text) => el('div.path.mono.selectable', { text })
+  return [
+    P.section(
+      t('官网'),
+      null,
+      P.row(
+        t('软件官网'),
+        [value(APPS_URL), el('div.form-inline', {}, el('button.btn.btn-sm', { type: 'button', onClick: () => api.openExternal(APPS_URL) }, icon('external-link', 13), el('span', { text: t('打开') })))],
+        t('这个网站列着我们做的所有软件。'),
+      ),
+    ),
+    P.section(
+      t('联系方式'),
+      null,
+      P.row(
+        t('邮箱'),
+        [
+          value(CONTACT_EMAIL),
+          el(
+            'div.form-inline',
+            {},
+            el('button.btn.btn-sm', { type: 'button', onClick: () => api.openExternal(`mailto:${CONTACT_EMAIL}`) }, icon('mail', 13), el('span', { text: t('发邮件') })),
+            el('button.btn.btn-sm.btn-ghost', { type: 'button', onClick: () => P.copyText(CONTACT_EMAIL, t('邮箱已复制')) }, icon('copy', 13), el('span', { text: t('复制') })),
+          ),
+        ],
+        t('用得不顺手、想要什么功能，都可以写信告诉我们。'),
+      ),
+    ),
+  ]
+}
+
 /* ---------------- 分区切换 ---------------- */
 
 const SECTIONS = [
@@ -879,6 +913,7 @@ const SECTIONS = [
   { id: 'hotkeys', label: t('快捷键'), icon: 'keyboard', tint: 'teal', build: buildHotkeys },
   { id: 'mic', label: t('麦克风'), icon: 'mic', tint: 'red', build: buildMic },
   { id: 'permissions', label: t('权限'), icon: 'shield-check', tint: 'yellow', build: buildPermissions, warn: () => ['microphone', 'screen'].some((k) => perms[k] && perms[k] !== 'granted') },
+  { id: 'aboutUs', label: t('关于我们'), icon: 'users', tint: 'blue', build: buildAboutUs },
   { id: 'about', label: t('关于'), icon: 'info', tint: 'gray', build: buildAbout },
 ]
 const pages = new Map()
