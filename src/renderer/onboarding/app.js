@@ -32,10 +32,10 @@ const S = {
   step: 'welcome',
   seen: 0, // 走到过的最远一步
   resumed: false, // 被系统重开打断后接着出：顶上说一声，换一步就收起
-  resumedWhat: [], // 重开后生效的：'sys' | 'scr'
+  resumedWhat: [], // 重开前拖过的：'sys' | 'scr'，重开后各自真查一次（生效了才说生效）
   mic: 'not-determined', // granted | denied | not-determined | restricted，另有 waiting（开了系统设置等开关）
-  sys: '', // '' | waiting（面板开着，等拖进列表）| inlist（拖过了，重开才生效）| ok（列表里有了，试听时确认）
-  scr: '', // '' | skip | waiting | inlist | ok
+  sys: '', // '' | waiting（面板开着，等拖进列表）| inlist（拖过了，重开才生效）| checking（重开后正在真查）| noeffect（重开后查了，没生效）| ok（真查到能录）
+  scr: '', // '' | skip | waiting | inlist | noeffect（重开后系统还没给权限）| ok
   src: 'en',
   tgt: '',
   guessed: true, // 语言还是按这台电脑猜的
@@ -243,11 +243,21 @@ function demoTick() {
 /* ---------------- 第 2 步：授权 ---------------- */
 
 const requiredLeft = () => (S.mic === 'granted' ? 0 : 1) + (isMac && !['ok', 'inlist'].includes(S.sys) ? 1 : 0)
+// 重开后顶上那句：哪几项真查过、生效了，哪几项没生效（没生效的不说能用，给下一步）
+function resumedText() {
+  const of = (state) => S.resumedWhat.filter((k) => S[k] === state)
+  const names = (keys) => keys.map((k) => (k === 'sys' ? t('电脑声音') : t('录屏'))).join(t('和'))
+  const parts = [t('MeetCaption 重新打开了，从这一步接着来。')]
+  if (of('ok').length) parts.push(t('{0}已经生效。', names(of('ok'))))
+  if (of('checking').length) parts.push(t('正在确认电脑声音…'))
+  if (of('noeffect').length) parts.push(t('{0}重开后还没检测到生效。下一步：按下面那一行的提示再试一次，也可以先跳过，第 4 步试听时会再确认。', names(of('noeffect'))))
+  return parts.join(['zh', 'zh-Hant', 'ja'].includes(uiCode()) ? '' : ' ')
+}
 const pendingRestart = () => (isMac ? ['sys', 'scr'].filter((k) => S[k] === 'inlist') : [])
 
 function permRow(kind) {
   const appName = init.appName || 'MeetCaption'
-  const next = S.mic !== 'granted' ? 'mic' : isMac && ['', 'waiting'].includes(S.sys) ? 'sys' : isMac && S.scr === '' ? 'scr' : null
+  const next = S.mic !== 'granted' ? 'mic' : isMac && ['', 'waiting', 'noeffect'].includes(S.sys) ? 'sys' : isMac && S.scr === '' ? 'scr' : null
   const pri = next === kind ? '.btn-primary' : ''
   const def = {
     mic: { icon: 'mic', name: t('麦克风'), tag: t('必需'), ds: t('听你自己说的话，分清哪句是你说的。系统会弹框问一次。') },
@@ -273,6 +283,13 @@ function permRow(kind) {
   } else if (st === 'ok') {
     act = ok
     if (kind === 'sys') ds = t('会议软件里对方的声音从这里来。第 4 步试听时会再确认一次。')
+  } else if (st === 'checking') {
+    status = wait(t('正在确认电脑声音…'))
+  } else if (st === 'noeffect') {
+    // 重开后真查过了，没生效：照实说，告诉下一步
+    status = el('div.ob-pr-st.is-bad', {}, icon('circle-alert', 13), el('span', { text: kind === 'sys' ? t('重开后还是录不到电脑声音') : t('重开后系统还没给录屏权限') }))
+    ds = t('去系统设置的「{0}」，找到「{1}」打开开关；列表里没有就把兔子图标重新拖进去，再重开一次。', kind === 'sys' ? sysName('audio') : sysName('screen'), appName)
+    act = [btn(t('再查一次'), kind === 'sys' ? checkSystemAudio : refreshPerm), btn(t('打开系统设置'), () => openHelper(kind), pri)]
   } else if (st === 'waiting') {
     status = wait(t('等你把图标拖进列表'), el('button.ob-link', { type: 'button', onClick: () => markInList(kind) }, t('已经加上了')))
     act = btn(t('再打开'), () => openHelper(kind))
@@ -299,13 +316,9 @@ function stepPerm() {
   const banner = S.resumed
     ? el(
         'div.ob-banner',
-        { dataset: { part: '重开后接着来' } },
-        icon('refresh-cw', 15),
-        el('span', {
-          text: S.resumedWhat.length
-            ? t('MeetCaption 重新打开了，从这一步接着来。{0}已经生效{1}。', S.resumedWhat.map((k) => (k === 'sys' ? t('电脑声音') : t('录屏'))).join(t('和')), S.resumedWhat.includes('sys') ? t('，电脑声音第 4 步试听时再确认一次') : '')
-            : t('MeetCaption 重新打开了，从这一步接着来。'),
-        }),
+        { dataset: { part: '重开后接着来' }, class: S.resumedWhat.some((k) => S[k] === 'noeffect') ? 'is-warn' : '' },
+        icon(S.resumedWhat.some((k) => S[k] === 'noeffect') ? 'triangle-alert' : 'refresh-cw', 15),
+        el('span', { text: resumedText() }),
       )
     : null
   // 示意图：系统设置旁的小面板出来以后（在等拖）就不用了，收起来给几行说明让地方
@@ -371,6 +384,14 @@ async function refreshPerm() {
   if (p.microphone === 'granted' || S.mic !== 'waiting') S.mic = p.microphone ?? S.mic
   if (p.screen === 'granted') S.scr = 'ok'
   if (`${S.mic}|${S.scr}` !== before && S.step === 'perm') render()
+}
+
+// 电脑声音没有查询接口：真起一次系统声音采集，出了数据才算生效。没出数据就说没生效，不往下假装能用
+async function checkSystemAudio() {
+  S.sys = 'checking'
+  if (S.step === 'perm') render()
+  S.sys = (await api.probeSystemAudio()) === 'granted' ? 'ok' : 'noeffect'
+  if (S.step === 'perm') render()
 }
 
 /* ---------------- 第 3 步：语言 ---------------- */
@@ -723,12 +744,14 @@ async function boot() {
   S.mic = init.permissions?.microphone ?? S.mic
   if (isMac && init.permissions?.screen === 'granted') S.scr = 'ok'
   const ob = init.settings?.onboarding ?? {}
-  // 拖进列表等重开的：这次是被重开打断后接着出的，就当生效了（电脑声音试听时再确认）；换界面语言重新载入的还在等
+  // 拖进列表等重开的：这次是被重开打断后接着出的，不假定生效，下面真查一次；换界面语言重新载入的还在等
   for (const k of ob.inList ?? []) {
     if (!isMac) break
     if (init.onboardingResumed) {
-      if (k === 'sys') S.sys = 'ok'
+      // 重开后真查一次：电脑声音起一次系统声音采集（没有查询接口），录屏看系统的授权状态；没生效的照实说
       S.resumedWhat.push(k)
+      if (k === 'sys') S.sys = 'checking'
+      else if (S.scr !== 'ok') S.scr = 'noeffect'
     } else if (S[k] !== 'ok') S[k] = 'inlist'
   }
   if (init.onboardingResumed && ob.inList?.length) api.updateSettings({ onboarding: { inList: [] } })
@@ -781,6 +804,7 @@ async function boot() {
   })
   render(true)
   if (S.step === 'listen') startListen()
+  if (S.sys === 'checking') checkSystemAudio()
 }
 
 boot()

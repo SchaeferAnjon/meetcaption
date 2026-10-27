@@ -468,6 +468,12 @@ body.is-win .ob-top {
   flex: none;
   color: var(--blue);
 }
+.ob-banner.is-warn {
+  background: var(--yellow-soft);
+}
+.ob-banner.is-warn .icon {
+  color: var(--yellow);
+}
 .ob-illu {
   position: relative;
   min-height: 88px;
@@ -684,6 +690,9 @@ body.is-win .ob-top {
   width: 13px;
   height: 13px;
   color: var(--green);
+}
+.ob-pr-st.is-bad > .icon {
+  color: var(--yellow);
 }
 .ob-pr-st .ob-link {
   margin-left: 6px;

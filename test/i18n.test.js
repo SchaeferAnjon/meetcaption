@@ -96,3 +96,29 @@ test('提示里写的「设置 → 某页」，那一页在设置窗口里真的
   walk(path.join(ROOT, 'src'))
   assert.deepEqual(bad, [])
 })
+
+test('日语、韩语：声纹、录音语境的「录制」是录音（録音、녹음），不是录像（録画、녹화）；只有屏幕录制、录屏可以用', () => {
+  const video = { ja: /録画/, ko: /녹화/ }
+  for (const lang of ['ja', 'ko']) {
+    const dict = JSON.parse(fs.readFileSync(path.join(ROOT, 'src/i18n', `${lang}.json`), 'utf8'))
+    const bad = Object.keys(dict).filter((k) => /录制|录像/.test(k) && !/屏幕|录屏|画面/.test(k) && video[lang].test(dict[k]))
+    assert.deepEqual(bad, [], `${lang} 把录音写成了录像`)
+  }
+  setUiLang('ja')
+  assert.equal(t('，{0} 录制', '10月26日 22:44'), '、10月26日 22:44 録音')
+  setUiLang('ko')
+  assert.equal(t('，{0} 录制', '10월 26일 22:44'), ', 10월 26일 22:44 녹음')
+  setUiLang('zh')
+})
+
+test('设置里 AI 服务卡片的名字和一行介绍（providers.js，渲染时走 t()）在八张表里都有译文', async () => {
+  const { PROVIDERS } = await import('../src/main/llm/providers.js')
+  const keys = PROVIDERS.filter((p) => !p.hidden).flatMap((p) => [p.name, p.blurb]).filter((s) => /[一-鿿]/.test(s))
+  assert.ok(keys.length >= 12, `只找到 ${keys.length} 条`)
+  for (const lang of UI_LANGS.filter((l) => l !== 'zh')) {
+    const dict = JSON.parse(fs.readFileSync(path.join(ROOT, 'src/i18n', `${lang}.json`), 'utf8'))
+    const missing = keys.filter((k) => typeof dict[k] !== 'string')
+    assert.deepEqual(missing, [], `${lang} 缺 ${missing.length} 条`)
+    if (!['zh-Hant', 'ja'].includes(lang)) assert.deepEqual(keys.filter((k) => /[一-鿿]/.test(dict[k])), [], `${lang} 的译文里还有中文`)
+  }
+})
