@@ -30,8 +30,14 @@ const format = arg('format', 'webp');
 const width = 840;
 const maxKB = 400;
 const minGap = 110;
-// The stage tabs on the website, in order: bilingual captions, AI answers, class notes.
+// The stage tabs on the website, in order: bilingual captions, AI answers, class notes, with the scenes each plays.
+// The website's third answer scene (screen sharing: two small panes and a caption outside the stage) is left out;
+// the README says in words that the other side sees no card.
 const groups = ['captions', 'answer', 'notes'];
+const scenes = [['talk', 'color', 'term'], ['ask', 'key'], ['notes', 'shot']];
+// Trim around each scene change, in ms: the first scene's content is still appearing, the last one is about to be replaced.
+const trimIn = 250;
+const trimOut = 150;
 
 function serveWebsite() {
   const dir = path.join(root, 'website');
@@ -60,37 +66,49 @@ async function recordGroup(browser, site, lang, index, tmp) {
   await page.goto(`${site}/?lang=${lang}`, { waitUntil: 'networkidle' });
   await page.addStyleTag({ content: ISOLATE });
   const box = await page.evaluate(() => { const r = document.querySelector('#stage').getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }; });
-  const total = await page.evaluate((i) => {
-    const acts = [['talk', 'color', 'term'], ['ask', 'key', 'share'], ['notes', 'shot']][i];
-    return acts.reduce((s, a) => s + Scenes.ACTIONS[a].dur, 0);
-  }, index);
+  // Log when each scene is built (Date.now(), the same clock as the screencast frame timestamps).
+  await page.evaluate(() => {
+    window.__scenes = [];
+    for (const [key, a] of Object.entries(Scenes.ACTIONS)) { const html = a.html; a.html = () => { window.__scenes.push([key, Date.now()]); return html(); }; }
+  });
+  const acts = scenes[index];
+  const durs = await page.evaluate((keys) => keys.map((k) => Scenes.ACTIONS[k].dur), acts);
+  const total = durs.reduce((a, b) => a + b, 0);
   const cdp = await ctx.newCDPSession(page);
   await cdp.send('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } });
   const dir = path.join(tmp, `${lang}-${groups[index]}`);
   fs.mkdirSync(dir, { recursive: true });
   const frames = [];
-  let clickedAt = Infinity;
+  let recording = false;
   cdp.on('Page.screencastFrame', (f) => {
-    const wall = Date.now();
     cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }).catch(() => {});
-    if (wall < clickedAt) return;
+    if (!recording) return;
     const name = `f${String(frames.length).padStart(4, '0')}.png`;
     fs.writeFileSync(path.join(dir, name), Buffer.from(f.data, 'base64'));
     frames.push({ name, t: f.metadata.timestamp * 1000 });
   });
   await cdp.send('Page.startScreencast', { format: 'png', everyNthFrame: 1, maxWidth: 1000, maxHeight: 720 });
   await page.waitForTimeout(300);
+  recording = true;
   // Clicking the tab restarts the group from its first scene.
-  await page.evaluate((i) => document.querySelectorAll('#stabs .stab')[i].click(), index);
-  clickedAt = Date.now();
-  await page.waitForTimeout(total + 400);
+  const clickedAt = await page.evaluate((i) => { const t = Date.now(); document.querySelectorAll('#stabs .stab')[i].click(); return t; }, index);
+  await page.waitForTimeout(total + 600);
   await cdp.send('Page.stopScreencast');
+  const log = await page.evaluate(() => window.__scenes);
   await ctx.close();
-  return { dir, frames, box };
+  // Keep only frames inside this group's own scenes, from the first scene's build to just before the group's end.
+  const first = log.find(([k, t]) => k === acts[0] && t >= clickedAt);
+  const start = first[1] + trimIn;
+  const lastStart = log.find(([k, t]) => k === acts.at(-1) && t >= first[1])[1];
+  const end = lastStart + durs.at(-1) - trimOut;
+  const kept = frames.filter((f) => f.t >= start && f.t <= end);
+  if (!kept.length) throw new Error(`no frames recorded for ${lang} ${groups[index]}`);
+  return { dir, frames: kept, box, end };
 }
 
 function encode(rec, out) {
   const { dir, box } = rec;
+  const tail = rec.end - rec.frames.at(-1).t; // the screencast sends nothing while the picture does not change
   // Chrome sends about 15 frames a second; keep one every 110 ms or so, which is enough for these animations.
   const frames = [];
   for (const f of rec.frames) if (!frames.length || f.t - frames.at(-1).t >= minGap) frames.push(f);
@@ -99,8 +117,13 @@ function encode(rec, out) {
   for (const f of frames) {
     execFileSync('magick', [path.join(dir, f.name), '-crop', `${box.w}x${box.h}+${box.x}+${box.y}`, '+repage', '-resize', `${width}x`, '-strip', path.join(small, f.name)]);
   }
-  const hold = 1800;
+  const hold = Math.max(1800, Math.min(5000, Math.round(tail)));
   const durs = frames.map((f, i) => (i + 1 < frames.length ? Math.max(40, Math.round(frames[i + 1].t - f.t)) : hold));
+  const seconds = Math.round((frames.at(-1).t - frames[0].t + hold) / 100) / 10;
+  // The first frame is also what readers see when the animation does not play. Start the file on the last frame,
+  // where the card or the notes are complete and held for a moment; the loop is the same cycle, just entered there.
+  frames.unshift(frames.pop());
+  durs.unshift(durs.pop());
   for (const q of format === 'gif' ? [0] : [74, 66, 58, 50, 42]) {
     if (format === 'gif') {
       const list = [];
@@ -112,7 +135,7 @@ function encode(rec, out) {
       execFileSync('img2webp', [...args, '-o', out]);
     }
     const kb = Math.round(fs.statSync(out).size / 1024);
-    if (kb <= maxKB || format === 'gif') return { kb, q, frames: frames.length, seconds: Math.round((frames.at(-1).t - frames[0].t) / 100) / 10 };
+    if (kb <= maxKB || format === 'gif') return { kb, q, frames: frames.length, seconds };
   }
   throw new Error(`${out} is still over ${maxKB} KB at the lowest quality`);
 }

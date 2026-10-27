@@ -18,7 +18,7 @@ npm run dist:win          # build the Windows installer, on Windows
 The app's automatic updates read the GitHub release.
 
 1. Bump `version` in `package.json`, push to `main`, then push a tag `v<version>` so CI builds the Windows installer.
-2. On a Mac that has the Developer ID certificate, run `node scripts/release.mjs`. It builds the Mac dmg and zip (automatic updates on Mac need the same certificate as the installed app, so the CI Mac build cannot be used), downloads the Windows files from CI, checks the signature and that `latest-mac.yml` and `latest.yml` are complete, and leaves everything in `release/<version>/`.
+2. On a Mac that has the Developer ID certificate, run `node scripts/release.mjs`. It builds the Mac dmg and zip (automatic updates on Mac need the same certificate as the installed app, so the CI Mac build cannot be used), downloads the Windows files from CI, checks the signature and that `latest-mac.yml` and `latest.yml` are complete, and leaves everything in `release/<version>/`. It also makes three copies without the version number (`MeetCaption-win-x64.exe`, `MeetCaption-mac-arm64.dmg`, `MeetCaption-mac-x64.dmg`) and uploads them with the release; the README links to `releases/latest/download/<file name>`, so these names must stay.
 3. Write the release notes in `release/<version>/notes.md`, then run `node scripts/release.mjs --publish`. It uploads exactly those files and creates the release, titled `MeetCaption <version>`.
 
 GitHub Actions (`.github/workflows/build.yml`) builds on Windows and Mac and checks with a VB-CABLE virtual sound card that loopback capture works. The website in `website/` is published to GitHub Pages by `.github/workflows/pages.yml`.

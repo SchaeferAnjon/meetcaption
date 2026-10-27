@@ -4,19 +4,19 @@
 
 <p align="center"><b>会议、面试、网课的实时双语字幕：对方说的每一句，中文就在下面。</b></p>
 
-<p align="center"><a href="https://meetcaption.us-cloud.uk/?lang=zh"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-meetcaption.us--cloud.uk-5b5bd6?style=for-the-badge" alt="官网：meetcaption.us-cloud.uk" height="38"></a></p>
+<p align="center">
+<a href="https://github.com/SchaeferAnjon/meetcaption/releases/latest/download/MeetCaption-win-x64.exe"><b>下载 Windows 版</b></a> ·
+<a href="https://github.com/SchaeferAnjon/meetcaption/releases/latest/download/MeetCaption-mac-arm64.dmg"><b>Mac 版（Apple 芯片）</b></a> ·
+<a href="https://github.com/SchaeferAnjon/meetcaption/releases/latest/download/MeetCaption-mac-x64.dmg">Mac 版（Intel 芯片）</a>
+</p>
+
+<p align="center"><a href="https://meetcaption.us-cloud.uk/?lang=zh"><img src="docs/readme/zh/website.svg" width="270" height="36" alt="官网：meetcaption.us-cloud.uk"></a></p>
 
 <p align="center">
 <a href="https://github.com/SchaeferAnjon/meetcaption/releases/latest"><img src="https://img.shields.io/github/v/release/SchaeferAnjon/meetcaption?label=%E6%9C%80%E6%96%B0%E7%89%88&color=1d1d1f" alt="最新版"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-1d1d1f" alt="GPL-3.0"></a>
 <img src="https://img.shields.io/badge/Windows-10%2B-1d1d1f" alt="Windows 10+">
 <img src="https://img.shields.io/badge/macOS-14.2%2B-1d1d1f" alt="macOS 14.2+">
-</p>
-
-<p align="center">
-<a href="https://github.com/SchaeferAnjon/meetcaption/releases/latest"><b>下载 Windows 版</b></a> ·
-<a href="https://github.com/SchaeferAnjon/meetcaption/releases/latest"><b>Mac 版（Apple 芯片）</b></a> ·
-<a href="https://github.com/SchaeferAnjon/meetcaption/releases/latest">Mac 版（Intel 芯片）</a>
 </p>
 
 <p align="center"><sub><a href="README.md">English</a> · <b>简体中文</b></sub></p>
@@ -38,9 +38,9 @@
 
 ## AI 答题
 
-<p align="center"><img src="docs/readme/zh/answer.webp" width="840" alt="对方提问，答题框给出回答和译文；按快捷键再答一次；共享屏幕时对方看不到"></p>
+<p align="center"><img src="docs/readme/zh/answer.webp" width="840" alt="对方提问，答题框给出回答，下面带译文；按快捷键回答刚才那句"></p>
 
-听出是在问你，答题框马上给出能照着说的回答，下面带译文。没自动出来就按 <kbd>⌘</kbd> <kbd>⌥</kbd> <kbd>A</kbd>（Windows 上 <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>A</kbd>）。
+听出是在问你，答题框马上给出能照着说的回答，下面带译文。没自动出来就按 <kbd>⌘</kbd> <kbd>⌥</kbd> <kbd>A</kbd>（Windows 上 <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>A</kbd>）。共享屏幕时，对方看不到答题框。
 
 ## 课堂笔记
 
@@ -52,11 +52,15 @@
 
 Mac 上的真实窗口，用合成的人声放一段示例会议、面试和讲课。
 
-<p align="center"><img src="docs/readme/shots/captions-mac.jpg" width="800" alt="Mac 上的字幕：两句英文，每句下面跟中文"><br><sub>Mac 上的字幕</sub></p>
-
-<p align="center"><img src="docs/readme/zh/answer-card.jpg" width="380" alt="面试模式的答题框：能照着说的回答，分成几小段，每段前面一个短标签"><br><sub>答题框，面试模式</sub></p>
-
-<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/zh/class-notes-dark.jpg"><img src="docs/readme/zh/class-notes-light.jpg" width="840" alt="主窗口里的图文课堂笔记：一页课件，老师讲到的几行框了出来"></picture><br><sub>主窗口里的图文课堂笔记</sub></p>
+<table>
+<tr>
+<td colspan="2" align="center"><img src="docs/readme/shots/captions-mac.jpg" width="800" alt="Mac 上的字幕：两句英文，每句下面跟中文"><br><sub>Mac 上的字幕</sub></td>
+</tr>
+<tr>
+<td width="38%" align="center"><img src="docs/readme/zh/answer-card.jpg" width="300" alt="面试模式的答题框：能照着说的回答，分成几小段，每段前面一个短标签"><br><sub>答题框，面试模式</sub></td>
+<td align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/zh/class-notes-dark.jpg"><img src="docs/readme/zh/class-notes-light.jpg" width="480" alt="主窗口里的图文课堂笔记：一页课件，老师讲到的几行框了出来"></picture><br><sub>图文课堂笔记</sub></td>
+</tr>
+</table>
 
 ## 三种用法
 
@@ -86,11 +90,11 @@ Mac 上的真实窗口，用合成的人声放一段示例会议、面试和讲�
 
 | | 下载 | 系统 |
 |---|---|---|
-| **Windows** | [`MeetCaption-…-win-x64.exe`](https://github.com/SchaeferAnjon/meetcaption/releases/latest) | Windows 10 或 11 |
-| **Apple 芯片的 Mac**（M1 到 M4） | [`MeetCaption-…-mac-arm64.dmg`](https://github.com/SchaeferAnjon/meetcaption/releases/latest) | macOS 14.2 或更新 |
-| **Intel 芯片的 Mac** | [`MeetCaption-…-mac-x64.dmg`](https://github.com/SchaeferAnjon/meetcaption/releases/latest) | macOS 14.2 或更新 |
+| **Windows** | [`MeetCaption-win-x64.exe`](https://github.com/SchaeferAnjon/meetcaption/releases/latest/download/MeetCaption-win-x64.exe) | Windows 10 或 11 |
+| **Apple 芯片的 Mac**（M1 到 M4） | [`MeetCaption-mac-arm64.dmg`](https://github.com/SchaeferAnjon/meetcaption/releases/latest/download/MeetCaption-mac-arm64.dmg) | macOS 14.2 或更新 |
+| **Intel 芯片的 Mac** | [`MeetCaption-mac-x64.dmg`](https://github.com/SchaeferAnjon/meetcaption/releases/latest/download/MeetCaption-mac-x64.dmg) | macOS 14.2 或更新 |
 
-[官网](https://meetcaption.us-cloud.uk/?lang=zh)上有同样的下载，还有 9 种语言的使用教程。
+[官网](https://meetcaption.us-cloud.uk/?lang=zh)上有同样的下载，还有 9 种语言的使用教程。旧版本在 [Releases 页面](https://github.com/SchaeferAnjon/meetcaption/releases)。
 
 <details>
 <summary>第一次打开</summary>
