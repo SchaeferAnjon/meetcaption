@@ -259,7 +259,7 @@ function notesHarness({ replies, ready = true, everyMin = 2, flushRetryMs } = {}
     return typeof r === 'string' ? r : JSON.stringify(r)
   }
   const updates = []
-  const notes = new LiveNotes({ llm, llmStatus: () => ({ ready, reason: '还没登录' }), startedAt: START, everyMs: () => everyMin * 60_000, context: 'Intro ML', now: () => now, flushRetryMs })
+  const notes = new LiveNotes({ llm, llmStatus: () => ({ ready, reason: '还没登录' }), startedAt: START, everyMs: () => everyMin * 60_000, context: 'Intro ML', now: () => now, againMs: 0, flushRetryMs })
   notes.on('update', (u) => updates.push(u))
   const say = (sec, text) => notes.add({ startedAt: START + sec * 1000, speaker: '老师', text })
   return { notes, calls, updates, say, advance: (sec) => (now += sec * 1000), at: (sec) => (now = START + sec * 1000) }
@@ -337,7 +337,8 @@ test('LiveNotes: the model only writes what changed; the previous notes are merg
 })
 
 test('LiveNotes: a model reply that is broken JSON or not notes at all changes nothing and is retried with the same lines', async () => {
-  const h = notesHarness({ replies: [NOTE_A, '{"sections":[{"n":1,"points":["半截', '{"unrelated":1}', { sections: [{ n: 1, points: ['补充'] }] }] })
+  const half = '{"sections":[{"n":1,"points":["半截'
+  const h = notesHarness({ replies: [NOTE_A, half, half, '{"unrelated":1}', '{"unrelated":1}', { sections: [{ n: 1, points: ['补充'] }] }] })
   h.at(10)
   h.say(5, sentence(400))
   await h.notes.running
@@ -358,6 +359,28 @@ test('LiveNotes: a model reply that is broken JSON or not notes at all changes n
   assert.match(h.calls.at(-1).messages[0].content, /\[00:20\] 老师：w0/) // 失败的那批内容还在
 })
 
+test('LiveNotes: an empty or cut-off reply is asked again at once; the person sees no error when the second one works', async () => {
+  const NOTE_C = { sections: [{ title: 'C', start: '04:00', points: ['c'] }], emphasis: [], homework: [], terms: [] }
+  const h = notesHarness({ replies: [NOTE_A, '', NOTE_B, '{"sections":[{"title":"C"', NOTE_C] })
+  h.at(10)
+  h.say(5, sentence(400))
+  await h.notes.running
+  h.at(30)
+  h.say(20, sentence(400)) // 空回复，再要一次就好了
+  await h.notes.running
+  assert.equal(h.calls.length, 3)
+  assert.equal(h.updates.length, 2)
+  assert.equal(h.updates[1].error, null)
+  assert.equal(h.calls[2].messages[0].content, h.calls[1].messages[0].content) // 重发的是同一批
+  assert.deepEqual(h.updates[1].notes.sections.map((s) => s.title), ['A', 'B'])
+  h.at(60)
+  h.say(50, sentence(400)) // 写到一半就停的 JSON，同样再要一次
+  await h.notes.running
+  assert.equal(h.calls.length, 5)
+  assert.equal(h.updates[2].error, null)
+  assert.deepEqual(h.updates[2].notes.sections.map((s) => s.title), ['A', 'B', 'C'])
+})
+
 test('LiveNotes: 400 English words or 600 Chinese characters trigger at once', async () => {
   const h = notesHarness({ replies: [NOTE_A, NOTE_A] })
   h.at(10)
@@ -371,7 +394,7 @@ test('LiveNotes: 400 English words or 600 Chinese characters trigger at once', a
 })
 
 test('LiveNotes: failures keep the previous version, report a reason, and retry later with the same lines', async () => {
-  const h = notesHarness({ replies: [NOTE_A, new Error('额度用完了'), 'not json', NOTE_B] })
+  const h = notesHarness({ replies: [NOTE_A, new Error('额度用完了'), 'not json', '', NOTE_B] })
   h.at(10)
   h.say(5, sentence(400))
   await h.notes.running
@@ -388,7 +411,8 @@ test('LiveNotes: failures keep the previous version, report a reason, and retry 
   h.advance(61)
   await h.notes.tick()
   assert.equal(h.updates[3].error, null)
-  assert.match(h.calls[3].messages[0].content, /\[00:15\] 老师：w0/) // 失败的那批内容还在
+  assert.equal(h.calls.length, 5) // 请求出错不马上重发；回复解析不了的马上再要一次
+  assert.match(h.calls[4].messages[0].content, /\[00:15\] 老师：w0/) // 失败的那批内容还在
   assert.deepEqual(h.updates[3].notes.sections.map((s) => s.title), ['A', 'B'])
 })
 

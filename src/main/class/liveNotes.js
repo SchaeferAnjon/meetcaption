@@ -10,7 +10,7 @@ const { repair } = globalThis.texfix
 
 // 实时笔记（三种模式都有，内容按模式不同）：定稿的字幕攒起来，每累计约 N 分钟新内容（或 400 个英文词、600 个汉字）把上一版笔记的摘要和新片段一起交给 smart 模型，
 // 模型只写这一批带来的变化（补到哪个小节、新开的小节、改哪一条、新的强调点 / 作业 / 术语），applyNotes 合进上一版，得到完整的新版笔记。
-// 同一时间只有一个请求；失败或额度不够时保留上一版，隔一会儿带着这批内容再试。这一场的 AI 用量到上限了（usage-limit）就不再发。
+// 同一时间只有一个请求；回复解析不了先隔几秒重要一次；失败或额度不够时保留上一版，隔一会儿带着这批内容再试。这一场的 AI 用量到上限了（usage-limit）就不再发。
 // 事件 'update'：{ notes, updatedAt, error }（失败时 notes 是上一版，error 是一句中文原因）；'limit'：用量到上限的那个错误（引擎停掉译文请求）。
 
 const LIMITS = { sections: 80, points: 30, formulas: 15, examples: 12, emphasis: 80, homework: 20, terms: 80, edits: 30 }
@@ -248,7 +248,7 @@ export class LiveNotes extends EventEmitter {
    * everyMs() → 攒多久更新一次（设置里的 class.notesEveryMin，开会中改了马上生效）；context：课程或会议背景；
    * mode：class | meeting | interview；prev：接着之前的笔记（没有就 null）。
    */
-  constructor({ llm, llmStatus = null, startedAt = Date.now(), everyMs = () => 120_000, context = '', mode = 'class', lang = 'zh', prev = null, now = () => Date.now(), wordsCap = 400, hanCap = 600, minWords = 15, retryMs = 60_000, flushRetryMs = 10_000, timeoutMs = 180_000 }) {
+  constructor({ llm, llmStatus = null, startedAt = Date.now(), everyMs = () => 120_000, context = '', mode = 'class', lang = 'zh', prev = null, now = () => Date.now(), wordsCap = 400, hanCap = 600, minWords = 15, retryMs = 60_000, againMs = 3000, flushRetryMs = 10_000, timeoutMs = 180_000 }) {
     super()
     this.llm = llm
     this.llmStatus = llmStatus
@@ -258,7 +258,7 @@ export class LiveNotes extends EventEmitter {
     this.mode = mode
     this.lang = lang
     this.now = now
-    this.opts = { wordsCap, hanCap, minWords, retryMs, flushRetryMs, timeoutMs }
+    this.opts = { wordsCap, hanCap, minWords, retryMs, againMs, flushRetryMs, timeoutMs }
     this.notes = prev
     this.updatedAt = null
     this.pending = [] // [{ id（段落 id）, at（绝对时间）, speaker, text }]
@@ -355,8 +355,13 @@ export class LiveNotes extends EventEmitter {
     const [system, user] = notesMessages({ prev: this.notes, lines, context: this.context, startedAt: this.startedAt, mode: this.mode, lang: this.lang })
     const t0 = this.now()
     try {
-      const raw = await this.llm({ model: 'smart', effort: 'low', json: true, timeoutMs: this.opts.timeoutMs, system: system.content, messages: [user] })
-      const parsed = parseNotes(raw, { startedAt: this.startedAt })
+      const ask = async () => parseNotes(await this.llm({ model: 'smart', effort: 'low', json: true, timeoutMs: this.opts.timeoutMs, system: system.content, messages: [user] }), { startedAt: this.startedAt })
+      let parsed = await ask()
+      // DeepSeek 的 JSON 模式偶尔回空内容，服务忙时写到一半就停（finish_reason insufficient_system_resource）：隔几秒再要一次，两次都不行才算这次失败
+      if (!parsed) {
+        await new Promise((r) => setTimeout(r, this.opts.againMs))
+        parsed = await ask()
+      }
       if (!parsed) throw new Error(t('AI 返回的笔记格式不对'))
       this.notes = applyNotes(this.notes, parsed, { fallbackStart: lines.length ? clock(lines[0].at) : null })
       this.updatedAt = this.now()
