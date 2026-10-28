@@ -192,7 +192,7 @@
  "」": "\"",
  "一个 Key 用多家模型": "One key for many models",
  "一个授权码最多用在 2 台电脑上，Mac、Windows 都行": "One license code can be used on up to 2 computers, Mac or Windows",
- "一个随机编号：只用来数人数，是装软件时随机生成的，跟你的名字、邮箱和电脑硬件都没有关系": "A random ID: used only to count people. It is generated randomly when you install the app and has nothing to do with your name, email or computer hardware",
+ "一个随机编号：只用来数人数，是第一次发送时随机生成的，跟你的名字、邮箱和电脑硬件都没有关系": "A random ID: used only to count people. It is generated randomly the first time anything is sent and has nothing to do with your name, email or computer hardware",
  "一句话说明这个项目（可选）": "One sentence to describe this project (optional)",
  "一句话说明（可选）": "One sentence to describe (optional)",
  "一场不到 5 分钟停止的不算": "Sessions stopped in under 5 minutes don't count",
