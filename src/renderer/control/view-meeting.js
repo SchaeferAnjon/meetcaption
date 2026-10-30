@@ -392,6 +392,13 @@ VIEWS.meeting = {
     const frameFit = new ResizeObserver(fitFrame)
     frameFit.observe(scroller)
     ctx.dispose(() => frameFit.disconnect())
+    // 框架里的页面不能自己存东西（没有 allow-same-origin）：目录收起还是展开，页面发消息过来，这里记下，下次打开时写在地址里带回去
+    const TOC_KEY = 'notesTocRail'
+    const onFrameMessage = (e) => {
+      if (htmlFrame?.contentWindow && e.source === htmlFrame.contentWindow && e.data?.type === 'meetcaption-notes-toc') store(TOC_KEY, e.data.rail ? '1' : null)
+    }
+    window.addEventListener('message', onFrameMessage)
+    ctx.dispose(() => window.removeEventListener('message', onFrameMessage))
 
     function renderHtml() {
       const job = state.summaries.get(id)
@@ -411,7 +418,7 @@ VIEWS.meeting = {
       let body = null
       if (has) {
         const src = `${new URL(s.summary.html, sessionBaseUrl(s)).href}?v=${s.summary.htmlAt ?? 0}`
-        if (htmlFrame?.dataset.src !== src) htmlFrame = el('iframe.notes-frame', { title: t('图文笔记'), dataset: { src }, attrs: { src, sandbox: 'allow-scripts allow-popups' } })
+        if (htmlFrame?.dataset.src !== src) htmlFrame = el('iframe.notes-frame', { title: t('图文笔记'), dataset: { src }, attrs: { src: `${src}#toc=${store(TOC_KEY) === '1' ? 'rail' : 'open'}`, sandbox: 'allow-scripts allow-popups' } })
         body = htmlFrame
       } else if (!job)
         body = ui.emptyState({

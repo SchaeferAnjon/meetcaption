@@ -402,7 +402,7 @@ details[open]>summary::before{transform:rotate(90deg)}
     document.addEventListener("click",function(e){if(toc.classList.contains("open")&&!toc.contains(e.target))tocClose()});
 
     /* the strip's floating list: after a moment on the strip; at once for the keyboard */
-    var peekT=null,leaveT=null,railOn=rootEl.classList.contains("toc-folded");
+    var quiet=false,peekT=null,leaveT=null,railOn=rootEl.classList.contains("toc-folded");
     function showPeek(now){clearTimeout(leaveT);if(!railOn||BAR())return;clearTimeout(peekT);if(now)peek.classList.add("on");else peekT=setTimeout(function(){peek.classList.add("on")},180)}
     function hidePeek(now){clearTimeout(peekT);clearTimeout(leaveT);if(now)peek.classList.remove("on");else leaveT=setTimeout(function(){peek.classList.remove("on")},220)}
     var ticks=$(".rail-ticks",toc);
@@ -410,16 +410,18 @@ details[open]>summary::before{transform:rotate(90deg)}
     ticks.addEventListener("mouseleave",function(){clearTimeout(peekT);hidePeek(false)});
     peek.addEventListener("mouseenter",function(){clearTimeout(leaveT)});
     peek.addEventListener("mouseleave",function(){hidePeek(false)});
-    toc.addEventListener("focusin",function(e){if((e.target===openBtn||peek.contains(e.target))&&e.target.matches(":focus-visible"))showPeek(true)});
+    toc.addEventListener("focusin",function(e){if(!quiet&&((e.target===openBtn||peek.contains(e.target))&&e.target.matches(":focus-visible")))showPeek(true)});
     toc.addEventListener("focusout",function(e){if(!e.relatedTarget||!toc.contains(e.relatedTarget)||(!peek.contains(e.relatedTarget)&&e.relatedTarget!==openBtn))hidePeek(true)});
-    document.addEventListener("keydown",function(e){if(e.key!=="Escape")return;tocClose();if(peek.classList.contains("on")){var inside=peek.contains(document.activeElement);hidePeek(true);if(inside)openBtn.focus({preventScroll:true})}});
+    document.addEventListener("keydown",function(e){if(e.key!=="Escape")return;tocClose();if(peek.classList.contains("on")){var inside=peek.contains(document.activeElement);hidePeek(true);if(inside)focusTo(openBtn)}});
+
+    function focusTo(b){quiet=true;b.focus({preventScroll:true});quiet=false}
 
     /* fold and unfold: the column slides between 160 / 176 and 44; the line being read is pinned at the same
        height while the text re-wraps */
     function anchorLine(){var best=null;$$(".hd, .sec > *").some(function(el){var r=el.getBoundingClientRect();if(r.bottom>8){best={el:el,off:r.top};return true}});return best}
     function setRail(on,instant,save){
       var changed=on!==railOn;railOn=on;hidePeek(true);
-      closeBtn.setAttribute("aria-expanded",String(!on));openBtn.setAttribute("aria-expanded",String(on));
+      closeBtn.setAttribute("aria-expanded",String(!on));openBtn.setAttribute("aria-expanded",String(!on));pinBtn.setAttribute("aria-expanded",String(!on));
       if(!changed&&!instant)return;
       var a=changed&&!instant&&!BAR()?anchorLine():null,t0=performance.now(),shell=$(".shell");
       if(instant)shell.style.transition="none";
@@ -436,9 +438,9 @@ details[open]>summary::before{transform:rotate(90deg)}
       try{localStorage.setItem(TKEY,on?"rail":"open")}catch(e){}
       try{if(parent!==window)parent.postMessage({type:"meetcaption-notes-toc",rail:on},"*")}catch(e){}
     }
-    closeBtn.addEventListener("click",function(){setRail(true,false,true);openBtn.focus({preventScroll:true})});
-    openBtn.addEventListener("click",function(){setRail(false,false,true);closeBtn.focus({preventScroll:true})});
-    pinBtn.addEventListener("click",function(){setRail(false,false,true);closeBtn.focus({preventScroll:true})});
+    closeBtn.addEventListener("click",function(){setRail(true,false,true);focusTo(openBtn)});
+    openBtn.addEventListener("click",function(){setRail(false,false,true);focusTo(closeBtn)});
+    pinBtn.addEventListener("click",function(){setRail(false,false,true);focusTo(closeBtn)});
     /* a click glides to the section, then corrects itself once it has landed (a prototype above may have settled
        to its real height on the way) */
     items.forEach(function(x){x.all.forEach(function(link){link.addEventListener("click",function(e){
