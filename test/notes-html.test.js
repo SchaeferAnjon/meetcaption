@@ -146,11 +146,14 @@ test('笔记页的目录：展开的一列、收起的细条、浮出的整份�
   assert.deepEqual(links(rail), links(full), '细条一节一道，和目录列一样多')
   assert.deepEqual(links(peek), links(full))
   assert.ok(links(full).includes('s2-1') && links(full).includes('top'), '大纲的小节和概览都在')
-  assert.match(full, /<span class="t">00:00<\/span>医学检测/, '小节的时间单独一块')
+  assert.match(full, /<span class="t">00:00<\/span><span class="x">医学检测<\/span>/, '小节的时间单独一块，标题后面的课件页不进目录')
+  assert.match(full, /title="医学检测（课件 p\.2）"/, '完整标题放在 title 里')
+  assert.match(zh, /<h3 id="s2-1"><span class="at">00:00<\/span>医学检测（课件 p\.2）<\/h3>/, '正文里的小节标题照旧带课件页')
   assert.match(zh, /<button class="nbtn toc-close" type="button" aria-label="收起目录" title="收起目录" aria-expanded="true">/)
   assert.match(zh, /<button class="nbtn toc-open" type="button" aria-label="展开目录" title="展开目录" aria-expanded="false">/)
   assert.match(zh, /localStorage\.getItem\("meetcaption-notes-toc"\)/, '记住收起还是展开')
-  assert.match(zh, /#toc=/, '框架里的页面不能存，靠地址带回')
+  assert.match(zh, /location\.hash\.match\(\/toc=\(rail\|open\)\//, '框架里的页面不能存：开页时读地址里的 #toc=')
+  assert.match(zh, /parent\.postMessage\(\{type:"meetcaption-notes-toc",rail:on\}/, '收起展开时发消息给软件，由软件记下')
   assert.match(zh.match(/@media print\{[^\n]*/)[0], /\.toc,/, '打印和导出 PDF 不带目录和它的按钮')
   setUiLang('en')
   try {
@@ -161,4 +164,14 @@ test('笔记页的目录：展开的一列、收起的细条、浮出的整份�
   } finally {
     setUiLang('zh')
   }
+})
+
+test('笔记页的目录条目：小节标题后面的课件页（各种语言的写法）不进目录，别的括号留着', () => {
+  const session = { title: 'T', startedAt: Date.UTC(2026, 9, 29, 2), endedAt: Date.UTC(2026, 9, 29, 3), segments: [], materials: [], slides: [] }
+  const subs = ['[00:01] 梯度下降（課件 p.1）', '[00:02] Gradient (slides p.1)', '[00:03] Gradient (Folien S. 3 bis S. 4)', '[00:04] 勾配（スライド p.12 から p.15）', '[00:05] 경사 (강의 자료 p.12부터 p.15까지)', '[00:06] Gradient (diapos p. 12 à p. 15)', '[00:07] Gradient (step.3)', '[00:08] 步骤（先看图）', '[00:09] （课件 p.5）']
+  const markdown = `## 大纲与知识点\n${subs.map((x) => `### ${x}\n- a`).join('\n')}\n`
+  const html = renderNotesHtml({ session, markdown, sessionDir: os.tmpdir() })
+  const full = html.match(/<div class="toc-full">([\s\S]*?)<\/div><div class="toc-rail">/)[1]
+  const shown = [...full.matchAll(/<a class="s"[^>]*><span class="t">[\d:]+<\/span><span class="x">([^<]*)<\/span>/g)].map((m) => m[1])
+  assert.deepEqual(shown, ['梯度下降', 'Gradient', 'Gradient', '勾配', '경사', 'Gradient', 'Gradient (step.3)', '步骤（先看图）', '（课件 p.5）'])
 })

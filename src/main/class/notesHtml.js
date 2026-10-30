@@ -285,14 +285,23 @@ function transcript(session, from, to) {
   return `<details class="said-all"><summary>老师原话（${segs.length} 段，${clock(segs[0].startedAt - session.startedAt)} 起）</summary><div class="lines">${rows.join('')}</div></details>`
 }
 
+const PAGE_TAIL = /\s*[（(][^（()）]*(?<![\p{L}])(?:p|S|стр)\.\s*\d[^（()）]*[)）]\s*$/u
+
 // 左边的目录：展开的一列、收起后的细条（一节一道短横）、指着细条浮出的整份目录；窄屏时展开的那一份变成顶上的一条（见 notes-page.html）
 function tocNav(toc) {
+  // 目录里一条一行：小节标题后面注明的课件页（「（课件 p.1）」「(slides p.1)」「(Folien S. 1)」…）去掉，完整标题放进 title
   const label = (title) => {
     const m = plain(title).match(/^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*(.*)$/)
-    return m ? `<span class="t">${m[1]}</span>${esc(m[2])}` : esc(plain(title))
+    const full = m ? m[2] : plain(title)
+    const short = full.replace(PAGE_TAIL, '') || full
+    return { html: `${m ? `<span class="t">${m[1]}</span>` : ''}<span class="x">${esc(short)}</span>`, full }
+  }
+  const link = (cls, id, title) => {
+    const l = label(title)
+    return `<a ${cls}href="#${id}" data-t="${id}" title="${esc(l.full)}">${l.html}</a>`
   }
   const list = `<ol class="toc-list"><li><a href="#top" data-t="top">${t('概览')}</a></li>${toc
-    .map((x) => `<li><a href="#${x.id}" data-t="${x.id}">${label(x.title)}</a>${x.subs.length ? `<ol class="toc-sub">${x.subs.map((y) => `<li><a class="s" href="#${y.id}" data-t="${y.id}">${label(y.title)}</a></li>`).join('')}</ol>` : ''}</li>`)
+    .map((x) => `<li>${link('', x.id, x.title)}${x.subs.length ? `<ol class="toc-sub">${x.subs.map((y) => `<li>${link('class="s" ', y.id, y.title)}</li>`).join('')}</ol>` : ''}</li>`)
     .join('')}</ol>`
   const ticks = [{ id: 'top', subs: [] }, ...toc].map((x) => `<li><a href="#${x.id}" data-t="${x.id}" tabindex="-1"><i></i></a></li>${x.subs.map((y) => `<li><a class="s" href="#${y.id}" data-t="${y.id}" tabindex="-1"><i></i></a></li>`).join('')}`).join('')
   const hide = t('收起目录')
