@@ -392,10 +392,9 @@ VIEWS.meeting = {
     const frameFit = new ResizeObserver(fitFrame)
     frameFit.observe(scroller)
     ctx.dispose(() => frameFit.disconnect())
-    // 框架里的页面不能自己存东西（没有 allow-same-origin）：目录收起还是展开，页面发消息过来，这里记下，下次打开时写在地址里带回去
-    const TOC_KEY = 'notesTocRail'
+    // 框架里的页面不能自己存东西（没有 allow-same-origin）：目录收起还是展开，页面发消息过来，这里记下（见 shared/notes-toc.js），每次把框架放回页面时写在地址里带回去
     const onFrameMessage = (e) => {
-      if (htmlFrame?.contentWindow && e.source === htmlFrame.contentWindow && e.data?.type === 'meetcaption-notes-toc') store(TOC_KEY, e.data.rail ? '1' : null)
+      if (htmlFrame?.contentWindow && e.source === htmlFrame.contentWindow) notesToc.accept(store, e.data)
     }
     window.addEventListener('message', onFrameMessage)
     ctx.dispose(() => window.removeEventListener('message', onFrameMessage))
@@ -418,7 +417,7 @@ VIEWS.meeting = {
       let body = null
       if (has) {
         const src = `${new URL(s.summary.html, sessionBaseUrl(s)).href}?v=${s.summary.htmlAt ?? 0}`
-        if (htmlFrame?.dataset.src !== src) htmlFrame = el('iframe.notes-frame', { title: t('图文笔记'), dataset: { src }, attrs: { src: `${src}#toc=${store(TOC_KEY) === '1' ? 'rail' : 'open'}`, sandbox: 'allow-scripts allow-popups' } })
+        if (htmlFrame?.dataset.src !== src) htmlFrame = el('iframe.notes-frame', { title: t('图文笔记'), dataset: { src }, attrs: { src: notesToc.address(store, src), sandbox: 'allow-scripts allow-popups' } })
         body = htmlFrame
       } else if (!job)
         body = ui.emptyState({
@@ -428,7 +427,11 @@ VIEWS.meeting = {
         })
       // 只换工具栏，别把框架拿下来再放回去（会重新加载、滚动位置丢掉）
       if (body && body === htmlFrame && htmlFrame.parentNode === panel && htmlBar?.parentNode === panel) htmlBar.replaceWith(bar)
-      else fill(panel, bar, body)
+      else {
+        // 框架从页面上拿下来过（切了标签、重新做没成），放回去会照旧地址重新加载：先换成记下的选择，不然目录回到框架刚建出来时的样子
+        if (body && body === htmlFrame) htmlFrame.setAttribute('src', notesToc.address(store, htmlFrame.dataset.src))
+        fill(panel, bar, body)
+      }
       htmlBar = bar
       fitFrame()
     }
