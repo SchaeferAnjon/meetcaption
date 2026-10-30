@@ -9,6 +9,8 @@ import { importMaterial, jpegSize, materialsForMap } from '../src/main/class/mat
 import { outlineSections, parseSlideMap } from '../src/main/class/slideMap.js'
 import { slideMapMessages } from '../src/main/class/prompts.js'
 import { exportNotesTo } from '../src/main/class/files.js'
+import { renderNotesHtml } from '../src/main/class/notesHtml.js'
+import { setUiLang } from '../src/main/i18n.js'
 
 // 最小的 JPEG 头：SOF0 段里写着 1280 × 720
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0xd0, 0x05, 0x00, 0x03, ...Array(9).fill(0), 0xff, 0xd9])
@@ -131,4 +133,32 @@ test('Summarizer writes 课堂笔记.html: course pages as viewers with boxes, t
   assert.ok(ex.files.some((f) => f.endsWith('精确率与召回率 课堂笔记.html')))
   fs.rmSync(root, { recursive: true, force: true })
   fs.rmSync(out, { recursive: true, force: true })
+})
+
+test('笔记页的目录：展开的一列、收起的细条、浮出的整份目录三份一一对上，按钮有名字，按界面语言写', () => {
+  const session = { title: '梯度下降', startedAt: Date.UTC(2026, 9, 29, 2), endedAt: Date.UTC(2026, 9, 29, 3), segments: [], materials: [], slides: [] }
+  const links = (html) => [...html.matchAll(/<a (?:class="s" )?href="#([\w-]+)" data-t="/g)].map((m) => m[1])
+  const render = () => renderNotesHtml({ session, markdown: MARKDOWN, sessionDir: os.tmpdir() })
+  const zh = render()
+  const full = zh.match(/<div class="toc-full">([\s\S]*?)<\/div><div class="toc-rail">/)[1]
+  const rail = zh.match(/<ol class="rail-ticks"[^>]*>([\s\S]*?)<\/ol>/)[1]
+  const peek = zh.match(/<div class="toc-peek"[^>]*>([\s\S]*)<\/div><\/nav>/)[1]
+  assert.deepEqual(links(rail), links(full), '细条一节一道，和目录列一样多')
+  assert.deepEqual(links(peek), links(full))
+  assert.ok(links(full).includes('s2-1') && links(full).includes('top'), '大纲的小节和概览都在')
+  assert.match(full, /<span class="t">00:00<\/span>医学检测/, '小节的时间单独一块')
+  assert.match(zh, /<button class="nbtn toc-close" type="button" aria-label="收起目录" title="收起目录" aria-expanded="true">/)
+  assert.match(zh, /<button class="nbtn toc-open" type="button" aria-label="展开目录" title="展开目录" aria-expanded="false">/)
+  assert.match(zh, /localStorage\.getItem\("meetcaption-notes-toc"\)/, '记住收起还是展开')
+  assert.match(zh, /#toc=/, '框架里的页面不能存，靠地址带回')
+  assert.match(zh.match(/@media print\{[^\n]*/)[0], /\.toc,/, '打印和导出 PDF 不带目录和它的按钮')
+  setUiLang('en')
+  try {
+    const en = render()
+    assert.match(en, /aria-label="Collapse contents"/)
+    assert.match(en, /aria-label="Expand contents"/)
+    assert.doesNotMatch(en, /收起目录/)
+  } finally {
+    setUiLang('zh')
+  }
 })

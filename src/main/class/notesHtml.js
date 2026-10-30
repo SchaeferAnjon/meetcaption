@@ -240,13 +240,13 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
   const overview = sections.find((s) => classHeadRe(0).test(s.title))
   const outline = sections.find((s) => classHeadRe(1).test(s.title))
   const rendered = sections.map((s) => (s === outline ? lesson(s) : { s, html: body(s.body), subs: [] }))
-  const toc = []
+  const toc = [] // { id, title, subs: [{ id, title }] }
   const parts = []
   rendered.forEach((r, i) => {
     if (r.s === overview) return
     const id = `s${i + 1}`
     const subs = r.subs.map((x, j) => ({ id: `${id}-${j + 1}`, ...x }))
-    toc.push(`<li><a href="#${id}" data-t="${id}">${esc(plain(r.s.title))}</a>${subs.length ? `<ol class="toc-sub">${subs.map((x) => `<li><a class="s" href="#${x.id}" data-t="${x.id}">${esc(plain(x.title))}</a></li>`).join('')}</ol>` : ''}</li>`)
+    toc.push({ id, title: r.s.title, subs })
     const quiz = classHeadRe(7).test(r.s.title)
     const fix = (h) => (quiz ? foldAnswers(h) : h)
     parts.push(
@@ -262,7 +262,7 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
     .map((x) => `<span>${esc(x)}</span>`)
     .join('')
   const header = `<header class="hd" id="top"><div class="hd-row"><div><h1>${esc(title)}</h1><div class="credit">${credit}</div></div><span class="seg theme" role="tablist" aria-label="主题"><button data-t="auto">自动</button><button data-t="light">浅色</button><button data-t="dark">深色</button></span></div>${overview ? `<div class="lead">${rendered.find((r) => r.s === overview).html}</div>` : ''}</header>`
-  const tocHtml = `<nav class="toc" aria-label="目录"><div class="toc-cap">目录</div><button class="toc-btn" type="button" aria-expanded="false"><span class="tl">目录</span><span class="tc"></span><svg><use href="#i-chev"/></svg></button><ol class="toc-list"><li><a href="#top" data-t="top">概览</a></li>${toc.join('')}</ol></nav>`
+  const tocHtml = tocNav(toc)
 
   const put = (s, k, v) => s.replace(k, () => v)
   let html = fs.readFileSync(TEMPLATE, 'utf8')
@@ -283,6 +283,30 @@ function transcript(session, from, to) {
     return `<div class="line${x.who === 'me' ? ' me' : ''}"><span class="t">${clock(x.startedAt - session.startedAt)}</span><span class="who">${esc(x.speaker)}</span><div>${lines}</div></div>`
   })
   return `<details class="said-all"><summary>老师原话（${segs.length} 段，${clock(segs[0].startedAt - session.startedAt)} 起）</summary><div class="lines">${rows.join('')}</div></details>`
+}
+
+// 左边的目录：展开的一列、收起后的细条（一节一道短横）、指着细条浮出的整份目录；窄屏时展开的那一份变成顶上的一条（见 notes-page.html）
+function tocNav(toc) {
+  const label = (title) => {
+    const m = plain(title).match(/^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*(.*)$/)
+    return m ? `<span class="t">${m[1]}</span>${esc(m[2])}` : esc(plain(title))
+  }
+  const list = `<ol class="toc-list"><li><a href="#top" data-t="top">${t('概览')}</a></li>${toc
+    .map((x) => `<li><a href="#${x.id}" data-t="${x.id}">${label(x.title)}</a>${x.subs.length ? `<ol class="toc-sub">${x.subs.map((y) => `<li><a class="s" href="#${y.id}" data-t="${y.id}">${label(y.title)}</a></li>`).join('')}</ol>` : ''}</li>`)
+    .join('')}</ol>`
+  const ticks = [{ id: 'top', subs: [] }, ...toc].map((x) => `<li><a href="#${x.id}" data-t="${x.id}" tabindex="-1"><i></i></a></li>${x.subs.map((y) => `<li><a class="s" href="#${y.id}" data-t="${y.id}" tabindex="-1"><i></i></a></li>`).join('')}`).join('')
+  const hide = t('收起目录')
+  const show = t('展开目录')
+  const cap = (btn) => `<div class="toc-cap"><span>${t('目录')}</span><span class="sp"></span>${btn}</div>`
+  const button = (cls, text, sym, expanded) => `<button class="nbtn ${cls}" type="button" aria-label="${esc(text)}" title="${esc(text)}" aria-expanded="${expanded}"><svg><use href="#${sym}"/></svg></button>`
+  return [
+    `<nav class="toc" aria-label="${esc(t('目录'))}">`,
+    `<button class="toc-btn" type="button" aria-expanded="false"><span class="tl">${t('目录')}</span><span class="tc"></span><svg><use href="#i-chev"/></svg></button>`,
+    `<div class="toc-full">${cap(button('toc-close', hide, 'i-toc-close', 'true'))}${list}</div>`,
+    `<div class="toc-rail">${button('toc-open', show, 'i-toc-open', 'false')}<ol class="rail-ticks" aria-hidden="true">${ticks}</ol><span class="rail-pos" aria-hidden="true"></span></div>`,
+    `<div class="toc-peek" role="group" aria-label="${esc(t('目录'))}">${cap(button('toc-pin', show, 'i-toc-open', 'false'))}${list}</div>`,
+    '</nav>',
+  ].join('')
 }
 
 // 标题里的 [mm:ss] 画成时间标签

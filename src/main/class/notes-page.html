@@ -5,14 +5,16 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="generator" content="会议字幕">
 <title>{{TITLE}}</title>
+<script>(function(){var r=(location.hash.match(/toc=(rail|open)/)||[])[1];if(!r)try{r=localStorage.getItem("meetcaption-notes-toc")}catch(e){}if(r==="rail")document.documentElement.classList.add("toc-folded")})()</script>
 <style>
 /* Token values: DESIGN.md「颜色」table (stone). Light by default, dark follows the system unless the
    page's theme switch says otherwise. The page itself adds no colour: the only red and green are the
    boxes drawn on screenshots and the numbers of a diagnosis that match them (DESIGN.md「第四处颜色」).
    One template makes every delivery page (an implementation or a proposal). Its layout answers to the
    width of the page, not to where it is opened: from 1000 up, pairs, pictures with words and the 在哪
-   legend sit side by side, and from 1080 up a contents column stands on the left; under 1000 everything
-   stacks, pictures full width, and the contents fold into a bar at the top. */
+   legend sit side by side, and from 760 up a contents column stands on the left (it folds into a strip, the
+   whole list floats over the text when you point at it); under 1000 everything stacks, pictures full width,
+   and under 760 the contents fold into a bar at the top. */
 :root{
   --bg:#ffffff;--bg-2:#fafaf9;--sel:#f2f1f0;--text:#0c0a09;--text-2:#79716b;
   --hair:#e7e5e4;--chip:#f2f1f0;--chip-2:#f5f5f4;--fill:#252525;--fill-text:#fafaf9;
@@ -60,7 +62,13 @@ button{font:inherit;color:inherit}
 .shell{max-width:1600px;margin:0 auto;padding:32px 40px 72px;display:grid;grid-template-columns:minmax(0,1fr);column-gap:40px}
 .page{min-width:0}
 .toc{min-width:0}
-.toc-btn,.toc-cap{display:none}
+.toc-btn,.toc-rail,.toc-peek{display:none}
+.toc-cap{display:flex;align-items:center;height:28px;padding:0 0 0 8px;margin:0 0 4px;font-size:11px;color:var(--text-2)}
+.toc-cap .sp{flex:1}
+.nbtn{flex:none;width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--text-2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s ease,color .15s ease}
+.nbtn:hover{background:color-mix(in srgb,var(--sel) 80%,transparent);color:var(--text)}
+.nbtn:focus-visible,.toc-list a:focus-visible,.toc-btn:focus-visible{outline:2px solid color-mix(in srgb,var(--fill) 45%,transparent);outline-offset:1px}
+.nbtn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .toc-list{list-style:none;margin:0;padding:0;max-width:none;display:grid;gap:2px;font-size:12px;line-height:1.45}
 .toc-list li{margin:0}
 .toc-list a{display:flex;gap:8px;align-items:baseline;padding:5px 8px;border-radius:6px;color:var(--text-2);text-decoration:none;transition:background .15s ease,color .15s ease}
@@ -71,26 +79,51 @@ button{font:inherit;color:inherit}
 .toc-list li.open>.toc-sub{display:grid;margin:2px 0 6px}
 .toc-sub a{padding:3px 8px;font-size:12px}
 .toc-sub a.on{background:transparent;color:var(--text);font-weight:500}
-@media (min-width:1080px){
-  .shell{grid-template-columns:176px minmax(0,1fr)}
-  .toc{position:sticky;top:32px;align-self:start;max-height:calc(100vh - 56px);overflow:auto;margin-top:-4px}
-  .toc-cap{display:block;font-size:11px;color:var(--text-2);padding:0 8px 8px}
+.toc-sub a .t{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--text-2)}
+/* the strip: one short dash per section (the one being read is dark, its number under them) */
+.rail-ticks{list-style:none;margin:14px 0 0;padding:0;max-width:none;display:grid;gap:2px;width:100%}
+.rail-ticks li{display:flex;justify-content:center;margin:0}
+.rail-ticks a{display:flex;align-items:center;justify-content:center;width:32px;height:14px;border-radius:4px}
+.rail-ticks a i{display:block;height:2px;width:14px;border-radius:2px;background:color-mix(in srgb,var(--text-2) 45%,transparent);transition:background .15s ease,width .15s ease}
+.rail-ticks a.s i{width:8px;margin-left:6px}
+.rail-ticks a:hover i{background:var(--text-2)}
+.rail-ticks a.on i{background:var(--text);width:18px}
+.rail-ticks a.s.on i{width:10px}
+.rail-pos{margin-top:10px;font:500 10.5px/1 var(--mono);color:var(--text-2)}
+/* from 760 up: a contents column on the left that folds into a strip; pointing at the strip floats the whole list over the text */
+@media (min-width:760px){
+  .shell{--tocw-open:160px;--tocw:var(--tocw-open);padding:32px 24px 72px;column-gap:24px;grid-template-columns:var(--tocw) minmax(0,1fr);transition:grid-template-columns .2s var(--ease-std)}
+  html.toc-folded .shell{--tocw:44px}
+  .toc{position:sticky;top:32px;z-index:20;align-self:start;height:0}
+  .toc-full,.toc-rail{position:absolute;top:0;left:0;transition:opacity .14s ease,visibility 0s}
+  .toc-full{width:var(--tocw-open);max-height:calc(100vh - 56px);overflow:auto;padding-right:8px;box-sizing:border-box}
+  .toc-rail{width:44px;display:flex;flex-direction:column;align-items:center;max-height:calc(100vh - 56px);overflow:hidden;padding-top:1px;visibility:hidden;opacity:0}
+  html.toc-folded .toc-full{visibility:hidden;opacity:0;transition:opacity .14s ease,visibility 0s .14s}
+  html.toc-folded .toc-rail{visibility:visible;opacity:1}
+  .toc-peek{display:block;position:absolute;top:0;left:40px;width:240px;max-height:calc(100vh - 56px);overflow:auto;box-sizing:border-box;padding:8px;background:var(--card);border:1px solid var(--hair);border-radius:12px;box-shadow:0 12px 32px -12px rgba(0,0,0,.28);visibility:hidden;opacity:0;transform:translateX(-4px);transition:opacity .12s ease,transform .12s ease,visibility 0s .12s}
+  .toc-peek.on{visibility:visible;opacity:1;transform:none;transition-delay:0s}
 }
-@media (max-width:1079px){
+@media (min-width:1080px){
+  .shell{--tocw-open:176px;padding:32px 40px 72px;column-gap:40px}
+  html.toc-folded .shell{column-gap:32px}
+}
+/* under 760: the contents fold into a bar at the top */
+@media (max-width:759px){
   :root{--toc-top:56px}
   .toc{position:sticky;top:0;z-index:30;margin:-32px -40px 24px;padding:0 40px;background:var(--page)}
+  .toc-cap{display:none}
   .toc-btn{display:flex;align-items:center;gap:8px;width:100%;height:44px;padding:0 8px;border:0;border-bottom:1px solid color-mix(in srgb,var(--hair) 70%,transparent);background:transparent;font-size:12px;color:var(--text-2);cursor:pointer;text-align:left}
   .toc-btn .tl{flex:none}
   .toc-btn .tc{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:500}
   .toc-btn svg{flex:none;width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s var(--ease-std)}
   .toc.open .toc-btn svg{transform:rotate(180deg)}
-  .toc-list{display:none;position:absolute;left:40px;right:40px;top:44px;max-height:min(60vh,420px);overflow:auto;padding:8px;background:var(--card);border:1px solid var(--hair);border-radius:12px;box-shadow:0 12px 32px -12px rgba(0,0,0,.28)}
-  .toc.open .toc-list{display:grid}
+  .toc-full{display:none;position:absolute;left:40px;right:40px;top:44px;max-height:min(60vh,420px);overflow:auto;padding:8px;background:var(--card);border:1px solid var(--hair);border-radius:12px;box-shadow:0 12px 32px -12px rgba(0,0,0,.28)}
+  .toc.open .toc-full{display:block}
 }
 @media (max-width:600px){
   .shell{padding:32px 16px 56px}
   .toc{margin:-32px -16px 20px;padding:0 16px}
-  .toc-list{left:16px;right:16px}
+  .toc-full{left:16px;right:16px}
 }
 
 /* ---- header: title in the user's words, who made it, the conclusion first ---- */
@@ -317,6 +350,8 @@ details[open]>summary::before{transform:rotate(90deg)}
   <symbol id="i-close" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
   <symbol id="i-mark" viewBox="0 0 16 16"><path d="M4.5 2.5h7v11L8 11l-3.5 2.5z"/></symbol>
   <symbol id="i-chev" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
+  <symbol id="i-toc-close" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M6 2.5v11M10.5 6.2 8.7 8l1.8 1.8"/></symbol>
+  <symbol id="i-toc-open" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M6 2.5v11M8.8 6.2 10.6 8l-1.8 1.8"/></symbol>
   <symbol id="i-rec" viewBox="0 0 16 16"><path d="M4 4.5h8M4 8h8M4 11.5h5"/></symbol>
 </svg>
 <div class="shell">
@@ -350,20 +385,64 @@ details[open]>summary::before{transform:rotate(90deg)}
   $$(".theme button").forEach(function(b){b.addEventListener("click",function(){var t=b.dataset.t;try{if(t==="auto")localStorage.removeItem(KEY);else localStorage.setItem(KEY,t)}catch(e){}applyTheme(t);$$(".vw").forEach(function(w){w._go&&w._go()})})});
   try{matchMedia("(prefers-color-scheme: dark)").addEventListener("change",function(){protos.forEach(pushTheme)})}catch(e){}
 
-  /* ---- contents: the sections in a column (wide) or a bar that unfolds (narrow); the section you are in
-     is lit, a click goes there ---- */
+  /* ---- contents: a column (760 and up) that folds into a thin strip, or a bar that unfolds (narrow). The section
+     you are in is lit; a click goes there. Folded: pointing at the strip for a moment floats the whole list over
+     the text (Esc or leaving closes it), a click on an entry goes there and folds it back. The choice is kept:
+     in this browser (localStorage), and for a page in the app's frame, which cannot store, the app keeps it and
+     hands it back in the address (#toc=rail). ---- */
   var toc=$(".toc");
   if(toc){
-    var links=$$("a[data-t]",toc),items=links.map(function(a){var el=document.getElementById(a.dataset.t);return{a:a,el:el,sub:a.classList.contains("s"),li:a.parentNode}}).filter(function(x){return x.el});
-    var btn=$(".toc-btn",toc),cur=$(".tc",toc);
+    var TKEY="meetcaption-notes-toc",rootEl=document.documentElement;
+    var BAR=function(){return innerWidth<760};
+    var fullBox=$(".toc-full",toc),railBox=$(".toc-rail",toc),peek=$(".toc-peek",toc);
+    var items=$$("a[data-t]",fullBox).map(function(a){var el=document.getElementById(a.dataset.t);return{a:a,el:el,sub:a.classList.contains("s"),li:a.parentNode,all:$$("a[data-t=\""+a.dataset.t+"\"]",toc)}}).filter(function(x){return x.el});
+    var btn=$(".toc-btn",toc),cur=$(".tc",toc),pos=$(".rail-pos",toc),closeBtn=$(".toc-close",toc),openBtn=$(".toc-open",toc),pinBtn=$(".toc-pin",toc);
     function tocClose(){toc.classList.remove("open");if(btn)btn.setAttribute("aria-expanded","false")}
     if(btn)btn.addEventListener("click",function(){var on=!toc.classList.contains("open");toc.classList.toggle("open",on);btn.setAttribute("aria-expanded",String(on))});
-    document.addEventListener("keydown",function(e){if(e.key==="Escape")tocClose()});
     document.addEventListener("click",function(e){if(toc.classList.contains("open")&&!toc.contains(e.target))tocClose()});
+
+    /* the strip's floating list: after a moment on the strip; at once for the keyboard */
+    var peekT=null,leaveT=null,railOn=rootEl.classList.contains("toc-folded");
+    function showPeek(now){clearTimeout(leaveT);if(!railOn||BAR())return;clearTimeout(peekT);if(now)peek.classList.add("on");else peekT=setTimeout(function(){peek.classList.add("on")},180)}
+    function hidePeek(now){clearTimeout(peekT);clearTimeout(leaveT);if(now)peek.classList.remove("on");else leaveT=setTimeout(function(){peek.classList.remove("on")},220)}
+    var ticks=$(".rail-ticks",toc);
+    ticks.addEventListener("mouseenter",function(){showPeek(false)});
+    ticks.addEventListener("mouseleave",function(){clearTimeout(peekT);hidePeek(false)});
+    peek.addEventListener("mouseenter",function(){clearTimeout(leaveT)});
+    peek.addEventListener("mouseleave",function(){hidePeek(false)});
+    toc.addEventListener("focusin",function(e){if((e.target===openBtn||peek.contains(e.target))&&e.target.matches(":focus-visible"))showPeek(true)});
+    toc.addEventListener("focusout",function(e){if(!e.relatedTarget||!toc.contains(e.relatedTarget)||(!peek.contains(e.relatedTarget)&&e.relatedTarget!==openBtn))hidePeek(true)});
+    document.addEventListener("keydown",function(e){if(e.key!=="Escape")return;tocClose();if(peek.classList.contains("on")){var inside=peek.contains(document.activeElement);hidePeek(true);if(inside)openBtn.focus({preventScroll:true})}});
+
+    /* fold and unfold: the column slides between 160 / 176 and 44; the line being read is pinned at the same
+       height while the text re-wraps */
+    function anchorLine(){var best=null;$$(".hd, .sec > *").some(function(el){var r=el.getBoundingClientRect();if(r.bottom>8){best={el:el,off:r.top};return true}});return best}
+    function setRail(on,instant,save){
+      var changed=on!==railOn;railOn=on;hidePeek(true);
+      closeBtn.setAttribute("aria-expanded",String(!on));openBtn.setAttribute("aria-expanded",String(on));
+      if(!changed&&!instant)return;
+      var a=changed&&!instant&&!BAR()?anchorLine():null,t0=performance.now(),shell=$(".shell");
+      if(instant)shell.style.transition="none";
+      rootEl.classList.toggle("toc-folded",on);
+      function keep(){
+        if(a){var d=a.el.getBoundingClientRect().top-a.off;if(Math.abs(d)>.5)scrollBy({top:d,behavior:"instant"})}
+        if(a&&performance.now()-t0<320)requestAnimationFrame(keep);else spy()
+      }
+      keep();
+      if(instant){shell.offsetWidth;shell.style.transition=""}
+      if(save)savePref(on);
+    }
+    function savePref(on){
+      try{localStorage.setItem(TKEY,on?"rail":"open")}catch(e){}
+      try{if(parent!==window)parent.postMessage({type:"meetcaption-notes-toc",rail:on},"*")}catch(e){}
+    }
+    closeBtn.addEventListener("click",function(){setRail(true,false,true);openBtn.focus({preventScroll:true})});
+    openBtn.addEventListener("click",function(){setRail(false,false,true);closeBtn.focus({preventScroll:true})});
+    pinBtn.addEventListener("click",function(){setRail(false,false,true);closeBtn.focus({preventScroll:true})});
     /* a click glides to the section, then corrects itself once it has landed (a prototype above may have settled
        to its real height on the way) */
-    items.forEach(function(x){x.a.addEventListener("click",function(e){
-      e.preventDefault();tocClose();
+    items.forEach(function(x){x.all.forEach(function(link){link.addEventListener("click",function(e){
+      e.preventDefault();tocClose();hidePeek(true);
       var done=false;
       function settle(){if(done)return;done=true;removeEventListener("scrollend",settle);
         var d=x.el.getBoundingClientRect().top-(parseFloat(getComputedStyle(x.el).scrollMarginTop)||0);
@@ -371,20 +450,21 @@ details[open]>summary::before{transform:rotate(90deg)}
       x.el.scrollIntoView({block:"start",behavior:reduce?"auto":"smooth"});
       if("onscrollend" in window)addEventListener("scrollend",settle);
       setTimeout(settle,2500);
-    })});
+    })})});
     var tops=items.filter(function(x){return!x.sub}),ticking=false;
     function spy(){
       ticking=false;
-      var y=(innerWidth<1080?56:16)+48,sec=null,sub=null;
+      var y=(BAR()?56:16)+48,sec=null,sub=null;
       var atEnd=innerHeight+scrollY>=document.documentElement.scrollHeight-4;
       items.forEach(function(x){if(x.el.getBoundingClientRect().top<=y){if(x.sub)sub=x;else{sec=x;sub=null}}});
       if(atEnd&&scrollY>0){sec=tops[tops.length-1]||sec;sub=null}
-      items.forEach(function(x){x.a.classList.toggle("on",x===sec||x===sub)});
-      tops.forEach(function(x){x.li.classList.toggle("open",x===sec)});
+      items.forEach(function(x){var on=x===sec||x===sub;x.all.forEach(function(a){a.classList.toggle("on",on)})});
+      tops.forEach(function(x){x.all.forEach(function(l){l.parentNode.classList.toggle("open",x===sec)})});
       if(cur)cur.textContent=sec?sec.a.textContent.trim():"";
+      if(pos)pos.textContent=sec?(tops.indexOf(sec)+1)+"/"+tops.length:""
     }
     function onScroll(){if(!ticking){ticking=true;requestAnimationFrame(spy)}}
-    addEventListener("scroll",onScroll,{passive:true});addEventListener("resize",onScroll);spy();
+    addEventListener("scroll",onScroll,{passive:true});addEventListener("resize",function(){if(BAR())hidePeek(true);onScroll()});setRail(railOn,true,false);
   }
 
   /* ---- a picture at full size ---- */
@@ -462,7 +542,7 @@ details[open]>summary::before{transform:rotate(90deg)}
     function anyZoom(){return panes.some(function(P){return P.box})}
     function bar(){w.classList.toggle("zoomed",!!cur||anyZoom());if(all)all.hidden=!(cur||anyZoom())}
     function whole(){cur=null;panes.forEach(function(P){overview(P);if(P.note)P.note.hidden=true});lis.forEach(function(x){x.classList.remove("on")});bar()}
-    function reveal(P){if(full())return;var r=P.vp.getBoundingClientRect(),top=innerWidth<1080?56:16;
+    function reveal(P){if(full())return;var r=P.vp.getBoundingClientRect(),top=innerWidth<760?56:16;
       if(r.top<top||r.bottom>innerHeight)try{P.vp.scrollIntoView({block:r.height>innerHeight-top?"start":"nearest",behavior:reduce?"auto":"smooth"})}catch(e){}}
     function select(li,user){
       cur=li;var ts=targets(li),first=null;
