@@ -75,25 +75,31 @@ button{font:inherit;color:inherit}
 .toc-list a:hover{background:color-mix(in srgb,var(--sel) 60%,transparent);color:var(--text)}
 .toc-list a.on{background:var(--sel);color:var(--text)}
 .toc-list .key{flex:none;font-weight:600}
+.toc-list a .x{min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
 .toc-sub{list-style:none;margin:0;padding:0 0 0 14px;max-width:none;display:none;gap:1px;font-size:12px}
 .toc-list li.open>.toc-sub{display:grid;margin:2px 0 6px}
 .toc-sub a{padding:3px 8px;font-size:12px}
 .toc-sub a.on{background:transparent;color:var(--text);font-weight:500}
 .toc-sub a .t{flex:none;font-family:var(--mono);font-size:10.5px;color:var(--text-2)}
 /* the strip: one short dash per section (the one being read is dark, its number under them) */
-.rail-ticks{list-style:none;margin:14px 0 0;padding:0;max-width:none;display:grid;gap:2px;width:100%}
+.rail-ticks{--th:14px;list-style:none;margin:14px 0 0;padding:0;max-width:none;display:grid;gap:2px;width:100%;flex:1 1 auto;min-height:0;overflow:hidden;position:relative}
 .rail-ticks li{display:flex;justify-content:center;margin:0}
-.rail-ticks a{display:flex;align-items:center;justify-content:center;width:32px;height:14px;border-radius:4px}
+.rail-ticks a{display:flex;align-items:center;justify-content:center;width:32px;height:var(--th);border-radius:4px}
 .rail-ticks a i{display:block;height:2px;width:14px;border-radius:2px;background:color-mix(in srgb,var(--text-2) 45%,transparent);transition:background .15s ease,width .15s ease}
 .rail-ticks a.s i{width:8px;margin-left:6px}
 .rail-ticks a:hover i{background:var(--text-2)}
 .rail-ticks a.on i{background:var(--text);width:18px}
 .rail-ticks a.s.on i{width:10px}
-.rail-pos{margin-top:10px;font:500 10.5px/1 var(--mono);color:var(--text-2)}
+.rail-pos{flex:none;margin:10px 0 2px;font:500 10.5px/1 var(--mono);color:var(--text-2)}
+.rail-pos:empty{display:none}
 /* from 760 up: a contents column on the left that folds into a strip; pointing at the strip floats the whole list over the text */
 @media (min-width:760px){
-  .shell{--tocw-open:160px;--tocw:var(--tocw-open);padding:32px 24px 72px;column-gap:24px;grid-template-columns:var(--tocw) minmax(0,1fr);transition:grid-template-columns .2s var(--ease-std)}
-  html.toc-folded .shell{--tocw:44px}
+  .shell{--tocw-open:160px;--railw:44px;--pad:24px;--tocw:var(--tocw-open);position:relative;padding:32px 24px 72px var(--pad);column-gap:24px;grid-template-columns:var(--tocw) minmax(0,1fr);transition:grid-template-columns .2s var(--ease-std),padding-left .2s var(--ease-std),column-gap .2s var(--ease-std)}
+  html.toc-folded .shell{--tocw:var(--railw)}
+  /* a hairline between the strip and the text, the whole height of the page */
+  html.toc-folded .shell::before{content:"";position:absolute;top:0;bottom:0;left:calc(var(--pad) + var(--railw));width:1px;background:var(--hair);pointer-events:none}
+  /* the viewers of the pictures follow the width while the column slides (see setRail) */
+  html.toc-moving .stage,html.toc-moving .vp .mask{transition:none}
   .toc{position:sticky;top:32px;z-index:20;align-self:start;height:0}
   .toc-full,.toc-rail{position:absolute;top:0;left:0;transition:opacity .14s ease,visibility 0s}
   .toc-full{width:var(--tocw-open);max-height:calc(100vh - 56px);overflow:auto;padding-right:8px;box-sizing:border-box}
@@ -103,9 +109,18 @@ button{font:inherit;color:inherit}
   .toc-peek{display:block;position:absolute;top:0;left:40px;width:240px;max-height:calc(100vh - 56px);overflow:auto;box-sizing:border-box;padding:8px;background:var(--card);border:1px solid var(--hair);border-radius:12px;box-shadow:0 12px 32px -12px rgba(0,0,0,.28);visibility:hidden;opacity:0;transform:translateX(-4px);transition:opacity .12s ease,transform .12s ease,visibility 0s .12s}
   .toc-peek.on{visibility:visible;opacity:1;transform:none;transition-delay:0s}
 }
+/* in the app's frame (760 to 1079) the strip sits against the left edge, like the prototype */
+@media (min-width:760px) and (max-width:1079px){
+  html.toc-folded .shell{--pad:0px}
+}
 @media (min-width:1080px){
-  .shell{--tocw-open:176px;padding:32px 40px 72px;column-gap:40px}
+  .shell{--tocw-open:176px;--pad:40px;padding:32px 40px 72px var(--pad);column-gap:40px}
   html.toc-folded .shell{column-gap:32px}
+}
+/* wide: the text is already as wide as it gets, so folding the contents must not slide it sideways (no layout jump):
+   the column keeps its width and the strip stands in the left part of it */
+@media (min-width:1200px){
+  html.toc-folded .shell{--tocw:var(--tocw-open);column-gap:40px}
 }
 /* under 760: the contents fold into a bar at the top */
 @media (max-width:759px){
@@ -339,7 +354,7 @@ details>summary::-webkit-details-marker{display:none}
 details>summary::before{content:"";width:0;height:0;border-left:4px solid currentColor;border-top:4px solid transparent;border-bottom:4px solid transparent;transition:transform .2s ease}
 details[open]>summary::before{transform:rotate(90deg)}
 @media (max-width:600px){.lines .line{grid-template-columns:40px minmax(0,1fr)}.lines .who{display:none}}
-@media print{:root{--page:var(--bg)}.toc,.seg.theme,.wbar,.side-h,details.said-all{display:none}.shell{display:block;padding:0}details.ans>summary{display:none}.vp{height:auto!important}.stage{position:relative;transform:none!important;transition:none!important;width:100%!important;height:auto!important;--k:1!important}.stage img{height:auto}.stage .rb .k{left:0!important;top:0!important}.vp .mask{display:none!important}.vw,.notes li,tr{break-inside:avoid}h2,h3{break-after:avoid}}
+@media print{:root{--page:var(--bg)}.shell::before{display:none}.toc,.seg.theme,.wbar,.side-h,details.said-all{display:none}.shell{display:block;padding:0}details.ans>summary{display:none}.vp{height:auto!important}.stage{position:relative;transform:none!important;transition:none!important;width:100%!important;height:auto!important;--k:1!important}.stage img{height:auto}.stage .rb .k{left:0!important;top:0!important}.vp .mask{display:none!important}.vw,.notes li,tr{break-inside:avoid}h2,h3{break-after:avoid}}
 
 </style>
 <style>{{KATEX_CSS}}</style>
@@ -418,20 +433,31 @@ details[open]>summary::before{transform:rotate(90deg)}
 
     /* fold and unfold: the column slides between 160 / 176 and 44; the line being read is pinned at the same
        height while the text re-wraps */
+    function relayViewers(){$$(".vw").forEach(function(w){w._go&&w._go()})}
+    /* a long outline: the dashes get closer so that all of them and the number fit the strip */
+    function fitTicks(){
+      ticks.style.setProperty("--th","14px");
+      var n=ticks.children.length,room=ticks.clientHeight;
+      if(room&&ticks.scrollHeight>room+.5)ticks.style.setProperty("--th",Math.max(5,Math.floor((room-(n-1)*2)/n))+"px")
+    }
     function anchorLine(){var best=null;$$(".hd, .sec > *").some(function(el){var r=el.getBoundingClientRect();if(r.bottom>8){best={el:el,off:r.top};return true}});return best}
     function setRail(on,instant,save){
       var changed=on!==railOn;railOn=on;hidePeek(true);
       closeBtn.setAttribute("aria-expanded",String(!on));openBtn.setAttribute("aria-expanded",String(!on));pinBtn.setAttribute("aria-expanded",String(!on));
       if(!changed&&!instant)return;
-      var a=changed&&!instant&&!BAR()?anchorLine():null,t0=performance.now(),shell=$(".shell");
+      var move=changed&&!instant&&!BAR(),a=move?anchorLine():null,t0=performance.now(),shell=$(".shell");
       if(instant)shell.style.transition="none";
       rootEl.classList.toggle("toc-folded",on);
+      rootEl.classList.toggle("toc-moving",move);
+      /* every frame of the slide: the viewers of the pictures lay themselves out to the new width first (their
+         height changes with it), then the line being read is put back where it was */
       function keep(){
+        if(move)relayViewers();
         if(a){var d=a.el.getBoundingClientRect().top-a.off;if(Math.abs(d)>.5)scrollBy({top:d,behavior:"instant"})}
-        if(a&&performance.now()-t0<320)requestAnimationFrame(keep);else spy()
+        if(move&&performance.now()-t0<320)requestAnimationFrame(keep);else{rootEl.classList.remove("toc-moving");spy()}
       }
       keep();
-      if(instant){shell.offsetWidth;shell.style.transition=""}
+      if(instant){shell.offsetWidth;shell.style.transition="";relayViewers()}
       if(save)savePref(on);
     }
     function savePref(on){
@@ -463,10 +489,11 @@ details[open]>summary::before{transform:rotate(90deg)}
       items.forEach(function(x){var on=x===sec||x===sub;x.all.forEach(function(a){a.classList.toggle("on",on)})});
       tops.forEach(function(x){x.all.forEach(function(l){l.parentNode.classList.toggle("open",x===sec)})});
       if(cur)cur.textContent=sec?sec.a.textContent.trim():"";
-      if(pos)pos.textContent=sec?(tops.indexOf(sec)+1)+"/"+tops.length:""
+      if(pos)pos.textContent=sec?(tops.indexOf(sec)+1)+"/"+tops.length:"";
+      var lit=$("a.on",ticks);if(lit&&ticks.scrollHeight>ticks.clientHeight+1)ticks.scrollTop=lit.offsetTop-ticks.clientHeight/2
     }
     function onScroll(){if(!ticking){ticking=true;requestAnimationFrame(spy)}}
-    addEventListener("scroll",onScroll,{passive:true});addEventListener("resize",function(){if(BAR())hidePeek(true);onScroll()});setRail(railOn,true,false);
+    addEventListener("scroll",onScroll,{passive:true});addEventListener("resize",function(){if(BAR())hidePeek(true);fitTicks();onScroll()});setRail(railOn,true,false);fitTicks();
   }
 
   /* ---- a picture at full size ---- */
@@ -501,7 +528,7 @@ details[open]>summary::before{transform:rotate(90deg)}
     function cap(){return full()?0:(innerWidth>=1000?640:innerWidth<600?320:520)}
     /* never larger than the picture's real size (a Retina capture at half its pixels) */
     function kw(P){var d=dims(P);return Math.min(P.vp.clientWidth/d.c[2],d.s)}
-    function size(P){var d=dims(P),W=P.vp.clientWidth;if(!d.iw||!W||full())return;P.vp.style.height=Math.round(Math.max(64,Math.min(d.c[3]*kw(P),cap())))+"px"}
+    function size(P){var d=dims(P),W=P.vp.clientWidth;if(!d.iw||!W||full())return;P.vp.style.height=Math.round(Math.max(64,Math.min(d.c[3]*kw(P),cap())))+P.vp.offsetHeight-P.vp.clientHeight+"px"}
     /* a tall picture (a phone screen, frames stacked) fits the width and scrolls; a window-shaped one fits whole */
     function fitK(P){var d=dims(P),H=P.vp.clientHeight,k=kw(P);if(d.c[3]*k<=H+.5||d.c[3]>d.c[2]*1.2)return k;return Math.min(k,H/d.c[3])}
     function clamp(P){var d=dims(P),W=P.vp.clientWidth,H=P.vp.clientHeight,sw=d.iw*P.k,sh=d.ih*P.k;
