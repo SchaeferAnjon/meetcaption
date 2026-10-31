@@ -1,7 +1,7 @@
 {
   "name": "meetcaption",
   "productName": "会议字幕",
-  "version": "0.6.6",
+  "version": "0.6.7",
   "description": "把电脑里播放的会议声音实时转成悬浮字幕，逐句存档，会后 AI 总结",
   "author": "Jia Zonghan",
   "license": "GPL-3.0-or-later",
