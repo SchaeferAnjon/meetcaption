@@ -211,7 +211,7 @@ button { font: inherit; color: inherit; }
 .ibox .i { width: 14px; height: 14px; }
 .ibox-sm { width: 18px; height: 18px; border-radius: 5px; } .ibox-sm .i { width: 11px; height: 11px; }
 .ibox-lg { width: 40px; height: 40px; border-radius: 10px; } .ibox-lg .i { width: 22px; height: 22px; }
-/* 开关：照偏好「方角开关」，轨道和滑块都是小圆角矩形 */
+/* 开关：照偏好“方角开关”，轨道和滑块都是小圆角矩形 */
 .toggle { appearance: none; width: 30px; height: 18px; border-radius: 5px; background: var(--fill-4); position: relative; cursor: pointer; flex: none; margin: 0; transition: background var(--dur) var(--ease); }
 .toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 3px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform var(--dur) var(--ease); }
 .toggle:checked { background: var(--accent-bg); }
@@ -343,7 +343,7 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
 .sbtn svg { width: 17px; height: 17px; }
 .sbtn.ink { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .sbtn.lg { height: 54px; padding: 0 28px; font-size: 16.5px; }
-/* 窄屏放不下一行（德语这类长的「下载 Mac 版 · Apple 芯片」）就折成两行，不撑出横向滚动 */
+/* 窄屏放不下一行（德语这类长的“下载 Mac 版 · Apple 芯片”）就折成两行，不撑出横向滚动 */
 @media (max-width: 480px) { .sbtn.lg { white-space: normal; height: auto; min-height: 54px; padding: 10px 22px; text-align: center; line-height: 1.3; } }
 .sbtn.sm { height: 34px; padding: 0 16px; font-size: 13.5px; }
 .kicker { font-size: 13.5px; font-weight: 500; letter-spacing: .12em; color: var(--lead); }
@@ -530,7 +530,7 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
 @media (max-width: 640px) { .packs { grid-template-columns: repeat(2, 1fr); } .plan { min-width: 0; } }
 .sec.ask .thesis { font-size: clamp(40px, 7vw, 84px); }
 .thesis.latin { font-size: 54px; letter-spacing: -.02em; }
-/* 首屏不再放语言按钮（偏好「官网轮播加右上角切换」），保留样式名给旧缓存 */
+/* 首屏不再放语言按钮（偏好“官网轮播加右上角切换”），保留样式名给旧缓存 */
 .langrow { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 18px auto 0; max-width: 720px; }
 .langrow button { border: 1px solid var(--line); background: none; color: var(--lead); border-radius: 999px; padding: 3px 11px; font: inherit; font-size: 12.5px; cursor: pointer; transition: all .2s; }
 .langrow button:hover { color: var(--ink); }
@@ -590,7 +590,7 @@ a { color: inherit; text-decoration: none; cursor: pointer; }
   }
   const one = (n) => (lang === 'fr' ? Math.abs(Number(n)) < 2 : Number(n) === 1);
   window.LANG = lang;
-  // 访客自己选过语言（右上角菜单、带 ?lang= 的链接）：首屏标题停在这种语言，不再轮播（偏好「官网默认轮播选了就停」）
+  // 访客自己选过语言（右上角菜单、带 ?lang= 的链接）：首屏标题停在这种语言，不再轮播（偏好“官网默认轮播选了就停”）
   window.LANG_PICKED = LANGS.includes(q) || LANGS.includes(saved);
   window.LOCALE = { zh: 'zh-CN', 'zh-Hant': 'zh-TW' }[lang] || lang;
   window.t = (str, ...args) => {
@@ -731,7 +731,7 @@ const FILES = { arm: ['MeetCaption-mac-arm64.dmg', t('Mac · Apple 芯片（M1 �
 let OS = /Win/.test(navigator.platform) ? 'win' : 'mac';
 const st = { cur: LANG.startsWith('zh') ? 'cny' : 'usd', pack: 'p10' };
 const ck = (t) => `<li><svg class="i"><use href="#i-check"/></svg><span>${t}</span></li>`;
-// 首屏和页尾两个下载按钮都摆出来：Windows 在左、Mac 在右（偏好「首屏下载 Win 在左」）
+// 首屏和页尾两个下载按钮都摆出来：Windows 在左、Mac 在右（偏好“首屏下载 Win 在左”）
 const dlPair = () => [['win', 'windows', t('免费下载 Windows 版')], ['arm', 'apple', t('免费下载 Mac 版 · Apple 芯片')]].map(([k, icon, label]) => `<a class="sbtn ink lg" data-dl="${k}"><svg><use href="#i-${icon}"/></svg><span>${label}</span></a>`).join('');
 const dlBtn = (cls = 'sbtn ink lg') => `<span style="position:relative;display:inline-block"><a class="${cls}" data-dl="auto"><svg><use href="#i-download"/></svg><span class="dltext">${OS === 'win' ? t('免费下载 Windows 版') : t('免费下载 Mac 版 · Apple 芯片')}</span></a></span>`;
 
@@ -757,7 +757,7 @@ function heroLines(v) {
 }
 const HERO_A = `<h1 class="thesis${HERO_LANGS[heroLang].latin ? ' latin' : ''}" id="thesis" lang="${HERO_LANGS[heroLang].code}" aria-label="${HERO_LANGS[heroLang].big.join(' ')}">${heroLines(HERO_LANGS[heroLang])}</h1>
 `;
-// AI 答题那块的大标题：每种语言手写四小段（「对方 / 一问， / 答案 / 就到。」），灰色小字是对方说的英文；答题卡片的标题和译文行也按页面语言写
+// AI 答题那块的大标题：每种语言手写四小段（“对方 / 一问， / 答案 / 就到。”），灰色小字是对方说的英文；答题卡片的标题和译文行也按页面语言写
 // （英文页的译文行用中文，和其他演示一致：英文下面跟一句别的语言）
 const HERO_B_TEXT = {
   zh: { big: ['对方', '一问，', '答案', '就到。'], q: '提问', head: '可以这样答 · 1.2 秒', tr: '我会先缩小规模，在一个数据集上验证，再扩大。' },
