@@ -12,7 +12,7 @@ import { LocalFallbackASR } from './asr/fallback.js'
 import { LocalWeakWatch } from './asr/localQuality.js'
 import { isCutOff, isQuestion, pickLastQuestion } from './assist/question.js'
 import { splitAnswer } from './assist/answerPrompt.js'
-import { checkFix, chunkCoverage, enhanceMessages, noDashes, parseEnhance, streamedHead, translateMessages } from './prompts.js'
+import { checkFix, chunkCoverage, enhanceMessages, noDashes, parseEnhance, streamedHead, streamedPartial, translateMessages } from './prompts.js'
 import { keywordList } from './defaults.js'
 import { projectSettings } from './projects.js'
 import { isCrosstalk, questionRun, tokenize } from './speaker.js'
@@ -40,6 +40,7 @@ const CROSSTALK_WINDOW_MS = 10_000
 const TRANSCRIPT_MS = 15 * 60_000 // 答题带最近多久的记录（再按句数和字数截，见 answerPrompt.js）
 const NOTES_TICK_MS = 5000
 const ENH_HOLD_MS = 2000 // 答题优先时译文最多等多久（答案首字一般 1 到 2 秒）
+const LIVE_MS = 80 // 译文边写边显示，字幕最多这么久刷新一次
 const ENH_RETRY_MS = 1500 // 译文请求失败（不是限流、服务出错这类）后多久只要译文再试一次
 // 限流、服务出错、超时、回复是空的：所有译文请求先停这么久，再一次只发一个试，通了才恢复；连着不通就往后挪，最多 30 秒
 const ENH_BACKOFF_MS = [5000, 15000, 30000]
@@ -130,8 +131,10 @@ function mergeEnhance(sen, r) {
     sen.text = r.fixed
     touched = true
   }
-  if (r.tr && (!sen.tr || (r.chunks?.length && !sen.chunks?.length))) {
+  // 边写边显示的半截译文（trLive）被完整的译文换掉
+  if (r.tr && (!sen.tr || sen.trLive || (r.chunks?.length && !sen.chunks?.length))) {
     sen.tr = r.tr
+    delete sen.trLive
     if (r.chunks?.length) sen.chunks = r.chunks
     touched = true
   }
@@ -149,6 +152,13 @@ function syncFixed(seg) {
   seg.text = text
   if (text !== raw) seg.orig = raw
   else delete seg.orig
+}
+
+// 存档里的句子不带还在显示中的临时内容：边写边显示的半截译文（trLive）。译文写完才进文件
+const storable = (sen) => {
+  if (!sen.trLive) return sen
+  const { tr, chunks, trLive, ...rest } = sen
+  return rest
 }
 
 // 句子的识别原文：译文缓存、重新分句都按它认句子，纠正后的文字不会再被当成新句子送去翻译
@@ -850,6 +860,9 @@ export class MeetingEngine extends EventEmitter {
   // 停止时把每句的计时和汇总写进 trace（speed-row、speed）
   #traceSpeed() {
     if (!this.speed.rows.length) return
+    const kept = new Set()
+    for (const seg of this.live.values()) for (const sen of seg.sentences ?? []) kept.add(rawOf(sen))
+    for (const row of this.speed.rows) if (row.kind === 'final') row.used = kept.has(row.text)
     for (const row of this.speed.rows) this.emit('trace', { type: 'speed-row', ...row })
     this.emit('trace', { type: 'speed', ...this.speed.summary() })
   }
@@ -1057,7 +1070,7 @@ export class MeetingEngine extends EventEmitter {
 
   #persist(seg) {
     if (!seg.text || !this.session) return
-    const record = { id: seg.id, source: seg.source, speaker: seg.speaker, who: seg.who, startedAt: seg.startedAt, text: seg.text, sentences: seg.sentences }
+    const record = { id: seg.id, source: seg.source, speaker: seg.speaker, who: seg.who, startedAt: seg.startedAt, text: seg.text, sentences: seg.sentences.map(storable) }
     if (seg.orig) record.orig = seg.orig // AI 纠错前的识别原文（text 是纠正后的）
     if (seg.question) record.question = true
     if (seg.vp != null) record.vp = seg.vp
@@ -1261,7 +1274,7 @@ export class MeetingEngine extends EventEmitter {
     }
     for (const until = Date.now() + 20_000; Date.now() < until; await sleep(200)) {
       const sen = find()
-      if (!sen || sen.tr || this.enh.get(rawOf(sen)) !== PENDING) return sen?.tr ? sen : null
+      if (!sen || (sen.tr && !sen.trLive) || this.enh.get(rawOf(sen)) !== PENDING) return sen?.tr && !sen.trLive ? sen : null
     }
     return null
   }
@@ -1285,8 +1298,10 @@ export class MeetingEngine extends EventEmitter {
         sen.text = fixed
         sen.orig = text
       }
-      const src = prev?.tr ? prev : c
+      // 完整的译文优先；只有半截的（边写边显示）就接着显示，等写完再换
+      const src = prev?.tr && !prev.trLive ? prev : c?.tr ? c : prev?.tr ? prev : c
       if (src?.tr) sen.tr = src.tr
+      if (src?.trLive) sen.trLive = true
       if (src?.tr && src.chunks?.length) sen.chunks = src.chunks
       const terms = prev?.terms ?? c?.terms
       if (terms) sen.terms = terms
@@ -1396,12 +1411,14 @@ export class MeetingEngine extends EventEmitter {
             this.enh.set(job.text, job.early ?? null)
             this.enhEarly.delete(job.text)
             this.speed.fail(job.row, e.message)
+            this.#dropLive(job.text)
             return
           }
           if (e?.code === 'usage-limit') {
             this.enh.set(job.text, job.early ?? null)
             this.enhEarly.delete(job.text)
             this.speed.fail(job.row, e.message)
+            this.#dropLive(job.text)
             this.#aiLimit(e)
             return
           }
@@ -1432,6 +1449,7 @@ export class MeetingEngine extends EventEmitter {
           this.enh.set(job.text, null)
           this.enhEarly.delete(job.text)
           this.speed.fail(job.row, e.message)
+          this.#dropLive(job.text)
           // 会员场次用完的 402 另有「场次用完」的提示，这里不再报；自带 Key 余额不足的 402 要报
           const memberOut = e.status === 402 && this.cfg?.llmProvider === 'member'
           if (!this.enhWarned && !memberOut) {
@@ -1440,6 +1458,7 @@ export class MeetingEngine extends EventEmitter {
           }
         })
         .finally(() => {
+          this.#endLive(job)
           this.enhActive--
           this.enhRunning.delete(job)
           this.#pumpEnhance()
@@ -1503,13 +1522,20 @@ export class MeetingEngine extends EventEmitter {
     const previous = (this.session?.segments ?? []).slice(-3).map((x) => x.text)
     const args = { sentence: text, previous, target: s.translateTarget, source: s.language, context: s.context, keywords: keywordList(s) }
     const t0 = Date.now()
+    job.live = null // 重试时重新开始
+    job.finished = false
     this.speed.sent(job.row)
     const onUsage = process.env.MEETCAPTION_SPEED_USAGE ? (u) => this.speed.usage(job.row ?? { kind: 'final' }, u) : undefined
     let r
     let fixDropped = null
     if (!terms && !chunks && !correct) {
       const [system, user] = translateMessages(args)
-      const tr = await this.llm({ model: 'fast', system: system.content, messages: [user], effort: 'none', timeoutMs: enhanceTimeout(text), signal: job.ctrl?.signal, onUsage })
+      // 流式收：译文一个字一个字显示出来
+      const onDelta = (full) => {
+        this.speed.first(job.row)
+        this.#onLiveTr(job, noDashes(full).trim())
+      }
+      const tr = await this.llm({ model: 'fast', system: system.content, messages: [user], effort: 'none', timeoutMs: enhanceTimeout(text), signal: job.ctrl?.signal, onDelta, onUsage })
       r = { tr: noDashes(String(tr ?? '')).trim() }
       if (!r.tr) throw emptyReply()
     } else {
@@ -1520,7 +1546,7 @@ export class MeetingEngine extends EventEmitter {
             this.speed.first(job.row)
             if (job.early) return
             const h = streamedHead(full)
-            if (!h.tr) return
+            if (!h.tr) return this.#onLiveTr(job, streamedPartial(full))
             const fix = correct ? checkFix(text, h.fixed) : null
             job.early = fix?.ok ? { tr: h.tr, fixed: fix.fixed } : { tr: h.tr }
             job.trMs = Date.now() - t0
@@ -1546,6 +1572,59 @@ export class MeetingEngine extends EventEmitter {
     const termsNoZh = translate && r.terms ? r.terms.filter((x) => !x.zh).length : null
     this.emit('trace', { type: 'enhance', text, translate, chunks, terms, correct, ms: Date.now() - t0, trMs: job.trMs ?? null, chunkCount: r.chunks?.length ?? null, coverage, termsNoZh, fixed: r.fixed ?? null, fixDropped })
     return r
+  }
+
+  // 译文还在写：把写出来的这一截挂到句子上显示（不存档，写完由 mergeEnhance 换成完整的）。最多每 LIVE_MS 刷新一次，第一个字马上显示
+  #onLiveTr(job, text) {
+    if (!text || job.early || job.gen !== this.gen || text === job.live) return
+    job.live = text
+    const wait = (job.liveAt ?? 0) + LIVE_MS - Date.now()
+    if (wait <= 0) return this.#flushLive(job)
+    job.liveTimer ??= setTimeout(() => this.#flushLive(job), wait)
+  }
+
+  #flushLive(job) {
+    clearTimeout(job.liveTimer)
+    job.liveTimer = null
+    if (job.finished || job.early || job.gen !== this.gen || !job.live) return
+    job.liveAt = Date.now()
+    let shown = false
+    for (const seg of this.live.values()) {
+      if (seg.who === 'me') continue
+      let touched = false
+      for (const sen of seg.sentences) {
+        if (rawOf(sen) !== job.text || (sen.tr && !sen.trLive) || sen.tr === job.live) continue
+        sen.tr = job.live
+        sen.trLive = true
+        touched = true
+      }
+      if (touched) {
+        shown = true
+        this.emit('segment', seg)
+      }
+    }
+    if (shown) this.speed.visible(job.row, false)
+  }
+
+  // 这句的请求彻底失败了：已经显示出来的半截译文收回
+  #dropLive(text) {
+    for (const seg of this.live.values()) {
+      let touched = false
+      for (const sen of seg.sentences ?? []) {
+        if (rawOf(sen) !== text || !sen.trLive) continue
+        delete sen.tr
+        delete sen.trLive
+        touched = true
+      }
+      if (touched) this.emit('segment', seg)
+    }
+  }
+
+  // 请求结束了（成功、失败、让路）：不再有半截译文要刷
+  #endLive(job) {
+    job.finished = true
+    clearTimeout(job.liveTimer)
+    job.liveTimer = null
   }
 
   // 译文先到：先挂到句子上显示出来（纠正后的句子也一起），意群颜色和术语等整个回复到了再补（mergeEnhance 会把译文和意群一起换成完整的）

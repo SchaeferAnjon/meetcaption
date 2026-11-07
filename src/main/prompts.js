@@ -308,6 +308,41 @@ export function streamedHead(text) {
   return { tr: cleanText(tr), fixed: (m[1] != null && unquote(m[1])) || '' }
 }
 
+// 译文字符串开头之前的部分（fixed 已经收全，tr 的开引号到了）
+const TR_OPEN = /^\s*(?:```[a-zA-Z]*\s*)?\{\s*(?:"(?:fixed|corrected)"\s*:\s*"(?:[^"\\]|\\.)*"\s*,\s*)?"(?:tr|translation)"\s*:\s*"/
+
+/**
+ * 流式收到的半截 enhance 回复里，译文已经写出来的那一截（引号还没收尾也算）；tr 还没开始写返回 ''。
+ * 末尾写了一半的转义（\、\u00e）先不要，下一段到了再显示；译文收全了返回的就是完整译文。
+ */
+export function streamedPartial(text) {
+  const s = String(text ?? '')
+  const m = s.match(TR_OPEN)
+  if (!m) return ''
+  const body = s.slice(m[0].length)
+  let end = body.length
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i]
+    if (c === '"') {
+      end = i
+      break
+    }
+    if (c !== '\\') continue
+    // 转义：\u 后面要 4 位十六进制，其他是 2 个字符；没写全就停在反斜杠前
+    const need = body[i + 1] === 'u' ? 6 : 2
+    if (i + need > body.length || (need === 6 && !/^[0-9a-fA-F]{4}$/.test(body.slice(i + 2, i + 6)))) {
+      end = i
+      break
+    }
+    i += need - 1
+  }
+  let tr = unquote(body.slice(0, end))
+  if (tr == null) return ''
+  // 代理对写了一半（高位在末尾）先不要
+  if (/[\ud800-\udbff]$/.test(tr)) tr = tr.slice(0, -1)
+  return cleanText(tr)
+}
+
 /** 流式收到的半截 enhance 回复里已经完整的译文；还没收全（或者模型没把 tr 放在最前面）返回 ''。 */
 export function streamedTr(text) {
   return streamedHead(text).tr

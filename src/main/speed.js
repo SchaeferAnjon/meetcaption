@@ -109,7 +109,8 @@ export class SpeedLog {
 
   /** 停止时的汇总：语音结束 → 第一个字 / 完整译文的中位数和 p90，每一段各花多久，多发了多少请求和 token。 */
   summary() {
-    const finals = this.rows.filter((r) => r.kind === 'final' && r.fullAt != null && r.speechEnd != null)
+    // 延迟只算最后留在记录里的那些句子（豆包会改已出的字，改之前翻的那句没人看到）
+    const finals = this.rows.filter((r) => r.kind === 'final' && r.used !== false && r.fullAt != null && r.speechEnd != null)
     const of = (f) => stats(finals.map(f))
     const provs = this.rows.filter((r) => r.kind === 'prov')
     const reasons = {}
@@ -129,6 +130,7 @@ export class SpeedLog {
       },
       requests: {
         final: this.rows.filter((r) => r.kind === 'final').length,
+        wasted: this.rows.filter((r) => r.kind === 'final' && r.used === false).length, // 识别改了字，这句话最后没留在记录里
         retries: this.rows.reduce((n, r) => n + Math.max(0, r.attempts - 1), 0),
         provisional: provs.length,
         failed: this.rows.filter((r) => r.error).length,
