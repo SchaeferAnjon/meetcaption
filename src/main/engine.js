@@ -1380,6 +1380,7 @@ export class MeetingEngine extends EventEmitter {
     m.provs ??= new Map()
     const p = m.provs.get(last.from)
     if (p && (p.busy || prefix.length <= p.src.length)) return
+    if (p) p.row.superseded = true
     const row = this.speed.open('prov', prefix, { segId: seg.id, source: seg.source, endChar: last.from + prefix.length, reason: 'prov', completeAt: m.updatedAt ?? Date.now() })
     m.provs.set(last.from, { src: prefix, tr: p?.tr ?? null, busy: true, row })
     this.provQueue.push({ prov: true, text: prefix, translate: true, chunks: false, terms: false, correct: false, gen: this.gen, sessionId: this.session?.id ?? null, row, segId: seg.id, from: last.from })

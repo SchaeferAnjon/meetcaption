@@ -161,13 +161,15 @@ export class SpeedLog {
         failed: this.rows.filter((r) => r.error).length,
       },
       completeBy: reasons,
+      // 一句话可能先后发过几个临时译文（定稿的部分又多了一个停顿）：被后一个换掉的不算替换，只算每句最后一个
       provisional: {
-        n: provs.length,
-        shown: provs.filter((r) => r.shown).length,
+        requests: provs.length,
+        sentences: provs.filter((r) => !r.superseded).length,
         replaced: provs.filter((r) => r.replacedAt != null).length,
         differs: provs.filter((r) => r.sim != null && r.sim < DIFFERS_BELOW).length,
         sim: stats(provs.filter((r) => r.sim != null).map((r) => r.sim * 100)),
-        firstVisibleBeforeFull: finals.filter((r) => this.firstVisible(r) < r.fullAt).length,
+        // 这一句最早出现的译文是临时译文
+        shownFirst: finals.filter((r) => r.firstVisibleAt == null || this.firstVisible(r) < r.firstVisibleAt).length,
       },
       tokens: this.tokens,
     }
