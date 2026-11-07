@@ -1689,7 +1689,7 @@ export class MeetingEngine extends EventEmitter {
     if (job.prov) {
       const [system, user] = translateMessages({ ...args, partial: true })
       const tr = await this.llm({ model: 'fast', system: system.content, messages: [user], effort: 'none', timeoutMs: enhanceTimeout(text), signal: job.ctrl?.signal, onUsage })
-      r = { tr: noDashes(String(tr ?? '')).trim().replace(/[。.]$/, '') }
+      r = { tr: noDashes(String(tr ?? '')).trim().replace(/[。.，,；;：:]+$/, '') } // 句末的标点去掉，字幕上由省略号表示后面还没说完
       if (!r.tr) throw emptyReply()
       return r
     }

@@ -100,7 +100,11 @@ body {
 }
 
 .tr.prov {
-  opacity: 0.62;
+  opacity: 0.8;
+}
+
+.tr.prov::after {
+  content: '…';
 }
 
 /* 我 / 对方 的小标签（字幕里同时显示我说的话时才有） */

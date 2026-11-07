@@ -486,9 +486,10 @@ button.nav-section:focus-visible {
   color: var(--text-2);
 }
 
-/* 长句前半的临时译文：和没定稿的识别文字一样淡一档，完整译文到了就换成正常颜色 */
-.tline-tr.is-prov {
-  color: var(--text-3);
+/* 长句前半的临时译文：译文行本来就是没定稿识别文字那档灰（--text-2），再往淡一档（--text-3）对比不到 4.5:1，
+   所以不再变淡，句末加省略号表示后面还没说完；完整译文到了就换掉 */
+.tline-tr.is-prov::after {
+  content: '…';
 }
 
 .tline.is-live.is-me {
