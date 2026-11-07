@@ -153,7 +153,7 @@ function itemNode(it) {
   const cls = `seg${it.live ? ' live' : ''}${it.mine ? ' mine' : ''}`
   if (n.el.className !== cls) n.el.className = cls
   const opts = { colors: chunkPrefs().colors, terms: termsOn(), key: `${it.key}@` }
-  const sig = `${bi.signature(it.sen, opts)}|${it.speaker}|${it.showTr}`
+  const sig = `${bi.signature(it.sen, opts)}|${it.speaker}|${it.showTr}|${it.sen.prov ? 'prov' : ''}`
   if (sig === n.sig) return n.el
   n.sig = sig
   const r = bi.render(it.sen, opts)
@@ -172,6 +172,7 @@ function itemNode(it) {
       n.el.append(n.tr)
     }
     n.tr.replaceChildren(r.zh)
+    n.tr.classList.toggle('prov', Boolean(it.sen.prov)) // 长句前半的临时译文：淡一点，完整译文到了就换掉
   } else if (n.tr) {
     n.tr.remove()
     n.tr = null

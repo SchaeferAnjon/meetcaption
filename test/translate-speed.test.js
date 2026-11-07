@@ -431,3 +431,175 @@ test('local ASR: every partial says its whole text is stable, a final does not c
   host.h.onEvents([{ type: 'final', key: 'a0', text: 'We fine-tuned the model. Then', span: { start: 0, end: 1200 } }], 0)
   assert.deepEqual(got, [['partial', 'We fine-tuned the model.', 'We fine-tuned the model.'], ['final', 'We fine-tuned the model. Then', undefined]])
 })
+
+/* ---------------- 4. 长句前半先翻（临时译文） ---------------- */
+
+const LONG = 'In the third quarter of this year, we saw revenue growth of about ten percent across all of our regions, and our margins improved as well.'
+const STABLE1 = 'In the third quarter of this year, we saw revenue growth of about ten percent across'
+const STABLE2 = 'In the third quarter of this year, we saw revenue growth of about ten percent across all of our regions,'
+const PREFIX1 = 'In the third quarter of this year,'
+const PREFIX2 = STABLE2
+const isProvCall = (o) => String(o.system ?? '').includes('后半还没说完')
+
+// 记下临时译文和整句请求，分别由测试给回复
+function provLlm({ prov = async (s) => `前半：${s.slice(0, 8)}`, full = async () => '完整的译文。' } = {}) {
+  const calls = { prov: [], full: [] }
+  const llm = async (o) => {
+    if (o.model === 'smart') return '{}'
+    const s = sentenceOfCall(o)
+    if (isProvCall(o)) {
+      calls.prov.push(s)
+      return prov(s, o)
+    }
+    calls.full.push(s)
+    return full(s, o)
+  }
+  return { llm, calls }
+}
+
+test('provisional: a long unfinished sentence gets its stable first part translated early and shown as provisional text; the full translation replaces it', async (t) => {
+  const { llm, calls } = provLlm()
+  const ctx = harness(t, { llm })
+  await ctx.engine.start()
+  ctx.partial('a', `${STABLE1} all of`, { stable: STABLE1 })
+  await until(() => ctx.sentence(`${STABLE1} all of`)?.prov)
+  assert.deepEqual(calls.prov, [PREFIX1], '翻到最后一个逗号')
+  const sen = ctx.sentence(`${STABLE1} all of`)
+  assert.equal(sen.tr, '前半：In the t')
+  assert.deepEqual(calls.full, [], '整句还没说完，不发整句请求')
+  // 又来了几个字：临时译文还在
+  ctx.partial('a', `${STABLE1} all of our`, { stable: STABLE1 })
+  assert.equal(ctx.sentence(`${STABLE1} all of our`).prov, true)
+  assert.equal(ctx.sentence(`${STABLE1} all of our`).tr, '前半：In the t')
+  // 整句说完、定稿：整句请求发出，临时译文留着直到完整译文到
+  ctx.final('a', LONG)
+  await until(() => ctx.sentence(LONG)?.tr === '完整的译文。')
+  assert.equal(ctx.sentence(LONG).prov, undefined)
+  assert.deepEqual(calls.full, [LONG])
+  const row = ctx.engine.speed.rows.find((r) => r.kind === 'prov')
+  assert.ok(row.replacedAt && row.final === '完整的译文。' && typeof row.sim === 'number')
+})
+
+test('provisional: below 14 words, with no pause, or with a prefix shorter than 6 words nothing is sent; Chinese counts characters', async (t) => {
+  const { llm, calls } = provLlm()
+  const ctx = harness(t, { llm })
+  await ctx.engine.start()
+  const short = 'In the third quarter of this year, we saw revenue growth of about'
+  ctx.partial('a', `${short} ten`, { stable: short }) // 13 个词
+  const noBreak = 'In the third quarter of this year we saw revenue growth of about ten percent across'
+  ctx.partial('b', `${noBreak} all`, { stable: noBreak }) // 没有逗号
+  const early = 'However, the revenue growth of about ten percent across all of our regions was strong'
+  ctx.partial('c', `${early} and`, { stable: early }) // 逗号前只有 1 个词
+  await tick(150)
+  assert.deepEqual(calls.prov, [])
+  const zh = '第三季度我们的收入增长了大约百分之十，所有地区都有增长，而且利润率也有所提高，客户数量增加了'
+  const ctx2 = harness(t, { llm, patch: { language: 'zh', translateTarget: 'en' } })
+  await ctx2.engine.start()
+  ctx2.partial('a', `${zh}很多`, { stable: zh })
+  await until(() => calls.prov.length === 1)
+  assert.equal(calls.prov[0], '第三季度我们的收入增长了大约百分之十，所有地区都有增长，而且利润率也有所提高，客户数量增加了'.slice(0, '第三季度我们的收入增长了大约百分之十，所有地区都有增长，而且利润率也有所提高，'.length))
+})
+
+test('provisional: one request per sentence at a time; the next goes out only when the stable part grew by another pause', async (t) => {
+  let release
+  const gate = new Promise((r) => (release = r))
+  const { llm, calls } = provLlm({ prov: async (s) => (s === PREFIX1 ? (await gate, '前半一') : '前半二') })
+  const ctx = harness(t, { llm })
+  await ctx.engine.start()
+  ctx.partial('a', `${STABLE1} all`, { stable: STABLE1 })
+  await until(() => calls.prov.length === 1)
+  ctx.partial('a', `${STABLE2} and our`, { stable: STABLE2 }) // 又多了一个停顿，但第一个还没回来
+  await tick(60)
+  assert.deepEqual(calls.prov, [PREFIX1], '一句同时只有一个临时译文请求在路上')
+  release()
+  await until(() => ctx.sentence(`${STABLE2} and our`)?.tr === '前半一')
+  ctx.partial('a', `${STABLE2} and our margins`, { stable: STABLE2 })
+  await until(() => calls.prov.length === 2)
+  assert.deepEqual(calls.prov, [PREFIX1, PREFIX2])
+  await until(() => ctx.sentence(`${STABLE2} and our margins`)?.tr === '前半二')
+  ctx.partial('a', `${STABLE2} and our margins improved`, { stable: STABLE2 })
+  await tick(60)
+  assert.equal(calls.prov.length, 2, '定稿的部分没再长一个停顿，不再发')
+})
+
+test('provisional: never stored, never kept after stop, and gone when the full translation of that sentence is missing', async (t) => {
+  const { llm } = provLlm({ full: () => new Promise(() => {}) }) // 整句的译文一直不回来
+  const ctx = harness(t, { llm })
+  await ctx.engine.start()
+  ctx.partial('a', `${STABLE1} all`, { stable: STABLE1 })
+  await until(() => ctx.sentence(`${STABLE1} all`)?.prov)
+  ctx.final('a', LONG)
+  await until(() => ctx.sentence(LONG)?.prov)
+  const rec = ctx.session().segments[0]?.sentences[0]
+  assert.ok(!rec || (rec.tr === undefined && rec.prov === undefined), '存档里没有临时译文')
+  await ctx.engine.stop()
+  assert.equal(ctx.sentence(LONG)?.prov, undefined, '停止后收回')
+  assert.equal(ctx.events.at(-1).sentences.some((x) => x.prov || x.tr), false)
+  for (const seg of ctx.saved.at(-1).segments) for (const sen of seg.sentences) assert.ok(sen.tr === undefined && sen.prov === undefined)
+})
+
+test('provisional: the sentence being re-split or dropped takes its provisional translation with it; a failed request is silent and not retried', async (t) => {
+  let n = 0
+  const { llm, calls } = provLlm({
+    prov: async () => {
+      if (++n === 1) throw Object.assign(new Error('服务出错'), { retryable: true })
+      return '前半'
+    },
+  })
+  const ctx = harness(t, { llm })
+  await ctx.engine.start()
+  ctx.partial('a', `${STABLE1} all`, { stable: STABLE1 })
+  await until(() => calls.prov.length === 1)
+  await tick(80)
+  assert.equal(ctx.sentence(`${STABLE1} all`)?.prov, undefined)
+  assert.equal(ctx.engine.enhFails, 0, '临时译文失败不触发退避')
+  assert.deepEqual(ctx.engine.speed.rows.filter((r) => r.kind === 'prov').map((r) => Boolean(r.error)), [true])
+  // 前面的字变了（不是只往后接）：这句话换了个样子，临时译文作废，不再挂在新的句子上
+  ctx.partial('a', `${STABLE2} and`, { stable: STABLE2 })
+  await until(() => calls.prov.length === 2)
+  await until(() => ctx.sentence(`${STABLE2} and`)?.prov)
+  ctx.partial('a', 'Completely different words now', { stable: 'Completely different words now' })
+  assert.equal(ctx.sentence('Completely different words now').prov, undefined)
+  assert.equal(ctx.sentence('Completely different words now').tr, undefined)
+})
+
+test('provisional: the streamed full translation replaces it only once it is longer than the provisional text', async (t) => {
+  let sendLive
+  const { llm } = provLlm({
+    full: async (s, o) => {
+      o.onDelta('前')
+      await new Promise((r) => (sendLive = r))
+      return '前半：In the t后面的话说完了。'
+    },
+  })
+  const ctx = harness(t, { llm })
+  await ctx.engine.start()
+  ctx.partial('a', `${STABLE1} all`, { stable: STABLE1 })
+  await until(() => ctx.sentence(`${STABLE1} all`)?.prov)
+  ctx.final('a', LONG)
+  await tick(150) // 整句请求出了第一个字「前」，比临时译文短
+  assert.equal(ctx.sentence(LONG).prov, true)
+  assert.equal(ctx.sentence(LONG).tr, '前半：In the t')
+  sendLive()
+  await until(() => ctx.sentence(LONG)?.tr === '前半：In the t后面的话说完了。' && !ctx.sentence(LONG).prov)
+})
+
+test('provisional: with translation off nothing is sent', async (t) => {
+  const { llm, calls } = provLlm()
+  const ctx = harness(t, { llm, patch: { translate: false } })
+  await ctx.engine.start()
+  ctx.partial('a', `${STABLE1} all`, { stable: STABLE1 })
+  await tick(120)
+  assert.deepEqual(calls.prov, [])
+})
+
+import { translateMessages } from '../src/main/prompts.js'
+
+test('translateMessages: the provisional prompt says it is only the first half and has no dashes', () => {
+  const [sys, user] = translateMessages({ sentence: 'In the third quarter of this year,', previous: ['Hello.'], target: 'zh', source: 'en', partial: true })
+  assert.match(sys.content, /后半还没说完：只翻这一半，不要补全后半句，句末不加句号/)
+  assert.match(user.content, /请翻译这半句：\nIn the third quarter of this year,$/)
+  assert.doesNotMatch(sys.content, /[\u2013\u2014]/)
+  const [full] = translateMessages({ sentence: 'x', previous: [], target: 'zh', source: 'en' })
+  assert.doesNotMatch(full.content, /后半还没说完/)
+})

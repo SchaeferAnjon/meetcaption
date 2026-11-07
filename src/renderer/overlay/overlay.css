@@ -99,6 +99,10 @@ body {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
 
+.tr.prov {
+  opacity: 0.62;
+}
+
 /* 我 / 对方 的小标签（字幕里同时显示我说的话时才有） */
 .speaker {
   display: inline-block;

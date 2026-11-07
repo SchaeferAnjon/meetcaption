@@ -486,6 +486,11 @@ button.nav-section:focus-visible {
   color: var(--text-2);
 }
 
+/* 长句前半的临时译文：和没定稿的识别文字一样淡一档，完整译文到了就换成正常颜色 */
+.tline-tr.is-prov {
+  color: var(--text-3);
+}
+
 .tline.is-live.is-me {
   opacity: 0.7;
 }

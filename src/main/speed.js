@@ -25,11 +25,36 @@ export function stats(list) {
 
 const diff = (a, b) => (a != null && b != null ? a - b : null)
 
+/** 两段译文的字面相似度 0 到 1：最长公共子序列占两段平均长度的比例（只看字和字母，不看标点空格）。 */
+export function similarity(a, b) {
+  const x = Array.from(String(a ?? '').replace(/[\s\p{P}]/gu, ''))
+  const y = Array.from(String(b ?? '').replace(/[\s\p{P}]/gu, ''))
+  if (!x.length || !y.length) return 0
+  let prev = new Array(y.length + 1).fill(0)
+  for (let i = 1; i <= x.length; i++) {
+    const cur = new Array(y.length + 1).fill(0)
+    for (let j = 1; j <= y.length; j++) cur[j] = x[i - 1] === y[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1])
+    prev = cur
+  }
+  return (2 * prev[y.length]) / (x.length + y.length)
+}
+
+// 临时译文和后来的完整译文读起来差很多：前半段对不上（拿完整译文开头同样长的一截比，多给几个字的余地）
+export const DIFFERS_BELOW = 0.6
+
 export class SpeedLog {
   constructor() {
     this.rows = []
     this.latest = new Map() // `${kind}:${text}` → 最新一行
     this.tokens = { final: { in: 0, out: 0, cached: 0, calls: 0 }, prov: { in: 0, out: 0, cached: 0, calls: 0 } }
+  }
+
+  /** 临时译文被完整译文换掉了：记下换成了什么、两边像不像。 */
+  replaced(row, finalTr) {
+    if (!row || row.replacedAt != null) return
+    row.replacedAt = Date.now()
+    row.final = finalTr
+    row.sim = Math.round(similarity(row.shown, String(finalTr).slice(0, Array.from(row.shown ?? '').length + 6)) * 100) / 100
   }
 
   open(kind, text, info = {}) {
@@ -136,6 +161,14 @@ export class SpeedLog {
         failed: this.rows.filter((r) => r.error).length,
       },
       completeBy: reasons,
+      provisional: {
+        n: provs.length,
+        shown: provs.filter((r) => r.shown).length,
+        replaced: provs.filter((r) => r.replacedAt != null).length,
+        differs: provs.filter((r) => r.sim != null && r.sim < DIFFERS_BELOW).length,
+        sim: stats(provs.filter((r) => r.sim != null).map((r) => r.sim * 100)),
+        firstVisibleBeforeFull: finals.filter((r) => this.firstVisible(r) < r.fullAt).length,
+      },
       tokens: this.tokens,
     }
   }

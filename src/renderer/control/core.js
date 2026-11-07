@@ -811,7 +811,7 @@ function lineNode(seg, base, { mode = 'meeting' } = {}) {
       'div.tline-pair',
       { dataset: { bi: '' } },
       el('div.tline-text.selectable', {}, r.en, last && seg.question ? el('span.tag.tag-question.tline-q', { text: t('提问') }) : null),
-      r.zh && sen.tr ? el('div.tline-tr.selectable', {}, r.zh) : null,
+      r.zh && sen.tr ? el('div.tline-tr.selectable', { class: sen.prov ? 'is-prov' : '' }, r.zh) : null,
     )
   })
   return el(

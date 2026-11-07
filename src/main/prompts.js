@@ -5,20 +5,22 @@ import { templateRule, templateWords } from './templateWords.js'
 // 对方说的是中英文以外的语言（德语课等）：告诉模型原文是什么语言，识别稿里的错字按这种语言去理解
 const sourceLine = (source) => (needsMultilingual(source) ? `发言的原文是${promptLang(source)}。` : '')
 
-export function translateMessages({ sentence, previous, target, source, context, keywords }) {
+export function translateMessages({ sentence, previous, target, source, context, keywords, partial = false }) {
   const lang = promptLang(target)
   const system = [
     `你是会议同传字幕员，把会议发言翻译成${lang}字幕。${sourceLine(source)}`,
     `要求：忠实原意，口语自然，简洁；人名、机构名、缩写、模型/数据集/工具名保留原文；${isChinese(target) ? '有通行中文说法的专业术语翻成中文；' : ''}数字、日期、截止时间必须准确。`,
     '识别稿可能有错字或断句不全，按上下文理解，不要评论。只输出译文本身，不要引号、不要解释。',
+    // 长句前半先翻出来给听的人看，后半还没说完
+    partial ? '这只是一句话说了前半，后半还没说完：只翻这一半，不要补全后半句，句末不加句号。' : '',
     context ? `会议背景：${context}` : '',
     keywords?.length ? `术语表（识别稿里这些词的正确拼写；专有名词和缩写保留原文）：${keywords.join('、')}` : '',
   ]
     .filter(Boolean)
     .join('\n')
   const user = previous.length
-    ? `上文（只作参考，不要翻译）：\n${previous.join('\n')}\n\n请翻译这一句：\n${sentence}`
-    : `请翻译这一句：\n${sentence}`
+    ? `上文（只作参考，不要翻译）：\n${previous.join('\n')}\n\n请翻译这${partial ? '半句' : '一句'}：\n${sentence}`
+    : `请翻译这${partial ? '半句' : '一句'}：\n${sentence}`
   return [
     { role: 'system', content: system },
     { role: 'user', content: user },

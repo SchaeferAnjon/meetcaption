@@ -40,6 +40,11 @@ const CROSSTALK_WINDOW_MS = 10_000
 const TRANSCRIPT_MS = 15 * 60_000 // 答题带最近多久的记录（再按句数和字数截，见 answerPrompt.js）
 const NOTES_TICK_MS = 5000
 const ENH_HOLD_MS = 2000 // 答题优先时译文最多等多久（答案首字一般 1 到 2 秒）
+// 长句前半先翻（临时译文）：还没说完的这句话里已经定稿的部分够长、里面有逗号这类停顿，就把停顿前面的翻出来
+const PROV_WORDS = 14 // 定稿部分至少这么多词（中文按字数 PROV_CHARS）才开始
+const PROV_CHARS = 28
+const PROV_MIN_WORDS = 6 // 停顿前面至少这么多词才值得翻（太短的一小截没有意义）
+const PROV_MIN_CHARS = 12
 const LIVE_MS = 80 // 译文边写边显示，字幕最多这么久刷新一次
 const ENH_RETRY_MS = 1500 // 译文请求失败（不是限流、服务出错这类）后多久只要译文再试一次
 // 限流、服务出错、超时、回复是空的：所有译文请求先停这么久，再一次只发一个试，通了才恢复；连着不通就往后挪，最多 30 秒
@@ -107,6 +112,9 @@ const enhanceTimeout = (text) => 20_000 + Math.min(20_000, text.length * 30)
 // 回复是空的或者解析不出译文：当成可重试的失败
 const emptyReply = () => Object.assign(new Error(t('AI 没给出译文（回复是空的或格式不对）')), { code: 'empty-reply', retryable: true })
 
+// 逗号、分号、冒号（后面是空格或结尾，1,000 和 10:30 不算）、破折号：一句话里的停顿
+const CLAUSE_BREAK = /[,;:](?=\s|$)|[，；：]|\s[-\u2013\u2014]\s|[\u2013\u2014]/g
+
 // 句末标点（后面可以跟着引号、括号）
 const TERMINAL = /[.!?。！？]["'”’)）\]]*$/
 // 句号落在缩写后面（Mr. / U.S. / e.g. / 单个字母加点）不算一句话说完
@@ -136,10 +144,11 @@ function mergeEnhance(sen, r) {
     sen.text = r.fixed
     touched = true
   }
-  // 边写边显示的半截译文（trLive）被完整的译文换掉
-  if (r.tr && (!sen.tr || sen.trLive || (r.chunks?.length && !sen.chunks?.length))) {
+  // 边写边显示的半截译文（trLive）、长句前半的临时译文（prov）被完整的译文换掉
+  if (r.tr && (!sen.tr || sen.trLive || sen.prov || (r.chunks?.length && !sen.chunks?.length))) {
     sen.tr = r.tr
     delete sen.trLive
+    delete sen.prov
     if (r.chunks?.length) sen.chunks = r.chunks
     touched = true
   }
@@ -161,8 +170,8 @@ function syncFixed(seg) {
 
 // 存档里的句子不带还在显示中的临时内容：边写边显示的半截译文（trLive）。译文写完才进文件
 const storable = (sen) => {
-  if (!sen.trLive) return sen
-  const { tr, chunks, trLive, ...rest } = sen
+  if (!sen.trLive && !sen.prov) return sen
+  const { tr, chunks, trLive, prov, ...rest } = sen
   return rest
 }
 
@@ -203,6 +212,7 @@ export class MeetingEngine extends EventEmitter {
     this.enhHoldSince = 0
     this.enhHoldTimer = null
     this.enhQueue = []
+    this.provQueue = [] // 长句前半的临时译文请求：排在整句译文后面，只用空闲的位置
     this.enhRetry = [] // 失败了等着重发的（只要译文）：排在新句子后面，服务恢复后补上
     this.enhFails = 0 // 连着几次可重试的失败：大于 0 时一次只发一个
     this.enhPauseUntil = 0
@@ -1280,7 +1290,8 @@ export class MeetingEngine extends EventEmitter {
     }
     for (const until = Date.now() + 20_000; Date.now() < until; await sleep(200)) {
       const sen = find()
-      if (!sen || (sen.tr && !sen.trLive) || this.enh.get(rawOf(sen)) !== PENDING) return sen?.tr && !sen.trLive ? sen : null
+      const done = sen?.tr && !sen.trLive && !sen.prov
+      if (!sen || done || this.enh.get(rawOf(sen)) !== PENDING) return done ? sen : null
     }
     return null
   }
@@ -1304,8 +1315,9 @@ export class MeetingEngine extends EventEmitter {
         sen.text = fixed
         sen.orig = text
       }
-      // 完整的译文优先；只有半截的（边写边显示）就接着显示，等写完再换
-      const src = prev?.tr && !prev.trLive ? prev : c?.tr ? c : prev?.tr ? prev : c
+      // 完整的译文优先；只有半截的（边写边显示）就接着显示，等写完再换。临时译文（prov）不是这句的译文，另由 #showProv 挂回去
+      const own = prev?.tr && !prev.prov ? prev : null
+      const src = own && !own.trLive ? own : c?.tr ? c : own ? own : c
       if (src?.tr) sen.tr = src.tr
       if (src?.trLive) sen.trLive = true
       if (src?.tr && src.chunks?.length) sen.chunks = src.chunks
@@ -1317,6 +1329,7 @@ export class MeetingEngine extends EventEmitter {
     if (mine) return
     const m = this.#m(seg)
     const raw = seg.orig ?? seg.text
+    this.#showProv(seg)
     // 识别服务说已经定下来的那一截：最后一句完整地落在里面、又以句末标点结尾，就不用等这一段定稿
     const stable = !seg.final && m.stable ? new Set(splitSentences(m.stable, this.cfg.language)) : null
     let at = 0
@@ -1327,6 +1340,122 @@ export class MeetingEngine extends EventEmitter {
       const reason = seg.final ? 'final' : i < parts.length - 1 ? 'next' : stable && this.#stableDone(r, stable) ? 'stable' : null
       if (reason) this.#requestEnhance(r, { segId: seg.id, source: seg.source, endChar: from >= 0 ? at : null, reason, completeAt: m.updatedAt ?? Date.now() })
     })
+    if (!seg.final) this.#maybeProvisional(seg, m, raw)
+  }
+
+  // 这段里每一句的起点（在识别原文里的第几个字）
+  #offsets(seg) {
+    const raw = seg.orig ?? seg.text
+    let at = 0
+    const out = []
+    for (const sen of seg.sentences) {
+      const r = rawOf(sen)
+      const from = raw.indexOf(r, at)
+      if (from < 0) continue
+      at = from + r.length
+      out.push({ sen, from })
+    }
+    return out
+  }
+
+  /**
+   * 长句前半先翻：最后一句还没说完，但它已经定稿的部分够长（14 个词 / 28 个字）、里面有逗号这类停顿，
+   * 就把最后一个停顿前面的翻出来，挂在这句下面当临时译文。这句的完整译文到了就换掉它。
+   * 每句同时只有一个临时译文请求在路上；定稿的部分又多出一个停顿才发下一个。不存档。
+   */
+  #maybeProvisional(seg, m, raw) {
+    const s = this.cfg
+    if (!s.translate || this.aiLimited || this.enhFails || !m.stable || !raw.startsWith(m.stable)) return
+    const last = this.#offsets(seg).at(-1)
+    if (!last || this.enh.has(rawOf(last.sen))) return // 整句已经在翻了
+    const st = m.stable.slice(last.from)
+    const cjk = isMostlyChinese(st)
+    const units = (x) => (cjk ? Array.from(x.replace(/\s/g, '')).length : x.split(/\s+/).filter(Boolean).length)
+    if (units(st) < (cjk ? PROV_CHARS : PROV_WORDS)) return
+    let cut = -1
+    for (const b of st.matchAll(CLAUSE_BREAK)) cut = b.index + (/^[,;:，；：]/.test(b[0]) ? b[0].length : 0)
+    if (cut <= 0) return
+    const prefix = st.slice(0, cut).trim()
+    if (units(prefix) < (cjk ? PROV_MIN_CHARS : PROV_MIN_WORDS) || !needsTranslation(prefix, s.language, s.translateTarget)) return
+    m.provs ??= new Map()
+    const p = m.provs.get(last.from)
+    if (p && (p.busy || prefix.length <= p.src.length)) return
+    const row = this.speed.open('prov', prefix, { segId: seg.id, source: seg.source, endChar: last.from + prefix.length, reason: 'prov', completeAt: m.updatedAt ?? Date.now() })
+    m.provs.set(last.from, { src: prefix, tr: p?.tr ?? null, busy: true, row })
+    this.provQueue.push({ prov: true, text: prefix, translate: true, chunks: false, terms: false, correct: false, gen: this.gen, sessionId: this.session?.id ?? null, row, segId: seg.id, from: last.from })
+    this.#pumpEnhance()
+  }
+
+  // 把临时译文挂回这段的句子上（句子对象每次重新分句都会重建）。这句已经有自己的译文就不挂，临时译文作废。有变化返回 true
+  #showProv(seg) {
+    const m = this.meta.get(seg.id)
+    if (!m?.provs?.size) return false
+    const at = this.#offsets(seg)
+    let touched = false
+    for (const [from, p] of m.provs) {
+      const hit = at.find((x) => x.from === from)
+      if (!hit || !rawOf(hit.sen).startsWith(p.src)) {
+        m.provs.delete(from) // 这句话已经不是原来那样了（重新分句、被换掉）
+        continue
+      }
+      const sen = hit.sen
+      if (sen.tr && !sen.prov) {
+        if (!sen.trLive) {
+          this.speed.replaced(p.row, sen.tr) // 有完整译文了
+          m.provs.delete(from)
+        }
+        continue // 半截译文在写（trLive）：它写得比临时译文长了才换，见 #flushLive
+      }
+      if (!p.tr || (sen.prov && sen.tr === p.tr)) continue
+      sen.tr = p.tr
+      sen.prov = true
+      touched = true
+    }
+    return touched
+  }
+
+  // 临时译文请求回来了：这句话还在、前半没变就显示
+  #onProv(job, r) {
+    const seg = this.live.get(job.segId)
+    const p = this.meta.get(job.segId)?.provs?.get(job.from)
+    if (!seg || !p || p.src !== job.text) {
+      this.speed.fail(job.row, 'discarded')
+      return
+    }
+    p.busy = false
+    p.tr = r.tr
+    job.row.shown = r.tr
+    if (this.#showProv(seg)) {
+      this.speed.visible(job.row, true)
+      this.emit('segment', seg)
+    }
+    this.speed.done(job.row)
+  }
+
+  // 一句话的完整译文到了，换掉了它的临时译文：记下两边像不像
+  #provReplaced(seg, sen, finalTr) {
+    const m = this.meta.get(seg.id)
+    const hit = this.#offsets(seg).find((x) => x.sen === sen)
+    const p = hit && m?.provs?.get(hit.from)
+    if (!p) return
+    this.speed.replaced(p.row, finalTr)
+    m.provs.delete(hit.from)
+  }
+
+  // 停止时：所有还挂着的临时译文收回（完整译文没等到的那几句，字幕上不留半句话的译文）
+  #clearProv() {
+    for (const seg of this.live.values()) {
+      const m = this.meta.get(seg.id)
+      m?.provs?.clear()
+      let touched = false
+      for (const sen of seg.sentences ?? []) {
+        if (!sen.prov) continue
+        delete sen.tr
+        delete sen.prov
+        touched = true
+      }
+      if (touched) this.emit('segment', seg)
+    }
   }
 
   // 最后一句在识别服务定下来的字里完整地说完了：句末标点、不是缩写、不止一两个词。
@@ -1393,8 +1522,9 @@ export class MeetingEngine extends EventEmitter {
     if (this.enhHold || Date.now() < this.enhPauseUntil) return
     // 服务还在出错：一次只发一个试，通了再恢复同时 3 个
     const max = this.enhFails ? 1 : 3
-    while (this.enhActive < max && (this.enhQueue.length || this.enhRetry.length)) {
-      const job = this.enhQueue.shift() ?? this.enhRetry.shift()
+    // 临时译文只用空闲的位置，至少留一个给整句
+    while (this.enhActive < max && (this.enhQueue.length || this.enhRetry.length || (this.provQueue.length && this.enhActive < max - 1))) {
+      const job = this.enhQueue.shift() ?? this.enhRetry.shift() ?? this.provQueue.shift()
       job.ctrl = new AbortController()
       job.yielded = false
       job.probe = this.enhFails > 0
@@ -1402,6 +1532,7 @@ export class MeetingEngine extends EventEmitter {
       this.enhRunning.add(job)
       this.#enhance(job)
         .then((r) => {
+          if (job.prov) return job.gen === this.gen ? this.#onProv(job, r) : undefined
           this.#enhanceBack()
           // 已经开了下一场会：只补进上一场的文件，别碰这一场的缓存和实时记录
           if (job.gen !== this.gen) return this.#applyToStored(job.sessionId, job.text, r)
@@ -1419,6 +1550,13 @@ export class MeetingEngine extends EventEmitter {
         })
         .catch((e) => {
           if (job.gen !== this.gen) return
+          // 临时译文失败了不重试、不退避、不提示：这句话的完整译文照常会来
+          if (job.prov) {
+            const p = this.meta.get(job.segId)?.provs?.get(job.from)
+            if (p) p.busy = false
+            this.speed.fail(job.row, e.message)
+            return
+          }
           // 给答题让路停掉的：放回队头，答案出了第一个字再发（已经先到的译文留着，不再重复显示）
           if (job.yielded && this.state === 'running') {
             this.enhQueue.unshift(job)
@@ -1516,6 +1654,7 @@ export class MeetingEngine extends EventEmitter {
     for (const job of [...this.enhQueue, ...this.enhRetry]) if (this.enh.get(job.text) === PENDING) this.enh.set(job.text, null)
     this.enhQueue = []
     this.enhRetry = []
+    this.provQueue = []
     this.#enhanceBack()
   }
 
@@ -1546,6 +1685,13 @@ export class MeetingEngine extends EventEmitter {
     const onUsage = process.env.MEETCAPTION_SPEED_USAGE ? (u) => this.speed.usage(job.row ?? { kind: 'final' }, u) : undefined
     let r
     let fixDropped = null
+    if (job.prov) {
+      const [system, user] = translateMessages({ ...args, partial: true })
+      const tr = await this.llm({ model: 'fast', system: system.content, messages: [user], effort: 'none', timeoutMs: enhanceTimeout(text), signal: job.ctrl?.signal, onUsage })
+      r = { tr: noDashes(String(tr ?? '')).trim().replace(/[。.]$/, '') }
+      if (!r.tr) throw emptyReply()
+      return r
+    }
     if (!terms && !chunks && !correct) {
       const [system, user] = translateMessages(args)
       // 流式收：译文一个字一个字显示出来
@@ -1611,9 +1757,11 @@ export class MeetingEngine extends EventEmitter {
       if (seg.who === 'me') continue
       let touched = false
       for (const sen of seg.sentences) {
-        if (rawOf(sen) !== job.text || (sen.tr && !sen.trLive) || sen.tr === job.live) continue
+        if (rawOf(sen) !== job.text || (sen.tr && !sen.trLive && !sen.prov) || sen.tr === job.live) continue
+        if (sen.prov && job.live.length < sen.tr.length) continue // 临时译文更长：等完整译文写到它那么长再换，别往回缩
         sen.tr = job.live
         sen.trLive = true
+        delete sen.prov
         touched = true
       }
       if (touched) {
@@ -1658,7 +1806,11 @@ export class MeetingEngine extends EventEmitter {
       if (seg.who === 'me') continue
       let touched = false
       for (const sen of seg.sentences) {
-        if (rawOf(sen) === text && mergeEnhance(sen, r)) touched = true
+        if (rawOf(sen) !== text) continue
+        const hadProv = r.tr && (sen.prov || sen.trLive)
+        if (!mergeEnhance(sen, r)) continue
+        touched = true
+        if (hadProv) this.#provReplaced(seg, sen, r.tr)
       }
       if (!touched) continue
       if (seg.final && r.fixed) {
@@ -1708,10 +1860,12 @@ export class MeetingEngine extends EventEmitter {
     if (session) {
       session.endedAt = Date.now()
       // 译文可能还在路上、还在排队，等一小会儿再落盘（服务在出错、退着的时候不等排队的）；还没发出去的就不发了
+      this.provQueue = [] // 临时译文不等了
       const deadline = Date.now() + this.enhanceWaitMs
       const waiting = () => this.enhActive > 0 || (!this.enhFails && this.enhQueue.length + this.enhRetry.length > 0)
       while (waiting() && Date.now() < deadline) await sleep(200)
       this.#dropEnhanceQueue()
+      this.#clearProv()
       this.store.saveNow(session)
       this.#traceSpeed()
     }
