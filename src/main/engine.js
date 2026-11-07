@@ -120,6 +120,9 @@ const TERMINAL = /[.!?。！？]["'”’)）\]]*$/
 // 句号落在缩写后面（Mr. / U.S. / e.g. / 单个字母加点）不算一句话说完
 const ABBREV = /(?:^|[\s(])(?:mr|mrs|ms|dr|prof|sr|jr|st|vs|etc|inc|ltd|co|corp|no|fig|eq|approx|e\.g|i\.e|u\.s|u\.k|a\.m|p\.m|[a-z])\.$/i
 
+// 这个点可能还没写完：数字后面的点（3. 后面可能接 5 变成 3.5）、连着的点（省略号）。等定稿再翻，不提前发
+const MAYBE_UNFINISHED = /(?:\d\.|\.\.)["'”’)）\]]*$/
+
 // 太短的句子（Okay. / 对。）不值得单独问术语
 const worthTerms = (text) => tokenize(text).length >= 3
 
@@ -168,9 +171,10 @@ function syncFixed(seg) {
   else delete seg.orig
 }
 
-// 存档里的句子不带还在显示中的临时内容：边写边显示的半截译文（trLive）。译文写完才进文件
+// 存档里的句子不带还在显示中的临时内容：边写边显示的半截译文（trLive）和临时译文（prov）。译文写完才进文件。
+// 永远返回新对象：记录和字幕上的句子不能是同一个，不然后来写进字幕句子的半截译文会原地改到记录里
 const storable = (sen) => {
-  if (!sen.trLive && !sen.prov) return sen
+  if (!sen.trLive && !sen.prov) return { ...sen }
   const { tr, chunks, trLive, prov, ...rest } = sen
   return rest
 }
@@ -1326,7 +1330,10 @@ export class MeetingEngine extends EventEmitter {
       return sen
     })
     if (seg.final) syncFixed(seg)
-    if (mine) return
+    if (mine) {
+      this.meta.get(seg.id)?.provs?.clear() // 这段（原来当成对方的）现在是我的话：不翻译，之前发出的临时译文也不要了
+      return
+    }
     const m = this.#m(seg)
     const raw = seg.orig ?? seg.text
     this.#showProv(seg)
@@ -1390,7 +1397,7 @@ export class MeetingEngine extends EventEmitter {
   // 把临时译文挂回这段的句子上（句子对象每次重新分句都会重建）。这句已经有自己的译文就不挂，临时译文作废。有变化返回 true
   #showProv(seg) {
     const m = this.meta.get(seg.id)
-    if (!m?.provs?.size) return false
+    if (!m?.provs?.size || seg.who === 'me') return false
     const at = this.#offsets(seg)
     let touched = false
     for (const [from, p] of m.provs) {
@@ -1462,7 +1469,7 @@ export class MeetingEngine extends EventEmitter {
   // 最后一句在识别服务定下来的字里完整地说完了：句末标点、不是缩写、不止一两个词。
   // 对方在提问时让答题先走（答案的请求排在译文前面），所以问句照旧等这一段定稿
   #stableDone(text, stable) {
-    if (!stable.has(text) || !TERMINAL.test(text) || ABBREV.test(text)) return false
+    if (!stable.has(text) || !TERMINAL.test(text) || ABBREV.test(text) || MAYBE_UNFINISHED.test(text)) return false
     if (tokenize(text).length < 3 && !isMostlyChinese(text)) return false
     return !(this.cfg.assist?.enabled && isQuestion(text))
   }
@@ -1652,7 +1659,11 @@ export class MeetingEngine extends EventEmitter {
 
   // 排着的译文请求不发了（停止时等过了、开新的一场）
   #dropEnhanceQueue() {
-    for (const job of [...this.enhQueue, ...this.enhRetry]) if (this.enh.get(job.text) === PENDING) this.enh.set(job.text, null)
+    for (const job of [...this.enhQueue, ...this.enhRetry]) {
+      if (this.enh.get(job.text) !== PENDING) continue
+      this.enh.set(job.text, null)
+      this.#dropLive(job.text) // 第一次发出去写了一半又失败、等着重发的：重发不会来了，半截译文收回
+    }
     this.enhQueue = []
     this.enhRetry = []
     this.provQueue = []
@@ -1759,7 +1770,8 @@ export class MeetingEngine extends EventEmitter {
       let touched = false
       for (const sen of seg.sentences) {
         if (rawOf(sen) !== job.text || (sen.tr && !sen.trLive && !sen.prov) || sen.tr === job.live) continue
-        if (sen.prov && job.live.length < sen.tr.length) continue // 临时译文更长：等完整译文写到它那么长再换，别往回缩
+        // 已经显示的更长（临时译文，或让路、失败后重发前写出来的半截）：等这次写到那么长再换，别往回缩
+        if ((sen.prov || sen.trLive) && job.live.length < sen.tr.length) continue
         sen.tr = job.live
         sen.trLive = true
         delete sen.prov

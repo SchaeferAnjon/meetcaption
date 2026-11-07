@@ -603,3 +603,128 @@ test('translateMessages: the provisional prompt says it is only the first half a
   const [full] = translateMessages({ sentence: 'x', previous: [], target: 'zh', source: 'en' })
   assert.doesNotMatch(full.content, /后半还没说完/)
 })
+
+/* ---------------- 复审修的几处 ---------------- */
+
+const noLive = (sen) => assert.ok(sen && sen.tr === undefined && sen.trLive === undefined && sen.prov === undefined, `存档里不该有半截译文：${JSON.stringify(sen)}`)
+
+test('review: a delta that arrives after the paragraph was saved does not reach the session record or the stop save', async (t) => {
+  let release
+  const hold = new Promise((r) => (release = r))
+  const llm = async (o) => {
+    if (o.model === 'smart') return '{}'
+    await pause(30) // 真实网络：第一段内容在定稿存档之后才到
+    o.onDelta('我们上周')
+    await hold
+    return '我们上周用 LoRA 微调了模型。'
+  }
+  const ctx = harness(t, { llm })
+  await ctx.engine.start()
+  ctx.final('a', SENT)
+  assert.equal(ctx.session().segments.length, 1, '定稿时已经存过一次')
+  await until(() => ctx.sentence(SENT)?.trLive)
+  noLive(ctx.session().segments[0].sentences[0])
+  await ctx.engine.stop()
+  noLive(ctx.saved.at(-1).segments[0].sentences[0])
+  release()
+})
+
+test('review: a provisional translation that comes back after the paragraph was saved does not reach the record', async (t) => {
+  let release
+  const gate = new Promise((r) => (release = r))
+  const { llm } = provLlm({ prov: async () => (await gate, '前半译文'), full: () => new Promise(() => {}) })
+  const ctx = harness(t, { llm })
+  await ctx.engine.start()
+  ctx.partial('a', `${STABLE1} all`, { stable: STABLE1 })
+  await until(() => ctx.engine.provQueue.length === 0 && ctx.engine.enhActive === 1)
+  ctx.final('a', LONG)
+  assert.equal(ctx.session().segments.length, 1)
+  release()
+  await until(() => ctx.sentence(LONG)?.prov)
+  noLive(ctx.session().segments[0].sentences[0])
+})
+
+test('review: stopping while a failed first attempt waits for its retry takes the half translation back', async (t) => {
+  const llm = async (o) => {
+    if (o.model === 'smart') return '{}'
+    o.onDelta('我们上周')
+    await pause(30)
+    throw Object.assign(new Error('429'), { retryable: true })
+  }
+  const ctx = harness(t, { llm })
+  ctx.engine.enhBackoffMs = [60_000]
+  await ctx.engine.start()
+  ctx.final('a', SENT)
+  await until(() => ctx.engine.enhFails === 1 && ctx.engine.enhActive === 0)
+  assert.equal(ctx.sentence(SENT).trLive, true, '重试等着的时候半截译文留着')
+  await ctx.engine.stop()
+  assert.equal(ctx.sentence(SENT)?.trLive, undefined)
+  assert.equal(ctx.sentence(SENT)?.tr, undefined)
+  assert.equal(ctx.events.at(-1).sentences[0].tr, undefined, '最后推给界面的也已经收回')
+  noLive(ctx.saved.at(-1).segments[0].sentences[0])
+})
+
+test('review: a provisional translation that comes back after the paragraph turned out to be mine is dropped', async (t) => {
+  let release
+  const gate = new Promise((r) => (release = r))
+  const { llm } = provLlm({ prov: async () => (await gate, '前半译文') })
+  const ctx = harness(t, { llm })
+  await ctx.engine.start()
+  ctx.partial('a', `${STABLE1} all`, { stable: STABLE1 })
+  await until(() => ctx.engine.enhActive === 1)
+  const seg = [...ctx.engine.live.values()][0]
+  seg.who = 'me' // 定稿时判断出这是我自己的话
+  ctx.partial('a', `${STABLE1} all of`, { stable: STABLE1 })
+  release()
+  await tick(80)
+  const sen = ctx.sentence(`${STABLE1} all of`)
+  assert.equal(sen.prov, undefined)
+  assert.equal(sen.tr, undefined)
+  assert.equal(ctx.engine.speed.rows.find((r) => r.kind === 'prov').shown, undefined, '回来的译文被丢掉了')
+})
+
+test('review: after a failed attempt the retry does not make the shown half translation shrink back', async (t) => {
+  let n = 0
+  const llm = async (o) => {
+    if (o.model === 'smart') return '{}'
+    if (++n === 1) {
+      o.onDelta('我们上周用 LoRA')
+      await pause(30)
+      throw Object.assign(new Error('服务出错'), { retryable: true })
+    }
+    o.onDelta('我们')
+    await pause(100)
+    o.onDelta('我们上周用 LoRA 微调了')
+    await pause(100)
+    return '我们上周用 LoRA 微调了模型。'
+  }
+  const ctx = harness(t, { llm })
+  await ctx.engine.start()
+  ctx.final('a', SENT)
+  await until(() => ctx.sentence(SENT)?.tr === '我们上周用 LoRA 微调了模型。' && !ctx.sentence(SENT).trLive, 5000)
+  let longest = 0
+  for (const e of ctx.events) {
+    const tr = e.sentences[0].tr
+    if (tr == null) continue
+    assert.ok(tr.length >= longest, `译文缩回去了：${tr}`)
+    longest = tr.length
+  }
+})
+
+test('stable sentence: a full stop after a digit or another full stop may not be the end yet, so the sentence waits for the final', async (t) => {
+  const { llm, asked } = countingLlm()
+  const ctx = harness(t, { llm })
+  await ctx.engine.start()
+  const a = 'Revenue grew by about 3.'
+  const b = 'So we saw growth in all regions...'
+  ctx.partial('a', a, { stable: a })
+  ctx.partial('b', b, { stable: b })
+  await tick(150)
+  assert.deepEqual(asked, [], '3. 后面可能接 5，省略号后面还有话')
+  const c = 'Revenue grew by about 3.5 percent last year.'
+  ctx.partial('c', c, { stable: c })
+  await until(() => asked.length === 1)
+  assert.deepEqual(asked, [c])
+  ctx.final('a', 'Revenue grew by about 3.5 percent.')
+  await until(() => asked.length === 2)
+})
