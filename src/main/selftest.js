@@ -248,6 +248,11 @@ async function fullRun(secs, ctx) {
   result.savedAnswers = (saved.answers ?? []).length
   const enh = traces.filter((t) => t.type === 'enhance')
   result.enhance = enh.map(({ t, ms, trMs, translate, chunks, terms, correct, chunkCount, coverage, termsNoZh, text, fixed, fixDropped }) => ({ t, ms, trMs, translate, chunks, terms, correct, chunkCount, coverage, termsNoZh, text, fixed, fixDropped }))
+  // 译文速度：每句的计时（时间都是距开始的毫秒）和停止时的汇总（speed.js）
+  const rows = traces.filter((t) => t.type === 'speed-row')
+  const at = (v) => (v == null ? null : v - t0)
+  result.speed = traces.find((t) => t.type === 'speed') ?? null
+  result.speedRows = rows.map((r) => ({ kind: r.kind, reason: r.reason, text: r.text, attempts: r.attempts, error: r.error ?? null, speechEnd: at(r.speechEnd), completeAt: at(r.completeAt), queuedAt: at(r.queuedAt), sentAt: at(r.sentAt), firstTokenAt: at(r.firstTokenAt), firstVisibleAt: at(r.firstVisibleAt), fullAt: at(r.fullAt), doneAt: at(r.doneAt), ...(r.kind === 'prov' ? { replacedAt: at(r.replacedAt), shown: r.shown ?? null, final: r.final ?? null } : {}) }))
   const covs = enh.filter((t) => t.coverage != null).map((t) => t.coverage)
   if (covs.length) result.chunkStats = { sentences: covs.length, avgCoverage: round((covs.reduce((a, b) => a + b, 0) / covs.length) * 100), below70: covs.filter((c) => c < 0.7).length, singleColor: enh.filter((t) => t.chunks && (t.chunkCount ?? 0) < 2).length }
   const scoreTraces = traces.filter((t) => t.type === 'score')

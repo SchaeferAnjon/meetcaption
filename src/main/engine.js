@@ -20,6 +20,7 @@ import { joinFixed, splitSentences } from './text.js'
 import { LANG_NAMES, needsMultilingual, needsTranslation } from './languages.js'
 import { modeSettings, speakerLabel } from './modes.js'
 import { LiveNotes } from './class/liveNotes.js'
+import { SpeedLog } from './speed.js'
 import { t, uiLang } from './i18n.js'
 
 // 一场会议的运行时：采集 → 门限切句 → 识别 → 分句 → 判断是谁说的 → 译文、意群对齐和术语 → 存档，对方的提问交给答题助手。
@@ -195,6 +196,7 @@ export class MeetingEngine extends EventEmitter {
     this.enhActive = 0
     this.enhRunning = new Set() // 已经发出去、还没回来的译文请求（答题时 ChatGPT 通道上要让路）
     this.enhWarned = false
+    this.speed = new SpeedLog()
     this.assistWarned = false
     this.weakShown = false // 这一场已经提示过本地识别效果不好
     this.weakWatch = null // 本地识别效果不好的判断（asr/localQuality.js），只在自己选了本地识别时有
@@ -379,6 +381,7 @@ export class MeetingEngine extends EventEmitter {
     this.#dropEnhanceQueue()
     this.enh.clear()
     this.enhEarly.clear()
+    this.speed = new SpeedLog()
     this.aiLimited = false
     this.#releaseEnhance()
     this.enhWarned = false
@@ -834,6 +837,7 @@ export class MeetingEngine extends EventEmitter {
     }
     this.#resplit(seg)
     if (final) {
+      this.#settleSpeed(seg)
       this.#persist(seg)
       // 一段常有四五十秒：把时长交给实时笔记，按句子估每句的时间，小节和强调点才不会都是这段的起点
       const span = this.#m(seg).span
@@ -841,6 +845,33 @@ export class MeetingEngine extends EventEmitter {
     }
     this.emit('segment', seg)
     if (ask) this.#maybeAsk(seg, ask)
+  }
+
+  // 停止时把每句的计时和汇总写进 trace（speed-row、speed）
+  #traceSpeed() {
+    if (!this.speed.rows.length) return
+    for (const row of this.speed.rows) this.emit('trace', { type: 'speed-row', ...row })
+    this.emit('trace', { type: 'speed', ...this.speed.summary() })
+  }
+
+  // 定稿后算这段里各句的 speechEnd（译文速度计时用）：音频位置 → 时间戳，按已经收到的音频长度往回推
+  #settleSpeed(seg) {
+    const span = this.#m(seg).span
+    const p = this.pipelines.get(seg.source)
+    if (!span || !p || seg.who !== 'other') return
+    const raw = seg.orig ?? seg.text
+    const ends = new Map()
+    let at = 0
+    for (const sen of seg.sentences) {
+      const r = rawOf(sen)
+      const i = raw.indexOf(r, at)
+      if (i < 0) continue
+      at = i + r.length
+      ends.set(r, at)
+    }
+    const heard = ((p.gate.base + p.gate.pending.length) * 1000) / p.provider.sampleRate
+    const now = Date.now()
+    this.speed.settle(seg.id, ends, raw.length, span, (ms) => now - (heard - ms))
   }
 
   /* ---------------- 麦克风这段是谁说的 ---------------- */
@@ -1263,8 +1294,13 @@ export class MeetingEngine extends EventEmitter {
     })
     if (seg.final) syncFixed(seg)
     if (mine) return
+    const raw = seg.orig ?? seg.text
+    let at = 0
     seg.sentences.forEach((sen, i) => {
-      if (seg.final || i < parts.length - 1) this.#requestEnhance(rawOf(sen))
+      const r = rawOf(sen)
+      const from = raw.indexOf(r, at)
+      if (from >= 0) at = from + r.length
+      if (seg.final || i < parts.length - 1) this.#requestEnhance(r, { segId: seg.id, source: seg.source, endChar: from >= 0 ? at : null, reason: seg.final ? 'final' : 'next', completeAt: this.#m(seg).updatedAt ?? Date.now() })
     })
   }
 
@@ -1279,7 +1315,7 @@ export class MeetingEngine extends EventEmitter {
   enhRetryMs = ENH_RETRY_MS
 
   // 翻译开、句子不是目标语言才要译文；要译文且开着意群颜色就要意群对齐；术语开就要术语。都不要就不发请求。
-  #requestEnhance(text) {
+  #requestEnhance(text, why = {}) {
     if (this.enh.has(text)) return
     const s = this.cfg
     const translate = Boolean(s.translate) && needsTranslation(text, s.language, s.translateTarget)
@@ -1292,7 +1328,8 @@ export class MeetingEngine extends EventEmitter {
     // AI 纠错跟着这次请求一起要（不单独发请求）
     const correct = s.terms?.correct !== false
     this.enh.set(text, PENDING)
-    this.enhQueue.push({ text, translate, chunks, terms, correct, gen: this.gen, sessionId: this.session?.id ?? null })
+    const row = translate ? this.speed.open('final', text, why) : null
+    this.enhQueue.push({ text, translate, chunks, terms, correct, gen: this.gen, sessionId: this.session?.id ?? null, row })
     this.#pumpEnhance()
   }
 
@@ -1339,6 +1376,8 @@ export class MeetingEngine extends EventEmitter {
           this.enhEarly.delete(job.text)
           if (job.correct) this.weakWatch?.corrected(job.text, r.fixed ? checkFix(job.text, r.fixed) : null)
           this.#applyEnhance(job.text, r)
+          if (r.tr) this.speed.visible(job.row, true)
+          this.speed.done(job.row)
           // 网络好了：收回之前的失败提示，再失败时还会提示
           if (this.enhWarned) {
             this.enhWarned = false
@@ -1356,11 +1395,13 @@ export class MeetingEngine extends EventEmitter {
           if (job.yielded) {
             this.enh.set(job.text, job.early ?? null)
             this.enhEarly.delete(job.text)
+            this.speed.fail(job.row, e.message)
             return
           }
           if (e?.code === 'usage-limit') {
             this.enh.set(job.text, job.early ?? null)
             this.enhEarly.delete(job.text)
+            this.speed.fail(job.row, e.message)
             this.#aiLimit(e)
             return
           }
@@ -1368,6 +1409,7 @@ export class MeetingEngine extends EventEmitter {
           if (job.early) {
             this.enh.set(job.text, job.early)
             this.enhEarly.delete(job.text)
+            this.speed.done(job.row)
             return
           }
           // 限流、服务出错、超时、回复是空的：只要译文（不要意群和术语，快很多），排在新句子后面，所有译文请求先退一会儿
@@ -1389,6 +1431,7 @@ export class MeetingEngine extends EventEmitter {
           }
           this.enh.set(job.text, null)
           this.enhEarly.delete(job.text)
+          this.speed.fail(job.row, e.message)
           // 会员场次用完的 402 另有「场次用完」的提示，这里不再报；自带 Key 余额不足的 402 要报
           const memberOut = e.status === 402 && this.cfg?.llmProvider === 'member'
           if (!this.enhWarned && !memberOut) {
@@ -1460,11 +1503,13 @@ export class MeetingEngine extends EventEmitter {
     const previous = (this.session?.segments ?? []).slice(-3).map((x) => x.text)
     const args = { sentence: text, previous, target: s.translateTarget, source: s.language, context: s.context, keywords: keywordList(s) }
     const t0 = Date.now()
+    this.speed.sent(job.row)
+    const onUsage = process.env.MEETCAPTION_SPEED_USAGE ? (u) => this.speed.usage(job.row ?? { kind: 'final' }, u) : undefined
     let r
     let fixDropped = null
     if (!terms && !chunks && !correct) {
       const [system, user] = translateMessages(args)
-      const tr = await this.llm({ model: 'fast', system: system.content, messages: [user], effort: 'none', timeoutMs: enhanceTimeout(text), signal: job.ctrl?.signal })
+      const tr = await this.llm({ model: 'fast', system: system.content, messages: [user], effort: 'none', timeoutMs: enhanceTimeout(text), signal: job.ctrl?.signal, onUsage })
       r = { tr: noDashes(String(tr ?? '')).trim() }
       if (!r.tr) throw emptyReply()
     } else {
@@ -1472,6 +1517,7 @@ export class MeetingEngine extends EventEmitter {
       // 流式收：JSON 开头的译文（开着纠错时连同前面纠正后的句子）一收全就先显示（ChatGPT 通道上整个 JSON 要 3 到 10 秒，译文 1.5 到 2 秒就齐了）
       const onDelta = translate
         ? (full) => {
+            this.speed.first(job.row)
             if (job.early) return
             const h = streamedHead(full)
             if (!h.tr) return
@@ -1481,7 +1527,7 @@ export class MeetingEngine extends EventEmitter {
             this.#onEarlyTr(job, job.early)
           }
         : undefined
-      const raw = await this.llm({ model: 'fast', system: system.content, messages: [user], effort: 'none', json: true, timeoutMs: enhanceTimeout(text) + 10_000, onDelta, signal: job.ctrl?.signal })
+      const raw = await this.llm({ model: 'fast', system: system.content, messages: [user], effort: 'none', json: true, timeoutMs: enhanceTimeout(text) + 10_000, onDelta, signal: job.ctrl?.signal, onUsage })
       const p = parseEnhance(raw, text, { correct })
       // 要译文却没拿到（回复是空的或不是 JSON，DeepSeek 的 JSON 模式偶尔这样）：流式先到的译文就用它，没有就算失败，走重试
       const early = translate && !p.tr ? job.early : null
@@ -1507,6 +1553,7 @@ export class MeetingEngine extends EventEmitter {
     if (job.gen !== this.gen) return
     this.enhEarly.set(job.text, early)
     this.#applyEnhance(job.text, early)
+    this.speed.visible(job.row, true)
   }
 
   #applyEnhance(text, r) {
@@ -1569,6 +1616,7 @@ export class MeetingEngine extends EventEmitter {
       while (waiting() && Date.now() < deadline) await sleep(200)
       this.#dropEnhanceQueue()
       this.store.saveNow(session)
+      this.#traceSpeed()
     }
     this.#setState('idle', { lastSessionId: session?.id ?? null })
     // 停止后把最后一段内容整理进实时笔记（不挡着停止，写回文件由 #onNotes 做；退出应用前主进程等它）

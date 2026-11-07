@@ -51,11 +51,12 @@ function noThinking(baseUrl) {
   return { thinking: { type: 'disabled' } }
 }
 
-export function buildBody({ model, messages, openai, baseUrl, effort, stream, maxOutputTokens, json }) {
+export function buildBody({ model, messages, openai, baseUrl, effort, stream, maxOutputTokens, json, usage }) {
   let msgs = toChatMessages(messages)
   if (json) msgs = withJsonHint(msgs)
   const body = { model, messages: msgs }
   if (stream) body.stream = true
+  if (stream && usage) body.stream_options = { include_usage: true } // 只有调用方要用量（测速）时才带
   // OpenAI 的 gpt-5 系列默认会先思考；翻译要快就关掉，总结给一点。
   if (openai && /^gpt-5/.test(model) && effort) body.reasoning_effort = effort === 'minimal' ? 'none' : effort
   const deepseekLow = effort === 'low' && /deepseek\.com/i.test(baseUrl ?? '')
@@ -129,6 +130,7 @@ async function post({ baseUrl, key, signal }, body) {
 const OPTIONAL = [
   { keys: ['response_format'], re: /response_format|json_object|json mode/i },
   { keys: ['thinking', 'enable_thinking', 'reasoning_effort'], re: /thinking|reasoning|思考/i },
+  { keys: ['stream_options'], re: /stream_options|include_usage/i },
 ]
 
 function unsupported(e, body) {
@@ -163,13 +165,14 @@ function cut(partial) {
   return Object.assign(new LlmError('stream', t('内容被截断：AI 服务的连接中途断了'), { retryable: true }), { partial })
 }
 
-export async function chat({ baseUrl, key, openai, model, messages, effort, signal, timeoutMs = 30_000, maxOutputTokens, json }) {
+export async function chat({ baseUrl, key, openai, model, messages, effort, signal, timeoutMs = 30_000, maxOutputTokens, json, onUsage }) {
   const ctl = requestControl({ signal, timeoutMs })
   try {
     const body = buildBody({ model, messages, openai, baseUrl, effort, maxOutputTokens, json })
     return await withParamFallback(body, async (b) => {
       const res = await post({ baseUrl, key, signal: ctl.signal }, b)
       const j = await res.json()
+      if (j.usage) onUsage?.(j.usage)
       const c = j.choices?.[0]
       const text = (c?.message?.content ?? '').trim()
       if (!text && c?.message?.reasoning_content) throw thinkingOnly()
@@ -185,10 +188,10 @@ export async function chat({ baseUrl, key, openai, model, messages, effort, sign
 }
 
 /** 流式输出，每来一段就回调 onDelta(累计全文)。 */
-export async function chatStream({ baseUrl, key, openai, model, messages, effort, signal, onDelta, timeoutMs, idleMs = 90_000, maxOutputTokens, json }) {
+export async function chatStream({ baseUrl, key, openai, model, messages, effort, signal, onDelta, onUsage, timeoutMs, idleMs = 90_000, maxOutputTokens, json }) {
   const ctl = requestControl({ signal, timeoutMs, idleMs })
   try {
-    const body = buildBody({ model, messages, openai, baseUrl, effort, stream: true, maxOutputTokens, json })
+    const body = buildBody({ model, messages, openai, baseUrl, effort, stream: true, maxOutputTokens, json, usage: Boolean(onUsage) })
     return await withParamFallback(body, async (b) => {
       const res = await post({ baseUrl, key, signal: ctl.signal }, b)
       let text = ''
@@ -207,6 +210,7 @@ export async function chatStream({ baseUrl, key, openai, model, messages, effort
         } catch {
           continue
         }
+        if (j.usage) onUsage?.(j.usage)
         if (j.error) throw new LlmError('stream', t(`AI 服务返回错误：{0}`, j.error.message ?? JSON.stringify(j.error)), { detail: j.error.message })
         const c = j.choices?.[0]
         if (c?.finish_reason) finish = c.finish_reason
@@ -234,10 +238,10 @@ export async function chatStream({ baseUrl, key, openai, model, messages, effort
 export const memberOffline = () => t('连不上会员服务器，稍后再试，或在「设置 → 会员」里改用自带 Key')
 
 /** 门面用：cfg = { baseUrl, key, openai, member }，给了 onDelta 就流式。 */
-export async function compatComplete(cfg, { model, system, messages = [], effort, maxOutputTokens, json, signal, timeoutMs, onDelta }) {
+export async function compatComplete(cfg, { model, system, messages = [], effort, maxOutputTokens, json, signal, timeoutMs, onDelta, onUsage }) {
   if (!cfg.key) throw new LlmError('not-logged-in', cfg.member ? memberOffline() : t('还没配置 AI 服务的 Key（设置 → 账号与 AI）'))
   const msgs = system ? [{ role: 'system', content: system }, ...messages] : messages
-  const args = { ...cfg, model, messages: msgs, effort, signal, maxOutputTokens, json }
+  const args = { ...cfg, model, messages: msgs, effort, signal, maxOutputTokens, json, onUsage }
   if (onDelta) return (await chatStream({ ...args, timeoutMs, onDelta })).trim()
   return chat({ ...args, timeoutMs: timeoutMs ?? 60_000 })
 }
