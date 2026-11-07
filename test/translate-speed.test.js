@@ -289,3 +289,145 @@ test('engine: a sentence that is re-split while its translation streams keeps sh
   release()
   await until(() => ctx.sentence(SENT)?.tr === '我们上周用 LoRA 微调了模型。' && !ctx.sentence(SENT).trLive)
 })
+
+/* ---------------- 3. 句子一说完就翻，不等这一段定稿 ---------------- */
+
+import http from 'node:http'
+import { WebSocketServer } from 'ws'
+import { SonioxStreamASR } from '../src/main/asr/soniox.js'
+
+const sentenceOfCall = (o) => o.messages.at(-1).content.split('\n').at(-1)
+
+// 记下每次译文请求问的是哪一句
+function countingLlm(reply = (s) => `译：${s.slice(0, 12)}`) {
+  const asked = []
+  const llm = async (o) => {
+    if (o.model === 'smart') return '{}'
+    const s = sentenceOfCall(o)
+    asked.push(s)
+    await pause(10)
+    return reply(s)
+  }
+  return { llm, asked }
+}
+
+test('stable sentence: the last sentence of a partial is translated once it ends with a full stop inside the stable text, and the final then hits the cache', async (t) => {
+  const { llm, asked } = countingLlm()
+  const ctx = harness(t, { llm })
+  await ctx.engine.start()
+  const A = 'We fine-tuned the model with LoRA last week.'
+  ctx.partial('a', A, { stable: A })
+  await until(() => ctx.sentence(A)?.tr)
+  assert.deepEqual(asked, [A], '还没定稿就翻了')
+  ctx.partial('a', `${A} The results`, { stable: A })
+  ctx.final('a', `${A} The results look better.`)
+  await until(() => ctx.sentence('The results look better.')?.tr)
+  assert.deepEqual(asked, [A, 'The results look better.'], '定稿时第一句命中缓存，没再发')
+  const row = ctx.engine.speed.rows.find((r) => r.text === A)
+  assert.equal(row.reason, 'stable')
+})
+
+test('stable sentence: waits when the full stop is not in the stable text, for abbreviations, very short sentences and (with answers on) questions', async (t) => {
+  const { llm, asked } = countingLlm()
+  const ctx = harness(t, { llm, patch: { assist: { enabled: true, auto: false } } })
+  await ctx.engine.start()
+  const A = 'We fine-tuned the model with LoRA last week.'
+  ctx.partial('a', A, { stable: 'We fine-tuned the model with LoRA last' }) // 句号还在没定稿的尾巴里
+  ctx.partial('b', 'We expanded in the U.S.', { stable: 'We expanded in the U.S.' })
+  ctx.partial('c', 'Okay.', { stable: 'Okay.' })
+  ctx.partial('d', 'Did you run the Bonferroni correction on the results?', { stable: 'Did you run the Bonferroni correction on the results?' })
+  ctx.partial('e', 'We spoke with Dr.', { stable: 'We spoke with Dr.' })
+  ctx.partial('f', A)
+  await tick(150)
+  assert.deepEqual(asked, [], '一条都不该发')
+  ctx.final('a', A)
+  await until(() => asked.length === 1)
+})
+
+test('stable sentence: a Chinese sentence ends at 。 and short ones count by characters', async (t) => {
+  const { llm, asked } = countingLlm()
+  const ctx = harness(t, { llm, patch: { language: 'zh', translateTarget: 'en' } })
+  await ctx.engine.start()
+  ctx.partial('a', '我们上周用低秩适配微调了这个模型。', { stable: '我们上周用低秩适配微调了这个模型。' })
+  await until(() => asked.length === 1)
+})
+
+async function fakeSoniox(t) {
+  const conns = []
+  const server = http.createServer()
+  const wss = new WebSocketServer({ server })
+  wss.on('connection', (ws) => {
+    conns.push({ ws })
+    ws.on('message', (d, binary) => {
+      if (binary || String(d) !== '') return
+      ws.send(JSON.stringify({ tokens: [], finished: true })) // 收到结束帧：回 finished 并关掉
+      ws.close()
+    })
+  })
+  await new Promise((r) => server.listen(0, '127.0.0.1', r))
+  t.after(() => (wss.close(), server.close()))
+  return { conns, url: `ws://127.0.0.1:${server.address().port}/` }
+}
+
+const tok = (text, start, end, final = true) => ({ text, start_ms: start, end_ms: end, is_final: final })
+
+test('Soniox token stream: the sentence is requested as soon as its full stop is final (lone space token after it, punctuation timed with the next word), and <end> reuses it', async (t) => {
+  const f = await fakeSoniox(t)
+  const { llm, asked } = countingLlm()
+  const ctx = harness(t, { llm })
+  // 用真的 Soniox 识别类接假服务器，不用 FakeASR
+  const asr = new SonioxStreamASR({ key: 'k', url: f.url, language: 'en', hotwords: [] })
+  ctx.engine.makeProvider = () => asr
+  await ctx.engine.start()
+  await until(() => f.conns.length > 0)
+  const send = (tokens) => f.conns[0].ws.send(JSON.stringify({ tokens }))
+  const first = [tok('We', 0, 200), tok(' fine', 200, 400), tok('-tuned', 400, 600), tok(' the', 600, 700), tok(' model', 700, 1000)]
+  // 每条回复里定稿的字只送一次；没定稿的尾巴每条整段重送。句号还没定稿：不翻
+  send([...first, tok('.', 1500, 1510, false)])
+  await tick(100)
+  assert.deepEqual(asked, [])
+  // 句号定稿（时间标在下一个词开头，停顿之后），后面单独来一个空格词元，下一句的头两个词还没定稿
+  send([tok('.', 1500, 1510), tok(' ', 1510, 1510), tok(' The', 1520, 1700, false), tok(' results', 1700, 2000, false)])
+  await until(() => asked.length === 1)
+  assert.deepEqual(asked, ['We fine-tuned the model.'])
+  // 下一句说完、<end> 到：第一句不再发，第二句发一次
+  send([tok(' The', 1520, 1700), tok(' results', 1700, 2000), tok(' are', 2000, 2200), tok(' good', 2200, 2500), tok('.', 2500, 2510), { text: '<end>', is_final: true }])
+  await until(() => ctx.sentence('The results are good.')?.tr)
+  assert.deepEqual(asked, ['We fine-tuned the model.', 'The results are good.'])
+  assert.ok(ctx.sentence('We fine-tuned the model.').tr)
+})
+
+test('Soniox: tokens that turn final without the text changing still send a partial with the longer stable part', async (t) => {
+  const f = await fakeSoniox(t)
+  const asr = new SonioxStreamASR({ key: 'k', url: f.url, language: 'en', hotwords: [] })
+  const ev = []
+  asr.on('partial', (e) => ev.push(e))
+  await asr.connect()
+  await until(() => f.conns.length > 0)
+  const send = (tokens) => f.conns[0].ws.send(JSON.stringify({ tokens }))
+  send([tok('Hello', 0, 300), tok(' there', 300, 600, false)])
+  await until(() => ev.length === 1)
+  send([tok(' there', 300, 600)]) // 定稿的字只送一次，没定稿的尾巴每条整段重送
+  await until(() => ev.length === 2)
+  assert.deepEqual(ev.map((e) => [e.text, e.stable]), [['Hello there', 'Hello'], ['Hello there', 'Hello there']])
+  await asr.close()
+})
+
+import { LocalStreamASR } from '../src/main/asr/local.js'
+
+test('local ASR: every partial says its whole text is stable, a final does not carry it', async () => {
+  const host = {
+    start: async () => {},
+    open: (ch, h) => (host.h = h),
+    audio() {},
+    finish: async () => [],
+  }
+  const asr = new LocalStreamASR({ host })
+  const got = []
+  asr.on('partial', (e) => got.push(['partial', e.text, e.stable]))
+  asr.on('final', (e) => got.push(['final', e.text, e.stable]))
+  await asr.connect()
+  host.h.onEvents([{ type: 'partial', key: 'a0', text: 'We fine-tuned the model.', span: { start: 0, end: 900 } }], 0)
+  host.h.onEvents([{ type: 'final', key: 'a0', text: 'We fine-tuned the model. Then', span: { start: 0, end: 1200 } }], 0)
+  assert.deepEqual(got, [['partial', 'We fine-tuned the model.', 'We fine-tuned the model.'], ['final', 'We fine-tuned the model. Then', undefined]])
+})

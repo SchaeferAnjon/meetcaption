@@ -334,9 +334,13 @@ export class SonioxStreamASR extends EventEmitter {
     const cur = conn.seg
     cur.tail = tail
     const shown = (cur.text + cur.tail).trim()
-    if (shown && (cur !== seg || shown !== seg.shown)) {
+    // stable：已经定稿（is_final）的那一截，是 shown 的开头，之后只会往后接、不会再改。引擎拿它判断一句话是不是已经说完。
+    // 字没变、只是尾巴里的字变成了定稿，也要再发一次（stable 变长了）
+    const stable = cur.text.trim()
+    if (shown && (cur !== seg || shown !== seg.shown || stable !== seg.stable)) {
       cur.shown = shown
-      this.emit('partial', { key: cur.key, text: shown, span: this.#span(conn, cur) })
+      cur.stable = stable
+      this.emit('partial', { key: cur.key, text: shown, stable, span: this.#span(conn, cur) })
     }
     if (m.finished) this.#finishSeg(conn)
     const idle = conn.seg.text === '' && conn.seg.tail === ''

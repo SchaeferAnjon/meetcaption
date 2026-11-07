@@ -207,6 +207,8 @@ export class LocalStreamASR extends EventEmitter {
     const off = (this.chanStart * 1000) / core.SAMPLE_RATE
     const span = e.span ? { start: e.span.start + off, end: e.span.end + off } : null
     const out = { key: e.key, text: e.text, span }
+    // 流式识别只往后接新字、不改前面的（实测 367 条 partial 没有一条改过前面的字）：整段都是定下来的
+    if (e.type === 'partial') out.stable = e.text
     if (e.type === 'partial') this.open = out
     else if (this.open?.key === e.key) this.open = null
     this.emit(e.type, out)

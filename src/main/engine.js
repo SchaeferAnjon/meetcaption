@@ -16,7 +16,7 @@ import { checkFix, chunkCoverage, enhanceMessages, noDashes, parseEnhance, strea
 import { keywordList } from './defaults.js'
 import { projectSettings } from './projects.js'
 import { isCrosstalk, questionRun, tokenize } from './speaker.js'
-import { joinFixed, splitSentences } from './text.js'
+import { isMostlyChinese, joinFixed, splitSentences } from './text.js'
 import { LANG_NAMES, needsMultilingual, needsTranslation } from './languages.js'
 import { modeSettings, speakerLabel } from './modes.js'
 import { LiveNotes } from './class/liveNotes.js'
@@ -106,6 +106,11 @@ const enhanceTimeout = (text) => 20_000 + Math.min(20_000, text.length * 30)
 
 // 回复是空的或者解析不出译文：当成可重试的失败
 const emptyReply = () => Object.assign(new Error(t('AI 没给出译文（回复是空的或格式不对）')), { code: 'empty-reply', retryable: true })
+
+// 句末标点（后面可以跟着引号、括号）
+const TERMINAL = /[.!?。！？]["'”’)）\]]*$/
+// 句号落在缩写后面（Mr. / U.S. / e.g. / 单个字母加点）不算一句话说完
+const ABBREV = /(?:^|[\s(])(?:mr|mrs|ms|dr|prof|sr|jr|st|vs|etc|inc|ltd|co|corp|no|fig|eq|approx|e\.g|i\.e|u\.s|u\.k|a\.m|p\.m|[a-z])\.$/i
 
 // 太短的句子（Okay. / 对。）不值得单独问术语
 const worthTerms = (text) => tokenize(text).length >= 3
@@ -755,9 +760,9 @@ export class MeetingEngine extends EventEmitter {
   }
 
   #wireProvider(source, provider) {
-    provider.on('partial', ({ key, text, span }) => {
+    provider.on('partial', ({ key, text, span, stable }) => {
       debug(source, 'partial', key.slice(-6), JSON.stringify(text))
-      this.#onText(source, key, text, false, span)
+      this.#onText(source, key, text, false, span, stable)
     })
     provider.on('final', ({ key, text, span }) => {
       debug(source, 'FINAL', key.slice(-6), JSON.stringify(text), span ? `${Math.round(span.start)}-${Math.round(span.end)}ms` : '')
@@ -793,7 +798,7 @@ export class MeetingEngine extends EventEmitter {
     return m
   }
 
-  #onText(source, key, text, final, span) {
+  #onText(source, key, text, final, span, stable = null) {
     if (!this.session) return
     const id = `${source}:${key}`
     let seg = this.live.get(id)
@@ -813,6 +818,7 @@ export class MeetingEngine extends EventEmitter {
     if (seg.final || m.awaiting) return
     seg.text = text || (final ? seg.text : '')
     m.updatedAt = Date.now()
+    m.stable = final ? null : stable // 识别服务说已经定下来的那一截（text 的开头），没说就是 null
     const p = this.pipelines.get(source)
     if (span) {
       m.span = span
@@ -1309,14 +1315,26 @@ export class MeetingEngine extends EventEmitter {
     })
     if (seg.final) syncFixed(seg)
     if (mine) return
+    const m = this.#m(seg)
     const raw = seg.orig ?? seg.text
+    // 识别服务说已经定下来的那一截：最后一句完整地落在里面、又以句末标点结尾，就不用等这一段定稿
+    const stable = !seg.final && m.stable ? new Set(splitSentences(m.stable, this.cfg.language)) : null
     let at = 0
     seg.sentences.forEach((sen, i) => {
       const r = rawOf(sen)
       const from = raw.indexOf(r, at)
       if (from >= 0) at = from + r.length
-      if (seg.final || i < parts.length - 1) this.#requestEnhance(r, { segId: seg.id, source: seg.source, endChar: from >= 0 ? at : null, reason: seg.final ? 'final' : 'next', completeAt: this.#m(seg).updatedAt ?? Date.now() })
+      const reason = seg.final ? 'final' : i < parts.length - 1 ? 'next' : stable && this.#stableDone(r, stable) ? 'stable' : null
+      if (reason) this.#requestEnhance(r, { segId: seg.id, source: seg.source, endChar: from >= 0 ? at : null, reason, completeAt: m.updatedAt ?? Date.now() })
     })
+  }
+
+  // 最后一句在识别服务定下来的字里完整地说完了：句末标点、不是缩写、不止一两个词。
+  // 对方在提问时让答题先走（答案的请求排在译文前面），所以问句照旧等这一段定稿
+  #stableDone(text, stable) {
+    if (!stable.has(text) || !TERMINAL.test(text) || ABBREV.test(text)) return false
+    if (tokenize(text).length < 3 && !isMostlyChinese(text)) return false
+    return !(this.cfg.assist?.enabled && isQuestion(text))
   }
 
   #cached(text) {
