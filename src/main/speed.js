@@ -122,7 +122,7 @@ export class SpeedLog {
     }
   }
 
-  /** 每一句的第一次译文出现的时间：整句的请求，或者它前半的临时译文，取早的。 */
+  /** 每一句的第一次译文出现的时间：整句的请求，或者它前半的临时译文，取早的。临时译文可能在这句话说完之前就出现，所以这个口径下的延迟可以是负的。 */
   firstVisible(row) {
     let at = row.firstVisibleAt
     for (const p of this.rows) {
@@ -142,7 +142,15 @@ export class SpeedLog {
     for (const r of this.rows.filter((x) => x.kind === 'final')) reasons[r.reason ?? '?'] = (reasons[r.reason ?? '?'] ?? 0) + 1
     return {
       sentences: finals.length,
+      // 含临时译文：临时译文是这句话前半的译文，有的在说话人说完之前就出现了（延迟为负）
       speechEndToFirstVisible: of((r) => diff(this.firstVisible(r), r.speechEnd)),
+      // 只算这句话自己的译文第一个字出现（不含临时译文）：改前改后可直接比较
+      speechEndToOwnFirstVisible: of((r) => diff(r.firstVisibleAt, r.speechEnd)),
+      // 含临时译文的口径里，延迟为负（说完之前就有字）的句数和最小值
+      shownBeforeSpeechEnd: (() => {
+        const v = finals.map((r) => diff(this.firstVisible(r), r.speechEnd)).filter((x) => x != null && x < 0)
+        return { n: v.length, min: v.length ? Math.min(...v) : null }
+      })(),
       speechEndToFullVisible: of((r) => diff(r.fullAt, r.speechEnd)),
       speechEndToDone: of((r) => diff(r.doneAt, r.speechEnd)),
       stages: {
@@ -167,6 +175,8 @@ export class SpeedLog {
         sentences: provs.filter((r) => !r.superseded).length,
         replaced: provs.filter((r) => r.replacedAt != null).length,
         differs: provs.filter((r) => r.sim != null && r.sim < DIFFERS_BELOW).length,
+        // 没被后一个换掉、也没等到完整译文就消失的（识别改了字、停止时收回）
+        neverReplaced: provs.filter((r) => !r.superseded && r.replacedAt == null && r.firstVisibleAt != null).length,
         sim: stats(provs.filter((r) => r.sim != null).map((r) => r.sim * 100)),
         // 这一句最早出现的译文是临时译文
         shownFirst: finals.filter((r) => r.firstVisibleAt == null || this.firstVisible(r) < r.firstVisibleAt).length,

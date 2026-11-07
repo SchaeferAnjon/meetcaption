@@ -728,3 +728,29 @@ test('stable sentence: a full stop after a digit or another full stop may not be
   ctx.final('a', 'Revenue grew by about 3.5 percent.')
   await until(() => asked.length === 2)
 })
+
+test('SpeedLog: the first-text figure counts provisional text and says how many were shown before the speaker finished; the own-text figure leaves them out', () => {
+  const log = new SpeedLog()
+  const rows = []
+  // 三句，说完时间都是 10000；自己的译文第一个字在 10900 / 11000 / 11200，其中后两句前半的临时译文更早（9000 / 10500）
+  for (const [i, own] of [10_900, 11_000, 11_200].entries()) {
+    const text = `Sentence number ${i} is long enough, and goes on.`
+    const r = log.open('final', text, { segId: `s${i}`, endChar: text.length, reason: 'final', completeAt: 10_100 })
+    r.speechEnd = 10_000
+    r.firstVisibleAt = own
+    r.fullAt = own + 300
+    rows.push(r)
+  }
+  const early = [null, 9000, 10_500]
+  early.forEach((at, i) => {
+    if (at == null) return
+    const p = log.open('prov', `Sentence number ${i} is long enough,`, { segId: `s${i}`, reason: 'prov' })
+    p.firstVisibleAt = at
+  })
+  const s = log.summary()
+  assert.equal(s.speechEndToOwnFirstVisible.median, 1000)
+  assert.equal(s.speechEndToFirstVisible.median, 500)
+  assert.deepEqual(s.shownBeforeSpeechEnd, { n: 1, min: -1000 })
+  assert.equal(s.provisional.shownFirst, 2)
+  assert.equal(s.provisional.neverReplaced, 2)
+})
