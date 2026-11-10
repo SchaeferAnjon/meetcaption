@@ -135,6 +135,40 @@ test('纪要写到一半被截断：半截先存下，再报「内容被截断�
   await assert.rejects(empty.generate(s.id), (e) => e.message === '内容被截断：超过了 AI 服务一次能写的长度')
 })
 
+test('纪要被截断时接着写：写好的部分作为 AI 的回答交回去续写，接缝处重复的半句去掉，拼成完整一篇', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'meetcaption-cont-'))
+  const ps = new ProjectStore({ root: () => root }).load()
+  const store = new SessionStore({ projects: ps })
+  const s = store.create({})
+  s.segments.push({ id: '1', speaker: '对方', startedAt: s.startedAt + 1000, text: 'Ledger migration by next Friday.' })
+  store.saveNow(s)
+  const calls = []
+  const replies = [
+    { partial: '## 一句话总结\n迁移下周五完成。\n## 讨论\n账本迁移分两步' },
+    { partial: '账本迁移分两步：先导出旧数据，' },
+    { text: '先导出旧数据，再校验。\n## 待办\n- 周五前完成迁移' },
+  ]
+  const llm = async (o) => {
+    calls.push(o.messages.map((m) => ({ role: m.role, content: typeof m.content === 'string' ? m.content : '[parts]' })))
+    const r = replies[calls.length - 1] ?? { text: '{"items":[]}' }
+    if (r.partial) throw Object.assign(new LlmError('incomplete', '内容被截断：超过了 AI 服务一次能写的长度'), { partial: r.partial })
+    return r.text
+  }
+  const progress = []
+  const sum = new Summarizer({ store, projects: ps, llm, aiStatus: () => ({ ready: true }) })
+  sum.on('progress', (p) => progress.push(p.text))
+  const r = await sum.generate(s.id)
+  const full = '## 一句话总结\n迁移下周五完成。\n## 讨论\n账本迁移分两步：先导出旧数据，再校验。\n## 待办\n- 周五前完成迁移'
+  assert.equal(store.load(s.id).summary.markdown, full)
+  assert.equal(r.markdown, full)
+  assert.equal(calls.length, 4, '三次写纪要，一次提取待办')
+  assert.deepEqual(calls[1].map((m) => m.role), ['user', 'assistant', 'user'])
+  assert.equal(calls[1][1].content, '## 一句话总结\n迁移下周五完成。\n## 讨论\n账本迁移分两步')
+  assert.equal(calls[2][1].content, '## 一句话总结\n迁移下周五完成。\n## 讨论\n账本迁移分两步：先导出旧数据，')
+  assert.equal(calls[2].length, 3, '续写请求只带原问题、写好的部分和续写要求，不越叠越长')
+  assert.match(calls[2][2].content, /接着写/)
+})
+
 test('引擎：自带 Key 的 402（余额不足）这一场停发译文、提示一次；会员的 402 另有「场次用完」的提示，这里不报', async () => {
   const notices = async (llmProvider) => {
     const cfg = applyPatch(merge(DEFAULTS, {}), { translate: true, llmProvider, terms: { enabled: false, correct: false }, display: { chunkColors: false }, assist: { enabled: false } })

@@ -55,6 +55,18 @@ export function dropMissingImages(markdown, dir) {
     .replace(IMG, (all, src) => (exists(src) ? all : ''))
 }
 
+const MAX_CONTINUE = 4
+const CONTINUE_ASK = '你上一条回复写到这里被截断了。从断开的地方直接接着写（可能在一句话中间），不要重复已经写过的内容，不要开场白，写完整篇为止。'
+
+// 续写拼回原文：模型常把断开处的半句再写一遍，去掉接缝处重复的部分（最长 300 字）
+export function joinContinued(done, more) {
+  if (!done) return more
+  for (let n = Math.min(300, done.length, more.length); n >= 6; n--) {
+    if (done.endsWith(more.slice(0, n))) return done + more.slice(n)
+  }
+  return done + more
+}
+
 export class Summarizer extends EventEmitter {
   /**
    * store：SessionStore；projects：ProjectStore；llm(opts) → Promise<string>（complete 门面）；
@@ -150,25 +162,41 @@ export class Summarizer extends EventEmitter {
       }
       // 全局约定不许破折号：prompt 里说了模型偶尔还是会写，流式和存盘前都换掉；编出来的图片（会话文件夹里没有这个文件）也一样去掉
       const clean = (text) => dropMissingImages(noDashes(text), this.store.dir(id))
+      // 写到服务的输出上限（2026-11-04 那节 40 页课件的课，deepseek-flash 写到 1.6 万字就停了）或连接中途断了：
+      // 把写好的部分当作 AI 自己的回答交回去，让它从断开处接着写，最多续 MAX_CONTINUE 次；还是写不完才存半截报错
+      const messages = [{ role: 'user', content }]
+      let done = ''
       let markdown
       let cut = null
-      try {
-        markdown = clean(
-          await this.llm({
+      for (let round = 0; ; round++) {
+        try {
+          const more = await this.llm({
             model: 'smart',
             effort: 'low',
             sessionStartedAt: session.startedAt,
             signal: ctrl.signal,
             system: system.content,
-            messages: [{ role: 'user', content }],
-            onDelta: (text) => this.emit('progress', { id, phase: 'summary', text: clean(text) }),
-          }),
-        )
-      } catch (e) {
-        // 写到一半被截断：先存下这半截再报错，长课的笔记不至于一个字都没留下
-        if (ctrl.signal.aborted || !e?.partial?.trim()) throw e
-        markdown = clean(e.partial.trim())
-        cut = e
+            messages,
+            onDelta: (text) => this.emit('progress', { id, phase: 'summary', text: clean(joinContinued(done, text)) }),
+          })
+          markdown = clean(joinContinued(done, more).trim())
+          break
+        } catch (e) {
+          if (ctrl.signal.aborted || !e?.partial?.trim()) {
+            if (!done.trim()) throw e
+            cut = e
+          } else {
+            done = joinContinued(done, e.partial)
+            if (round < MAX_CONTINUE) {
+              messages.splice(1, 2, { role: 'assistant', content: done }, { role: 'user', content: CONTINUE_ASK })
+              continue
+            }
+            cut = e
+          }
+          // 写到一半被截断：先存下这半截再报错，长课的笔记不至于一个字都没留下
+          markdown = clean(done.trim())
+          break
+        }
       }
       // 先把纪要存下来：待办提取失败了纪要也不丢；旧的待办先留着，提取完再换
       this.store.mutate(id, (s) => {
