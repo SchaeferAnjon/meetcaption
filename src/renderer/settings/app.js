@@ -537,6 +537,7 @@ function buildHotkeys() {
       appKey('settings', t('打开设置'), 'CommandOrControl+,'),
       appKey('start', t('开始记录'), 'CommandOrControl+Shift+R', t('在当前项目里开始；已经在记录就回到记录页。')),
       appKey('live', t('回到正在进行的记录'), 'CommandOrControl+0'),
+      appKey('ask', t('问 AI'), 'CommandOrControl+J', t('课堂里：打开「问 AI」，光标放进输入框。')),
       appKey('newProject', t('新建项目'), 'CommandOrControl+N'),
       appKey('home', t('首页'), 'CommandOrControl+1'),
       appKey('todos', t('待办'), 'CommandOrControl+2'),

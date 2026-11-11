@@ -2532,3 +2532,133 @@ button.nav-section:focus-visible {
   font-size: var(--fs-sm);
   color: #9a9aa0;
 }
+
+/* ---------- 问 AI：两个方向共用 ---------- */
+.ask-body { display: flex; flex-direction: column; flex: 1; min-height: 0; background: var(--bg-inset); }
+.ask-body[hidden] { display: none; }
+.ask-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 12px 16px; }
+.ask-tab .icon { color: inherit; }
+
+/* 字幕上的「问」：鼠标移到一句上才出现，在这句的右上角 */
+.tline { position: relative; }
+.ask-line-btn { position: absolute; top: 5px; right: 6px; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px 0 7px; border: 1px solid var(--btn-stroke); border-radius: var(--r-sm); background: var(--bg-elevated); color: var(--text-2); font: inherit; font-size: var(--fs-sm); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06); opacity: 0; transition: opacity var(--dur-fast) var(--ease); }
+.tline:hover .ask-line-btn, .ask-line-btn:focus-visible { opacity: 1; }
+.ask-line-btn:hover { color: var(--text); background: var(--btn-bg-hover); }
+
+/* 选中字幕后浮出的小按钮 */
+.ask-sel { position: fixed; z-index: 50; display: inline-flex; align-items: center; gap: 5px; height: var(--control-h); padding: 0 10px 0 8px; border: 1px solid var(--stroke); border-radius: var(--r-sm); background: var(--bg-popover); color: var(--text); font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-medium); box-shadow: var(--shadow-pop); }
+.ask-sel .icon { color: var(--accent-text); }
+.ask-sel:hover { background: var(--bg-elevated); }
+
+/* 点时间回到的那句：亮一下再淡掉 */
+@keyframes ask-flash { 0%, 55% { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); } 100% { background: transparent; box-shadow: inset 3px 0 0 transparent; } }
+.ask-flash { animation: ask-flash 2.6s var(--ease); }
+@keyframes ask-flash-pair { 0%, 55% { background: color-mix(in srgb, var(--accent) 16%, transparent); } 100% { background: transparent; } }
+.ask-flash-pair { animation: ask-flash-pair 2.6s var(--ease); border-radius: var(--r-sm); }
+.ask-back { position: fixed; z-index: 40; left: calc(var(--sidebar-w) + 50%); bottom: 20px; transform: translateX(calc(-50% - var(--sidebar-w) / 2)); box-shadow: var(--shadow-pop); }
+
+/* 引用的字幕 */
+.ask-quote { display: flex; align-items: baseline; gap: 6px; padding: 5px 8px; border-left: 2px solid var(--stroke-strong); border-radius: 0 var(--r-sm) var(--r-sm) 0; background: var(--fill-1); color: var(--text-2); font-size: var(--fs-sm); line-height: 1.45; }
+.ask-quote-time { flex: none; border: 0; padding: 0; background: none; color: var(--accent-text); font: inherit; font-size: var(--fs-xs); }
+.ask-quote-time:hover { text-decoration: underline; }
+.ask-quote-text { min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ask-quote-x { margin-left: auto; flex: none; align-self: center; display: inline-flex; border: 0; background: none; color: var(--text-3); padding: 2px; border-radius: 4px; }
+.ask-quote-x:hover { background: var(--fill-2); color: var(--text); }
+
+/* 回答本身 */
+.ask-answer { display: flex; flex-direction: column; gap: 6px; }
+.ask-gist { font-size: var(--fs-lg); line-height: 1.45; text-wrap: pretty; }
+.ask-gist:empty { display: none; }
+.ask-points { display: flex; flex-direction: column; gap: 5px; font-size: var(--fs-md); line-height: 1.6; }
+.ask-points:empty { display: none; }
+.ask-point { display: grid; grid-template-columns: 12px minmax(0, 1fr); }
+.ask-dot { width: 4px; height: 4px; margin-top: 10px; border-radius: 50%; background: var(--text-3); }
+.ask-formula { margin: 2px 0 2px 12px; }
+.ask-answer.is-compact .ask-gist { font-size: var(--fs-md); }
+.ask-answer.is-compact .ask-points { font-size: var(--fs); }
+.ask-answer.is-streaming .ask-points > .is-last .ask-point-text::after, .ask-answer.is-streaming .ask-gist.is-typing::after { content: ''; display: inline-block; width: 7px; height: 14px; margin-left: 2px; border-radius: 1px; background: var(--accent); vertical-align: -2px; animation: caret-blink 1s steps(2, start) infinite; }
+.ask-cover { display: flex; align-items: flex-start; gap: 6px; padding: 5px 8px; border-radius: var(--r-sm); font-size: var(--fs-sm); line-height: 1.45; }
+.ask-cover .icon { margin-top: 2px; flex: none; }
+.ask-cover.is-partial, .ask-cover.is-none { background: var(--fill-2); color: var(--text-2); }
+.ask-cover .icon { color: var(--text-3); }
+.ask-src { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px; }
+.ask-src-label { margin-right: 2px; color: var(--text-3); font-size: var(--fs-sm); }
+.ask-src-chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border: 1px solid var(--stroke); border-radius: var(--r-sm); background: var(--bg); color: var(--text-2); font: inherit; font-size: var(--fs-sm); max-width: 160px; }
+.ask-src-chip .num { font-size: var(--fs-xs); }
+.ask-src-chip > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ask-src-chip .num { color: var(--accent-text); font-weight: var(--fw-semibold); }
+.ask-src-chip:hover { border-color: var(--stroke-strong); color: var(--text); background: var(--btn-bg-hover); }
+.ask-err { display: flex; align-items: center; gap: 8px; }
+.ask-err .btn { margin-left: auto; flex: none; }
+.ask-stopped { color: var(--text-3); font-size: var(--fs-xs); }
+
+/* 输入框（两个方向一样的样子，位置不同） */
+.ask-input-row { display: flex; align-items: flex-end; gap: 6px; padding: 6px 6px 6px 10px; border: 1px solid var(--stroke); border-radius: var(--r-lg); background: var(--bg); transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
+.ask-input-row:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--stroke)); }
+.ask-input { flex: 1; min-width: 0; resize: none; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-md); line-height: 1.5; padding: 3px 0; min-height: 27px; max-height: 132px; }
+.ask-input::placeholder { color: var(--text-3); }
+.ask-input:disabled { cursor: not-allowed; }
+.ask-send { flex: none; display: inline-flex; align-items: center; justify-content: center; width: var(--control-h); height: var(--control-h); border: 0; border-radius: var(--r-md); background: var(--accent-bg); color: var(--text-on-accent); }
+.ask-send:hover { background: var(--accent-bg-hover); }
+.ask-send:disabled { background: var(--fill-3); color: var(--text-3); }
+.ask-send.is-stop { background: var(--fill-3); color: var(--text); }
+.ask-send.is-stop:hover { background: var(--fill-4); }
+.ask-hint { display: flex; align-items: center; gap: 5px; padding: 6px 2px 0; color: var(--text-3); font-size: var(--fs-sm); }
+.ask-input-row.is-small { padding: 4px 4px 4px 8px; }
+.ask-input-row.is-small .ask-input { font-size: var(--fs); }
+.ask-input-row.is-small .ask-send { width: 24px; height: 24px; }
+
+.ask-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ask-chip { display: inline-flex; align-items: center; gap: 5px; min-height: var(--control-h-sm); padding: 2px 9px; border: 1px solid var(--stroke); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs-sm); line-height: 1.4; text-align: left; }
+.ask-chip .icon { color: var(--text-3); }
+.ask-chip:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--stroke)); color: var(--accent-text); }
+.ask-chips.is-small .ask-chip { min-height: 22px; font-size: var(--fs-sm); padding: 1px 8px; }
+
+.ask-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px 6px; }
+.ask-empty-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--r-md); background: var(--fill-2); color: var(--text-2); }
+.ask-empty-title { font-size: var(--fs-lg); font-weight: var(--fw-semibold); }
+.ask-empty-desc { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.6; }
+.ask-empty-tip { display: flex; gap: 6px; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.5; margin-bottom: 4px; }
+.ask-empty-tip .icon { margin-top: 2px; flex: none; }
+.ask-empty .ask-chips { flex-direction: column; align-items: flex-start; }
+.ask-empty .callout { align-self: stretch; }
+
+/* ---------- 方向 A：一条对话，输入框在底下 ---------- */
+.ask-thread { display: flex; flex-direction: column; gap: 14px; }
+.ask-msg.is-me { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; margin-left: 28px; }
+.ask-bubble { display: flex; flex-direction: column; gap: 6px; max-width: 100%; padding: 8px 11px; border-radius: 12px 12px 4px 12px; background: var(--fill-3); font-size: var(--fs-md); line-height: 1.5; }
+.ask-bubble .ask-quote { background: var(--fill-2); }
+.ask-msg-at { color: var(--text-3); font-size: var(--fs-xs); }
+.ask-msg.is-ai { display: flex; flex-direction: column; gap: 4px; padding: 0 2px; }
+.ask-msg-meta { display: flex; align-items: center; gap: 2px; color: var(--text-3); font-size: var(--fs-xs); margin-right: -6px; }
+.ask-next { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: -4px; }
+.ask-composer { flex: none; padding: 8px 12px 10px; border-top: 1px solid var(--stroke-soft); background: var(--bg-inset); }
+.ask-quote-slot:not(:empty) { margin-bottom: 6px; }
+.ask-quote-slot .ask-quote { background: var(--bg); border: 1px solid var(--stroke); border-left: 2px solid var(--accent); }
+
+/* 课后详情页里：页面本身在滚，输入框贴底（A）或贴顶（B） */
+.ask-body.is-after { background: transparent; padding-top: 14px; }
+.ask-body.is-after .ask-scroll { overflow: visible; padding: 0 0 16px; }
+.ask-body.is-after .ask-composer { position: sticky; bottom: 0; padding: 10px 0 14px; background: var(--bg); border-top: 0; }
+.ask-after-note { display: flex; gap: 6px; margin-bottom: 14px; padding: 7px 10px; border-radius: var(--r-md); background: var(--fill-1); color: var(--text-2); font-size: var(--fs-sm); line-height: 1.5; } .ask-after-note .icon { margin-top: 3px; flex: none; }
+
+/* 三个标签在窄窗口（右栏 270）也放得下：标签不折行，「10:22 更新」让出来 */
+.side-head .side-tab { flex: none; white-space: nowrap; }
+@container main (max-width: 760px) { .side-head .side-stamp { display: none; } }
+
+/* AI 用不了：输入框一看就是用不了的 */
+.ask-body.is-off .ask-input-row { background: var(--fill-1); border-color: var(--stroke-soft); }
+.ask-body.is-off .ask-send, .ask-body.is-off .ask-hint { display: none; }
+/* A：复制挪到依据那一行最右 */
+.ask-src .ask-copy { margin-left: auto; }
+.ask-msg-at { color: var(--text-3); font-size: var(--fs-xs); }
+
+.ask-wait { color: var(--text-3); font-size: var(--fs-sm); line-height: 20px; }
+.ask-wait[hidden] { display: none; }
+.ask-cover[hidden] { display: none; }
+.ask-ready { padding-bottom: 6px; }
+.ask-ready[hidden] { display: none; }
+.ask-hint { flex-wrap: wrap; }
+.ask-next-row { margin-top: 2px; }
+
+.tline { position: relative; }

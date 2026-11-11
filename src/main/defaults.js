@@ -40,6 +40,7 @@ export const DEFAULTS = {
     settings: 'CommandOrControl+,',
     start: 'CommandOrControl+Shift+R',
     live: 'CommandOrControl+0',
+    ask: 'CommandOrControl+J',
     newProject: 'CommandOrControl+N',
     home: 'CommandOrControl+1',
     todos: 'CommandOrControl+2',

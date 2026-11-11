@@ -1,6 +1,6 @@
 'use strict'
 // 会议进行中：顶部项目、计时、停止；下面一条音量和字幕窗控制；左边实时记录。
-// 右栏两页：实时笔记（课堂是大纲、强调、作业；会议是议题、结论、待办；面试是问过的问题和要点）和 AI 回答（和悬浮答题框同步，最新在上）。
+// 右栏：实时笔记（课堂是大纲、强调、作业；会议是议题、结论、待办；面试是问过的问题和要点）、AI 回答（和悬浮答题框同步，最新在上）和课堂的「问 AI」（自己问，见 ask.js）。
 // 面试先看 AI 回答，会议和课堂先看实时笔记。
 // 开会时收到的字幕、回答、笔记、截图存在 state.live 里，切到别的视图再回来还在。
 
@@ -75,14 +75,36 @@ VIEWS.live = {
     const notesBody = el('div.pane-body.notes-scroll', {}, notesLine, notes.root)
     ctx.dispose(notes.destroy)
 
-    // 右栏的头：「实时笔记 | AI 回答」两页；答题关着时只有实时笔记
+    // 右栏：问 AI（只有课堂）。问答由主进程流式发来，存在 state.live.asks 里，切到别的页再回来还在
+    const live = () => state.live
+    const askAt = (id) => live()?.segs.get(id) ?? null
+    const askPanelView = askPanel({
+      mode: 'live',
+      sessionId: () => live()?.sessionId ?? null,
+      base: () => live()?.startedAt ?? 0,
+      seg: askAt,
+      jump: (segId, sen) => jumpToLine(segId, sen),
+      openNote: (n) => openNoteSection(n),
+      openSlide: (file, at) => openSlide(slideSrc(live()?.slides.find((x) => x.file === file) ?? { file }, live()?.dir), t(`截图 {0}`, fmtTime(at))),
+      openPage: (matId, n, label) => live()?.dir && openSlide(fileUrl(`${String(live().dir).replace(/[\\/]+$/, '')}/materials/${matId}/p${String(n).padStart(3, '0')}.jpg`), label),
+      elapsed: () => (live()?.ended ? (live().endedAt ?? Date.now()) : Date.now()) - (live()?.startedAt ?? Date.now()),
+      terms: () => live()?.notes?.terms ?? [],
+      notes: () => live()?.notes ?? null,
+      forget: (id) => live()?.asks.delete(id),
+      onSeen: () => (unseenAsk = true) && renderSide(),
+    })
+    ctx.dispose(askPanelView.destroy)
+    const askBody = askPanelView.root
+
+    // 右栏的头：「实时笔记 | AI 回答 | 问 AI」；答题关着时没有 AI 回答，问 AI 只有课堂有
     const firstTab = () => (mode() === 'interview' ? 'answers' : 'notes')
     let sideTab = firstTab()
     const tabNotes = el('button.side-tab', { type: 'button', role: 'tab', onClick: () => setSide('notes') }, icon('notebook-pen', 14), t('实时笔记'))
     const tabAnswers = el('button.side-tab', { type: 'button', role: 'tab', onClick: () => setSide('answers') }, icon('sparkles', 14), t('AI 回答'), answerCount)
+    const tabAsk = el('button.side-tab.ask-tab', { type: 'button', role: 'tab', dataset: { part: '问 AI 标签' }, onClick: () => setSide('ask') }, icon('message-circle-question', 14), t('问 AI'))
     const notesStamp = el('span.side-stamp.num')
-    const sideHead = el('div.pane-subheader.side-head', { role: 'tablist' }, tabNotes, tabAnswers, el('span.header-spacer'), notesStamp, askAfter)
-    const side = el('aside.live-answers', { 'aria-label': t('右栏') }, sideHead, notesBody, answersBody)
+    const sideHead = el('div.pane-subheader.side-head', { role: 'tablist' }, tabNotes, tabAnswers, tabAsk, el('span.header-spacer'), notesStamp, askAfter)
+    const side = el('aside.live-answers', { 'aria-label': t('右栏') }, sideHead, notesBody, answersBody, askBody)
     const split = el('div.live-split', {}, left, side)
     ctx.body.append(bar, summaryLine, split)
 
@@ -91,6 +113,7 @@ VIEWS.live = {
     const cards = new Map()
     let hoveringTerm = false
     let unseenAnswers = 0
+    let unseenAsk = false
     ctx.dispose(wireTerms(list))
     list.addEventListener('mouseover', (e) => (hoveringTerm = Boolean(e.target.closest?.(window.bilingual.TIP_SELECTOR))))
     list.addEventListener('mouseleave', () => (hoveringTerm = false))
@@ -98,21 +121,30 @@ VIEWS.live = {
       if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 60) jump.hidden = true
     })
 
-    function setSide(t) {
-      sideTab = t
-      if (t === 'answers') unseenAnswers = 0
+    function setSide(tv) {
+      sideTab = tv
+      if (tv === 'answers') unseenAnswers = 0
+      if (tv === 'ask') {
+        unseenAsk = false
+        askPanelView.refreshStatus()
+      }
       renderSide()
+      if (tv === 'ask') askPanelView.focus()
     }
 
     function renderSide() {
       const assistOn = state.settings?.assist?.enabled !== false
-      const tab = assistOn ? sideTab : 'notes'
+      const tab = sideTab === 'answers' && !assistOn ? 'notes' : sideTab === 'ask' && !isClass() ? 'notes' : sideTab
       tabAnswers.hidden = !assistOn
+      tabAsk.hidden = !isClass()
       tabNotes.setAttribute('aria-selected', String(tab === 'notes'))
       tabAnswers.setAttribute('aria-selected', String(tab === 'answers'))
+      tabAsk.setAttribute('aria-selected', String(tab === 'ask'))
       tabAnswers.classList.toggle('has-unseen', unseenAnswers > 0 && tab !== 'answers')
+      tabAsk.classList.toggle('has-unseen', unseenAsk && tab !== 'ask')
       notesBody.hidden = tab !== 'notes'
       answersBody.hidden = tab !== 'answers'
+      askBody.hidden = tab !== 'ask'
       notesStamp.hidden = tab !== 'notes' || !state.live?.notesAt
       if (!notesStamp.hidden) notesStamp.textContent = t(`{0} 更新`, fmtTime(state.live.notesAt))
     }
@@ -248,6 +280,36 @@ VIEWS.live = {
       if (String(window.getSelection?.() ?? '').trim()) return // 在选文字，不算点
       toggleQuestion(line.dataset.id)
     })
+
+    // 回答里点时间：左边字幕滚到那一句，亮一下再淡掉；不再跟着最新走，右下角出「回到最新」
+    function jumpToLine(segId, sen) {
+      const line = list.querySelector(`.tline[data-id="${CSS.escape(String(segId))}"]`)
+      if (!line) return ui.toast({ title: t('这一句已经不在实时记录里了'), message: t('下课后在「字幕记录」里能找到'), type: 'info' })
+      line.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      flashLine(line, sen)
+      // 平滑滚动一开始还在底部，字幕区自己会把「回到最新」藏起来，等滚完再露出来
+      setTimeout(() => (jump.hidden = false), 700)
+    }
+
+    function openNoteSection(n) {
+      setSide('notes')
+      requestAnimationFrame(() => {
+        const sec = notesBody.querySelectorAll('.notes-sec')[n]
+        if (!sec) return
+        if (sec.classList.contains('is-collapsed')) sec.querySelector('.notes-sec-head')?.click()
+        sec.scrollIntoView({ block: 'start', behavior: 'smooth' })
+        flashLine(sec)
+      })
+    }
+
+    // 字幕里选几个词、或者移到一句上点「问」：引用进输入框，切到「问 AI」
+    ctx.dispose(
+      wireAskTranscript(list, (q) => {
+        if (!isClass()) return
+        setSide('ask')
+        askPanelView.quote(q)
+      }),
+    )
 
     function renderAll() {
       ui.clear(list)
@@ -395,6 +457,7 @@ VIEWS.live = {
     renderAll()
     renderAnswers()
     renderNotes()
+    askPanelView.load([...(state.live?.asks.values() ?? [])])
     ctx.on('segment', onSegment)
     ctx.on('slide', onSlide)
     ctx.on('notes', renderNotes)
@@ -409,10 +472,13 @@ VIEWS.live = {
       }
       if (a?.done || a?.error) showNote('')
     })
+    ctx.on('ask', (a) => askPanelView.update(a))
     ctx.on('live-reset', () => {
       qBoxes.clear()
       sideTab = firstTab()
       unseenAnswers = 0
+      unseenAsk = false
+      askPanelView.load([...(state.live?.asks.values() ?? [])])
       renderAll()
       renderAnswers()
       renderSummary()
@@ -420,7 +486,7 @@ VIEWS.live = {
       renderBar()
       showNote('')
     })
-    ctx.on('engine', () => (header(), renderBar(), renderSummary()))
+    ctx.on('engine', () => (header(), renderBar(), renderSummary(), askPanelView.refreshStatus()))
     ctx.on('devices', renderBar)
     ctx.on('overlay', renderBar)
     ctx.on('hotkey', () => (header(), renderBar()))
@@ -436,13 +502,13 @@ VIEWS.live = {
         renderAllSoon()
       }
     })
-    ctx.on('status', renderAnswerEmpty)
+    ctx.on('status', () => (renderAnswerEmpty(), askPanelView.refreshStatus()))
     ctx.on('projects', header)
     ctx.on('level', ({ source, db }) => {
       const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100))
       ;(source === 'mic' ? meterMe : meterOther).style.setProperty('--value', `${pct}%`)
     })
-    return { focus: () => scroller.focus({ preventScroll: true }), ask, capture }
+    return { focus: () => scroller.focus({ preventScroll: true }), ask, capture, openAsk: () => isClass() && setSide('ask') }
   },
 }
 

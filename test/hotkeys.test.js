@@ -8,7 +8,7 @@ const allKeys = (s) => [s.hotkeyToggle, s.hotkeyRecord, s.assist.hotkeyAsk, s.cl
 
 test('hotkeys: 默认快捷键互不重复', () => {
   const list = allKeys(DEFAULTS)
-  assert.equal(list.length, 13)
+  assert.equal(list.length, 14)
   assert.equal(new Set(list).size, list.length)
 })
 

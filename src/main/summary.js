@@ -8,6 +8,7 @@ import { classNotesMessages, classTodoMessages, slideMapMessages } from './class
 import { ensureLayouts, materialsForMap, materialsForNotes } from './class/materials.js'
 import { outlineSections, parseSlideMap } from './class/slideMap.js'
 import { renderNotesHtml } from './class/notesHtml.js'
+import { withAsked } from './class/askPrompt.js'
 import { t } from './i18n.js'
 
 // 会后纪要：先流式生成纪要（知道这场会属于哪个项目，也知道其他项目），存盘；
@@ -170,15 +171,18 @@ export class Summarizer extends EventEmitter {
         markdown = clean(e.partial.trim())
         cut = e
       }
-      // 先把纪要存下来：待办提取失败了纪要也不丢；旧的待办先留着，提取完再换
+      // 先把纪要存下来：待办提取失败了纪要也不丢；旧的待办先留着，提取完再换。
+      // 课堂笔记末尾接上课上问过的（给人看的）；提取作业和对课件时还用没接的那份
+      let shown = markdown
       this.store.mutate(id, (s) => {
-        s.summary = { ...(s.summary ?? {}), markdown, model: this.modelName('smart'), createdAt: Date.now() }
+        shown = isClass ? withAsked(markdown, s.asks, s.startedAt) : markdown
+        s.summary = { ...(s.summary ?? {}), markdown: shown, model: this.modelName('smart'), createdAt: Date.now() }
       })
       this.emit('saved', { id, items: false })
       if (cut) throw new Error(t(`{0}。前面写好的部分已经存下`, cut.message))
       if (!isClass) return { markdown, ...(await this.#extract(id, markdown, ctrl.signal)) }
       const [r, map] = await Promise.all([this.#extract(id, markdown, ctrl.signal), this.#slideMap(id, markdown, ctrl.signal)])
-      return { markdown, ...r, ...this.#writeHtml(id, markdown, map) }
+      return { markdown: shown, ...r, ...this.#writeHtml(id, shown, map) }
     } finally {
       this.#end(id, ctrl)
     }
@@ -195,6 +199,18 @@ export class Summarizer extends EventEmitter {
     } finally {
       this.#end(id, ctrl)
     }
+  }
+
+  /**
+   * 课堂笔记末尾的「课上问过的」变了：图文笔记已经做过就用现成的课件对照重画一遍（不问 AI）。没做过图文笔记返回 false。
+   */
+  refreshHtml(id) {
+    const s = this.store.load(id)
+    const dir = this.store.dir(id)
+    if (!s.summary?.html || !s.summary.markdown || !fs.existsSync(path.join(dir, NOTES_HTML))) return false
+    const pages = s.materials?.length ? materialsForMap(s, dir).pages : new Map()
+    this.#writeHtml(id, s.summary.markdown, { slideMap: s.summary.slideMap ?? [], pages, error: null })
+    return true
   }
 
   /** 只重新做图文版课堂笔记（课堂笔记的 Markdown 不动）。→ { html, htmlError } */

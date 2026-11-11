@@ -40,6 +40,7 @@ import { exportNotesTo, notesBaseName, saveSlide } from './class/files.js'
 import { notesPdf } from './class/notesPdf.js'
 import { MATERIAL_TYPES, importMaterial, materialKind, removeMaterial } from './class/materials.js'
 import { renderPdf } from './class/pdfRender.js'
+import { ClassAsk } from './class/ask.js'
 import { setUiLang, systemUiLang, t, uiDict, uiLang } from './i18n.js'
 import { TARGET_CODES } from './languages.js'
 
@@ -58,7 +59,7 @@ const selfTest = process.argv.find((a) => a.startsWith('--selftest'))
 const uiSelfTest = selfTest?.startsWith('--selftest=ui') ? Number(selfTest.split(':')[1]) || 8 : 0
 if (!selfTest && !app.requestSingleInstanceLock()) app.quit()
 
-let settings, projects, store, summarizer, engine, capture, chatgptAuth, assistant, vpStore, member
+let settings, projects, store, summarizer, classAsk, engine, capture, chatgptAuth, assistant, vpStore, member
 let controlWin = null
 let settingsWin = null
 let onboardingWin = null
@@ -1211,6 +1212,23 @@ async function exportNotes(e, sessionId) {
 
 /* ---------------- 答题 ---------------- */
 
+// 课上问过的又多了一条：图文笔记做过的话，停一会儿再按现成的课件对照重画一遍（连着问几个只画一次，不问 AI）
+const htmlTimers = new Map()
+function refreshNotesHtmlSoon(id) {
+  clearTimeout(htmlTimers.get(id))
+  htmlTimers.set(
+    id,
+    setTimeout(() => {
+      htmlTimers.delete(id)
+      try {
+        summarizer.refreshHtml(id)
+      } catch (e) {
+        console.error('[ask] 图文笔记没能更新', e.message)
+      }
+    }, 2500),
+  )
+}
+
 function askSegment(segId) {
   if (!assistOn()) return { ok: false, error: t('AI 答题没打开（设置 → AI 答题）') }
   return engine.askSegment(String(segId ?? ''))
@@ -1864,6 +1882,16 @@ function wireIpc() {
   ipcMain.handle('assist:askLast', () => askLast())
   ipcMain.handle('assist:askSegment', (_e, segId) => askSegment(segId))
   ipcMain.handle('assist:regenerate', (_e, id) => assistant.regenerate(id))
+  // 问 AI（课堂右栏和课后详情页）：答案通过 ask:update 一点点来
+  ipcMain.handle('ask:start', (_e, o) => classAsk.ask({ sessionId: String(o?.sessionId ?? ''), question: o?.question, quote: o?.quote ?? null, replaceId: o?.replaceId ?? null }).catch((e) => ({ ok: false, error: e.message })))
+  ipcMain.handle('ask:stop', (_e, sessionId) => classAsk.stop(String(sessionId ?? '')))
+  ipcMain.handle('ask:status', (_e, sessionId) => {
+    try {
+      return classAsk.status(String(sessionId ?? ''))
+    } catch (e) {
+      return { ready: false, reason: e.message }
+    }
+  })
   ipcMain.on('answer:ready', (e) => {
     if (e.sender !== answerWin?.webContents) return
     toAnswer('answer:config', answerConfig())
@@ -1962,6 +1990,7 @@ function wireEngine() {
     }
   })
   summarizer.on('progress', (p) => toUi('summary:progress', p))
+  classAsk.on('update', (a) => toUi('ask:update', a))
   summarizer.on('saved', ({ id, items }) => {
     let projectId = null
     try {
@@ -2113,6 +2142,17 @@ app.whenReady().then(async () => {
     voiceprint: { profile: vpProfile, loadModel: () => loadVoiceprintScorer() },
   })
   summarizer = new Summarizer({ store, projects, llm, aiStatus: (at) => aiStatus(effective(settings.get(), at), at), modelName: (m) => resolveModel(effective(), m), loadImage: slideDataUrl, renderPdf })
+
+  classAsk = new ClassAsk({
+    store,
+    llm,
+    aiStatus: (at) => aiStatus(effective(settings.get(), at), at),
+    // 这节课正在记录：用引擎手里的字幕和笔记
+    source: (id) => (engine.state !== 'idle' && engine.session?.id === id ? { session: engine.session, segments: engine.snapshot().segments } : null),
+    projectOf: (s) => projects.get(s.projectId),
+    loadImage: slideDataUrl,
+    onSaved: refreshNotesHtmlSoon,
+  })
 
   if (useFakes) engine.useFakeSources(fakeFiles)
 

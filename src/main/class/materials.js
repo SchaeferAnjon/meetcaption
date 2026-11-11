@@ -75,6 +75,16 @@ function readTexts(sessionDir, m) {
   }
 }
 
+/** 问 AI 用：每份课件每页的文字 [{ mat（第几份，从 1 数）, matId, matName, n, text }]。 */
+export function materialPages(session, sessionDir) {
+  const out = []
+  ;(session.materials ?? []).filter((m) => m?.id && m.pages > 0).forEach((m, k) => {
+    const texts = readTexts(sessionDir, m)
+    for (let n = 1; n <= m.pages; n++) out.push({ mat: k + 1, matId: m.id, matName: m.name, n, text: String(texts[n - 1] ?? '').trim() })
+  })
+  return out
+}
+
 /**
  * 交给课堂笔记的课件：→ { text, images: [{ ref, file, label }] }，没有课件时 text 是 ''。
  * text 是每一页的文字（标着页码和引用路径），太长的截断；images 是附图的页：

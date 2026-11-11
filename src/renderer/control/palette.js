@@ -37,6 +37,8 @@ function commandItems() {
     items.push({ id: 'live', title: liveMode() === 'class' ? t('回到课堂') : t('回到会议'), subtitle: t(`「{0}」`, projectName(state.live?.projectId)), icon: 'audio-lines', tint: 'red', kbd: appKey('live') || undefined, keywords: ['live', t('进行中')], onSelect: () => go('live') })
     if (running() && liveMode() === 'class')
       items.push({ id: 'capture', title: t('截取画面'), subtitle: t('把当前屏幕（网课课件）存进这节课'), icon: 'camera', tint: 'purple', kbd: state.settings?.class?.hotkeySlide || undefined, actionLabel: t('截取'), keywords: ['capture', 'screenshot', 'slide', t('截图'), t('课件')], onSelect: () => captureSlide() })
+    if (liveMode() === 'class')
+      items.push({ id: 'ask-class', title: t('问 AI'), subtitle: t('没听懂就问，结合这节课回答'), icon: 'message-circle-question', tint: 'indigo', kbd: appKey('ask') || undefined, actionLabel: t('提问'), keywords: ['ask', 'question', t('提问'), t('没听懂')], onSelect: () => (go('live'), setTimeout(() => router.mounted?.openAsk?.(), 60)) })
     items.push({ id: 'stop', title: t('停止记录'), subtitle: t('保存这场会议'), icon: 'square', tint: 'red', kbd: s.hotkeyRecord || undefined, actionLabel: t('停止'), keywords: ['stop', t('结束')], onSelect: () => stopMeeting() })
   }
   if (s.assist?.enabled !== false)

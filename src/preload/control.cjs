@@ -23,6 +23,7 @@ const EVENTS = new Set([
   'chatgpt:status',
   'voiceprint:progress',
   'assist:answer',
+  'ask:update', // 问 AI 的一条问答 { sessionId, id, q, quote, askedAt, after, status: streaming|done|stopped|error, cover, gist, points, src, next, error }
   // v3
   'projects:changed', // { projects, currentProjectId }
   'sessions:changed', // { sessionId?, projectId?, from?, previousId?, removed? }，收到就重新取列表
@@ -132,6 +133,9 @@ contextBridge.exposeInMainWorld('app', {
   askLast: invoke('assist:askLast'),
   askSegment: invoke('assist:askSegment'), // askSegment(segId)：回答主窗口点的那句提问
   answerRegenerate: invoke('assist:regenerate'),
+  askStart: invoke('ask:start'), // askStart({ sessionId, question, quote: { segId, sel? }, replaceId? }) → { ok, id } | { ok: false, error, code }，答案走 ask:update
+  askStop: invoke('ask:stop'), // askStop(sessionId)
+  askStatus: invoke('ask:status'), // askStatus(sessionId) → { ready, reason, provider }
 
   // 会员：都回 { ok, info, session, buying, error } | { ok: false, error, code }
   memberRefresh: invoke('member:refresh'),

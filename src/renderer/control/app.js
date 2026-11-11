@@ -9,6 +9,7 @@ function resetLive(st) {
     endedAt: null,
     segs: new Map(),
     answers: new Map(),
+    asks: new Map(), // 课上问 AI 的问答，id → 一条（流式时一点点更新）
     ended: false,
     dismissed: false,
     // v4
@@ -120,6 +121,14 @@ function onAnswer(a) {
   if (fresh) emit('engine', state.engine) // 会后答的第一条：侧栏出现「刚才的会议」
 }
 
+// 问 AI 的回答一点点来：记进这节课（切到别的页再回来还在），再通知正在看的面板
+function onAsk(a) {
+  if (!a?.id) return
+  const live = state.live
+  if (live && a.sessionId === live.sessionId) live.asks.set(a.id, { ...live.asks.get(a.id), ...a })
+  emit('ask', a)
+}
+
 function wireEvents() {
   subscribe('engine:state', onEngineState)
   subscribe('engine:segment', onSegment)
@@ -135,6 +144,7 @@ function wireEvents() {
     emit('devices', state.devices)
   })
   subscribe('assist:answer', onAnswer)
+  subscribe('ask:update', onAsk)
   subscribe('overlay:state', (o) => {
     state.overlay = o
     emit('overlay', o)
@@ -201,6 +211,7 @@ function bindAppKeys() {
   bind('home', () => go('home', {}, { root: true }))
   bind('todos', () => go('todos', {}, { root: true }))
   bind('live', () => state.live && go('live'))
+  bind('ask', () => router.mounted?.openAsk?.())
   bind('newProject', () => newProjectModal())
   // 在项目页上按：开在这个项目里（和页面上的开始按钮一样）；别的地方开在当前项目里
   bind('start', () => {
@@ -274,6 +285,7 @@ async function boot() {
     // 窗口重开时把这场会已经答完的问题补回来
     const s = await call('loadSession', snap.session.id)
     for (const a of (!failed(s) && s?.answers) || []) state.live.answers.set(a.id, { ...a, done: true })
+    for (const a of (!failed(s) && s?.asks) || []) state.live.asks.set(a.id, a)
   }
 
   wireEvents()

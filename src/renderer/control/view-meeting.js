@@ -1,12 +1,12 @@
 'use strict'
 // 会议详情：标题（可改）、所属项目（可移动）、时间和时长；标签页：纪要、实时笔记（开会时 AI 整理过才有）、待办、字幕记录、AI 答题、术语。
-// 课堂的标签页换成：课堂笔记、图文笔记（生成过课堂笔记才有）、实时笔记（上课时 AI 整理过才有）、字幕记录、截图、术语、作业（课上用快捷键问过 AI 时再多一个 AI 答题），课堂笔记能导出到笔记库。
+// 课堂的标签页换成：课堂笔记、图文笔记（生成过课堂笔记才有）、实时笔记（上课时 AI 整理过才有）、字幕记录、截图、术语、作业（课上用快捷键问过 AI 时再多一个 AI 答题）、问 AI（下课后能看课上问过的、接着问），课堂笔记能导出到笔记库。
 
 const MEETING_TABS = ['summary', 'notes', 'todos', 'transcript', 'answers', 'terms']
-const CLASS_TABS = ['summary', 'html', 'notes', 'transcript', 'slides', 'terms', 'todos', 'answers']
+const CLASS_TABS = ['summary', 'html', 'notes', 'transcript', 'slides', 'terms', 'todos', 'answers', 'ask']
 const TAB_LABELS = {
   meeting: { summary: t('纪要'), notes: t('实时笔记'), todos: t('待办'), transcript: t('字幕记录'), answers: t('AI 答题'), terms: t('术语') },
-  class: { summary: t('课堂笔记'), html: t('图文笔记'), notes: t('实时笔记'), todos: t('作业'), transcript: t('字幕记录'), answers: t('AI 答题'), terms: t('术语'), slides: t('截图') },
+  class: { summary: t('课堂笔记'), html: t('图文笔记'), notes: t('实时笔记'), todos: t('作业'), transcript: t('字幕记录'), answers: t('AI 答题'), terms: t('术语'), slides: t('截图'), ask: t('问 AI') },
 }
 
 VIEWS.meeting = {
@@ -25,12 +25,12 @@ VIEWS.meeting = {
     const modeTag = el('span.tag.mode-tag', { hidden: true })
     const liveNote = el('div')
     const tabBtn = (k) => el('button.tab', { type: 'button', role: 'tab', dataset: { tab: k } }, el('span.tab-label', { text: TAB_LABELS.meeting[k] ?? TAB_LABELS.class[k] }), el('span.count.num'))
-    const tabBtns = Object.fromEntries(['summary', 'html', 'notes', 'todos', 'transcript', 'answers', 'terms', 'slides'].map((k) => [k, tabBtn(k)]))
+    const tabBtns = Object.fromEntries(['summary', 'html', 'notes', 'todos', 'transcript', 'answers', 'terms', 'slides', 'ask'].map((k) => [k, tabBtn(k)]))
     const tabs = el('div.tabs.tabs-line.meeting-tabs', { role: 'tablist', 'aria-label': t('会议内容') }, ...Object.values(tabBtns))
     const isClass = () => s?.mode === 'class'
     const liveNotesOf = () => (isLive() && state.live?.notes) || s?.liveNotes || null
     const hasLiveNotes = () => ['sections', 'emphasis', 'homework', 'terms'].some((k) => notesList(liveNotesOf()?.[k]).length)
-    const tabList = () => (isClass() ? CLASS_TABS.filter((k) => k !== 'answers' || s.answers?.length) : MEETING_TABS).filter((k) => (k !== 'notes' || hasLiveNotes()) && (k !== 'html' || s.summary?.markdown))
+    const tabList = () => (isClass() ? CLASS_TABS.filter((k) => (k !== 'answers' || s.answers?.length) && (k !== 'ask' || (!isLive() && s.segments.some((x) => x.text)))) : MEETING_TABS).filter((k) => (k !== 'notes' || hasLiveNotes()) && (k !== 'html' || s.summary?.markdown))
     const panel = el('div.tab-panel', { role: 'tabpanel' })
     const page = el('div.page.meeting-page', {}, el('section.meeting-head', {}, titleInput, el('div.meeting-meta-row', {}, projectBtn, modeTag, meta)), liveNote, tabs, panel)
     const scroller = el('div.pane-body', {}, page)
@@ -96,6 +96,7 @@ VIEWS.meeting = {
       const nTerms = glossary(s).length
       tabBtns.terms.querySelector('.count').textContent = nTerms ? String(nTerms) : ''
       tabBtns.slides.querySelector('.count').textContent = s.slides?.length ? String(s.slides.length) : ''
+      tabBtns.ask.querySelector('.count').textContent = s.asks?.length ? String(s.asks.length) : ''
       if (isClass() && !items.length) {
         const hw = notesList(s.liveNotes?.homework).length
         tabBtns.todos.querySelector('.count').textContent = hw ? String(hw) : ''
@@ -538,6 +539,9 @@ VIEWS.meeting = {
       for (const sl of s.slides ?? []) items.push({ t: slideTime(sl, s.startedAt), slide: sl })
       items.sort((a, b) => a.t - b.t)
       for (const it of items) box.append(it.seg ? lineNode({ ...it.seg, final: true }, s.startedAt, { mode: s.mode }) : slideNode(it.slide, { base: s.startedAt, dir: s.dir, startedAt: s.startedAt }))
+      // 下课后的课堂：选几个词、或者移到一句上点「问」，引用进「问 AI」
+      unwireAsk?.()
+      unwireAsk = isClass() && tabList().includes('ask') ? wireAskTranscript(box, (q) => (setTab('ask'), askPanelView?.quote(q))) : null
       const who = { me: 0, other: 0 }
       for (const seg of segs) who[segWho(seg)]++
       const questions = segs.filter((x) => x.question).length
@@ -602,6 +606,75 @@ VIEWS.meeting = {
       panel.append(el('div.panel-toolbar', {}, el('span.text-2.text-sm', { text: t(`{0} 条回答，按时间先后。生成纪要时会参考。`, list.length) })), box)
     }
 
+    /* ---- 问 AI（下课后）：课上问过的都在，接着问 ---- */
+
+    let askPanelView = null
+    let unwireAsk = null
+    let askPage = null // 面板外面包的那一块（提示 + 面板），切走再回来还是这一块，流式回答不断
+    let segById = null
+    ctx.dispose(() => (askPanelView?.destroy(), unwireAsk?.()))
+
+    const askSeg = (sid) => {
+      segById ??= new Map(s.segments.filter((x) => x.text).map((x) => [x.id, x]))
+      return segById.get(sid) ?? null
+    }
+
+    // 回答里点时间：切到字幕记录，那一句滚到中间、亮一下；右下角出「回到问 AI」
+    function backToAsk(show) {
+      let b = document.querySelector('.ask-back')
+      if (!b) {
+        b = el('button.btn.btn-sm.ask-back', { type: 'button', onClick: () => setTab('ask') }, icon('arrow-left', 14), t('回到「问 AI」'))
+        document.body.append(b)
+        ctx.dispose(() => b.remove())
+      }
+      b.hidden = !show
+    }
+
+    async function jumpToLine(segId, sen) {
+      setTab('transcript')
+      await new Promise((r) => requestAnimationFrame(r))
+      const line = panel.querySelector(`.tline[data-id="${CSS.escape(String(segId))}"]`)
+      if (!line) return ui.toast({ title: t('找不到这一句字幕'), type: 'info' })
+      line.scrollIntoView({ block: 'center' })
+      flashLine(line, sen)
+      backToAsk(true)
+    }
+
+    async function openNoteSection(n) {
+      setTab(hasLiveNotes() ? 'notes' : 'summary')
+      await new Promise((r) => requestAnimationFrame(r))
+      const sec = panel.querySelectorAll('.notes-sec')[n]
+      if (!sec) return
+      if (sec.classList.contains('is-collapsed')) sec.querySelector('.notes-sec-head')?.click()
+      sec.scrollIntoView({ block: 'start' })
+      flashLine(sec)
+      backToAsk(true)
+    }
+
+    function renderAsk() {
+      if (!askPanelView) {
+        askPanelView = askPanel({
+          mode: 'after',
+          sessionId: () => id,
+          base: () => s?.startedAt ?? 0,
+          seg: askSeg,
+          jump: jumpToLine,
+          openNote: openNoteSection,
+          openSlide: (file, at) => openSlide(slideSrc(s.slides?.find((x) => x.file === file) ?? { file }, s.dir), t(`截图 {0}`, fmtOffset(at - s.startedAt))),
+          openPage: (matId, n, label) => s.dir && openSlide(fileUrl(`${String(s.dir).replace(/[\\/]+$/, '')}/materials/${matId}/p${String(n).padStart(3, '0')}.jpg`), label),
+          elapsed: () => 0,
+          terms: () => liveNotesOf()?.terms ?? [],
+          notes: () => liveNotesOf(),
+          scrollEl: () => scroller,
+        })
+        askPanelView.load(s.asks ?? [])
+        askPage = el('div.ask-page', {}, el('div.ask-after-note', { dataset: { part: '下课后' } }, icon('info', 13), el('span', { text: t('下课了也能接着问：AI 用整节课的字幕、实时笔记、课堂笔记和课件来答，时间点一下就打开「字幕记录」里那一句。') })), askPanelView.root)
+      }
+      fill(panel, askPage)
+      askPanelView.refreshStatus()
+      askPanelView.scrollEnd()
+    }
+
     /* ---- 术语 ---- */
 
     function renderTerms() {
@@ -636,6 +709,11 @@ VIEWS.meeting = {
       }
       summaryParts = null
       page.classList.toggle('is-wide', tv === 'html')
+      if (tv !== 'transcript') {
+        unwireAsk?.()
+        unwireAsk = null
+      }
+      if (tv !== 'transcript' && tv !== 'notes' && tv !== 'summary') document.querySelector('.ask-back')?.setAttribute('hidden', '')
       if (!s) return
       if (tv === 'summary') renderSummary()
       if (tv === 'html') renderHtml()
@@ -645,6 +723,7 @@ VIEWS.meeting = {
       if (tv === 'terms') renderTerms()
       if (tv === 'slides') renderSlides()
       if (tv === 'notes') renderLiveNotes()
+      if (tv === 'ask') renderAsk()
     }
 
     function renderPanel() {
@@ -664,6 +743,7 @@ VIEWS.meeting = {
       }
       const first = !s
       s = r
+      segById = null
       ctx.setParam('projectId', s.projectId)
       markSidebarActive()
       renderHeader()
@@ -680,14 +760,20 @@ VIEWS.meeting = {
         if (!s.summary?.markdown) generate()
         return
       }
-      // 正在打字的输入框别被重画掉
+      // 正在打字的输入框和正在流式出字的回答别被重画掉
       if (tab === 'summary' && summaryParts) syncSummary()
-      else renderPanel()
+      else if (tab !== 'ask') renderPanel()
     }
 
     renderHeader()
     reload()
 
+    // 问 AI 的回答：面板自己画；答完了重新读一遍这节课（计数、课堂笔记末尾的「课上问过的」跟着变）
+    ctx.on('ask', (a) => {
+      if (a.sessionId !== id) return
+      askPanelView?.update(a)
+      if (a.status !== 'streaming') reloadSoon()
+    })
     ctx.on('summary', (p) => {
       if (p.id !== id) return
       if (p.done) return reloadSoon()
@@ -736,6 +822,11 @@ VIEWS.meeting = {
       focus: () => (panel.querySelector('.list') ?? tabBtns[tab ?? 'summary'])?.focus({ preventScroll: true }),
       setTab,
       cycleTab: (d) => setTab(cycle(s ? tabList() : MEETING_TABS, tab ?? 'summary', d)),
+      openAsk: () => {
+        if (!s || !tabList().includes('ask')) return
+        setTab('ask')
+        askPanelView?.focus()
+      },
       primary: () => tab === 'summary' && summaryParts && !summaryParts.genBtn.disabled && generate(),
     }
   },
