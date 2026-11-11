@@ -79,6 +79,8 @@ export class VideoService {
   async start(opts) {
     if (this.job) return { ok: false, code: 'busy-video', error: t('已经在处理一个视频了，等它做完再加下一个') }
     if (this.deps.busy?.()) return { ok: false, code: 'busy', error: t('正在记录会议，先停止记录再处理视频') }
+    // 按下「开始处理」时问一次最新的余额（别的电脑可能刚用掉了），面板上说的和服务器认的对得上
+    if (this.deps.settings().plan === 'member') await this.deps.member?.refresh()
     const q = await this.quote(opts)
     const bad = q.errors[0]
     if (bad) return { ok: false, code: bad.code, error: bad.message, need: bad.need, have: bad.have }
