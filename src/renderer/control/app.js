@@ -254,7 +254,6 @@ async function boot() {
   state.projects = init.projects ?? []
   state.currentProjectId = init.currentProjectId ?? INBOX
   state.onboarding = init.onboarding ?? {}
-  state.askUsage = init.askUsage === true
   onUpdateState(init.update)
   state.llm = init.llm ?? null
   state.chatgpt = init.chatgpt ?? null
@@ -284,7 +283,6 @@ async function boot() {
   renderNotices()
   go(state.live && snap.state !== 'idle' ? 'live' : 'home', {}, { push: false })
   wireGuide()
-  wireConsent()
   if (!state.llm) refreshLlm()
   ensureProjectMode(state.currentProjectId)
 }
