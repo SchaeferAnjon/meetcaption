@@ -1024,9 +1024,13 @@ function syncMember() {
 
 /** 把主窗口叫出来、打开收费页。场次用完时（字幕不停，照常用本地识别记）先选好单买 1 场。 */
 function showPricing(opts) {
+  // 主窗口还没建（首次引导里点「看场次价格」）或还在载入：事件发出去没人接，改成放在 pendingPricing 里，主窗口 init 时带走
+  const loading = !controlWin || controlWin.isDestroyed() || controlWin.webContents.isLoading()
   showControl()
-  toUi('member:showPricing', opts)
+  if (loading) pendingPricing = opts ?? {}
+  else toUi('member:showPricing', opts)
 }
+let pendingPricing = null
 
 /** 会员服务器停了识别：场次用完就换本地识别接着记，弹出收费页；15 分钟没说话就暂停，等用户点继续。 */
 async function onMemberStop({ type }) {
@@ -1574,8 +1578,15 @@ async function testLlm(patch) {
 
 /* ---------------- IPC ---------------- */
 
+function takePendingPricing() {
+  const p = pendingPricing
+  pendingPricing = null
+  return p
+}
+
 function wireIpc() {
-  ipcMain.handle('app:init', () => ({
+  ipcMain.handle('app:init', (e) => ({
+    openPricing: BrowserWindow.fromWebContents(e.sender) === controlWin ? takePendingPricing() : null,
     settings: settings.get(),
     snapshot: snapshotForUi(),
     platform: process.platform,

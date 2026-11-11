@@ -261,6 +261,7 @@ async function boot() {
   state.overlay = init.overlay ?? state.overlay
   ui.applyChrome(init.chrome)
   wireMember(init)
+  if (init.openPricing) openPricing(init.openPricing)
 
   const snap = init.snapshot ?? { state: 'idle', segments: [] }
   const sess = snap.session ?? {}

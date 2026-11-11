@@ -296,7 +296,7 @@ function openPricing({ pack } = {}) {
         ),
         el('div.pricing-note', {}, icon('shield-check', 14), el('span', { text: t('不想花钱也行：本地识别在你电脑上跑，字幕永远免费，断网也能出字。') })),
       ),
-      giftLeft > 0 ? el('div.pricing-note', {}, icon('sparkles', 14), el('span', { text: t(`这台电脑还有 {0} 场试用场次，每场最长 {1} 小时。`, giftLeft, sessionHours(info)) })) : null,
+      ...(giftLeft > 0 ? [el('div.pricing-note', {}, icon('sparkles', 14), el('span', { text: t(`这台电脑还有 {0} 场试用场次，每场最长 {1} 小时。`, giftLeft, sessionHours(info)) }))] : []),
       el('div.pricing-cols', {}, memberCol, own),
       codeRow,
       faq,
