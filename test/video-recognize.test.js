@@ -6,7 +6,7 @@ import path from 'node:path'
 import http from 'node:http'
 import { EventEmitter } from 'node:events'
 import { WebSocketServer } from 'ws'
-import { planChunks, quietCut, recognizeChunk, recognizeCloud, recognizeLocal } from '../src/main/video/recognize.js'
+import { chunkCount, planChunks, quietCut, recognizeChunk, recognizeCloud, recognizeLocal } from '../src/main/video/recognize.js'
 
 // 视频模式的识别：本地一条通道送到尾；云识别在停顿处切块、几路同时认再拼回来，断线从最后一句的终点接着认。
 
@@ -59,13 +59,24 @@ test('quietCut / planChunks：刀口落在静音上，不劈在说话中间', as
   const f = makePcm(100, [[48.5, 49.1]])
   const cut = await quietCut(f, 50_000, 10_000)
   assert.ok(cut >= 48_500 && cut <= 49_100, `刀口 ${cut}`)
-  const chunks = await planChunks(f, 100_000, 50_000)
+  const chunks = await planChunks(f, 100_000, 50_000, 0, { parallel: 2 })
   assert.equal(chunks.length, 2)
   assert.equal(chunks[0].from, 0)
   assert.equal(chunks[0].to, chunks[1].from)
   assert.equal(chunks[1].to, 100_000)
   assert.ok(chunks[0].to >= 48_500 && chunks[0].to <= 49_100)
-  assert.equal((await planChunks(f, 100_000, 240_000)).length, 1)
+  assert.equal((await planChunks(f, 100_000, 240_000)).length, 3, '100 秒的短视频也分 3 块，3 路同时认')
+  assert.equal((await planChunks(f, 30_000)).length, 1, '30 秒不到 40 秒，不值得分')
+})
+
+test('分几块：短的也分到路数那么多（每块不短于 20 秒），长的块数是路数的整数倍、每块不长于 4 分钟', () => {
+  const S = 1000
+  assert.deepEqual([10, 30, 39, 40, 59, 60, 120, 300].map((x) => chunkCount(x * S)), [1, 1, 1, 2, 2, 3, 3, 3])
+  assert.equal(chunkCount(12 * 60 * S), 3, '12 分钟：3 块各 4 分钟')
+  assert.equal(chunkCount(12 * 60 * S + 1), 6)
+  assert.equal(chunkCount(20 * 60 * S), 6, '20 分钟：2 轮、每路 3 分 20 秒，不是 5 块（最后一轮有路空着）')
+  assert.equal(chunkCount(2 * 3600 * S), 30, '2 小时：30 块各 4 分钟')
+  assert.equal(chunkCount(100 * S, { parallel: 1 }), 1)
 })
 
 test('云识别一块：Key 放请求头，配置带语言、术语和背景；句子时间换成视频里的毫秒', async (t) => {
@@ -98,7 +109,11 @@ test('云识别整个文件：切块、几路同时认、按时间拼回来；�
   const f = makePcm(120, [[29, 31], [59, 61], [89, 91]])
   const s = await fakeSoniox(t)
   const seen = []
-  const out = await recognizeCloud({ pcmFile: f, durationMs: 120_000, parallel: 2, chunkMs: 30_000, key: 'k', url: s.url, onProgress: (ms) => seen.push(ms) })
+  const reach = []
+  const out = await recognizeCloud({ pcmFile: f, durationMs: 120_000, parallel: 2, chunkMs: 30_000, key: 'k', url: s.url, onProgress: (ms) => seen.push(ms), onReach: (ms) => reach.push(ms) })
+  assert.ok(reach.every((x) => x >= 0 && x <= 120_000))
+  assert.ok(Math.max(...reach) >= 119_000, '最后报到视频的终点')
+  assert.ok(reach.some((x) => x >= 30_000 && x < 60_000), '第二路一开始就报告了它那一块的起点，不等第一路认完')
   assert.equal(s.conns.length, 4)
   assert.deepEqual(out.map((x) => x.startMs), [...out.map((x) => x.startMs)].sort((a, b) => a - b))
   assert.ok(out.length >= 40)

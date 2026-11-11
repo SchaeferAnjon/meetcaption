@@ -8,8 +8,12 @@ import { t } from '../i18n.js'
 // 视频模式的识别：把读好的 PCM 文件认成一句一句带起止时间的字。
 // 本地识别（X-ASR，约 20 倍速）一条通道从头送到尾；
 // 云识别用 Soniox 的实时接口（会员经我们服务器换临时 Key；自带 Key 就是自己的）。实时接口只按约 1.1 倍速收音频（2026-11 实测
-// 40 秒的音频连着送完要 35 秒），一路认两小时的视频要近两小时，所以把音频在停顿处切成约 4 分钟一块，几路同时认，再按时间拼回来。
+// 40 秒的音频连着送完要 35 秒），一路认两小时的视频要近两小时，所以把音频在停顿处切成几块（长的约 4 分钟一块，短的也分成 3 块），
+// 3 路同时认，再按时间拼回来。
 // 输出：[{ startMs, endMs, text }]，时间是视频里的毫秒。
+
+// 短视频也分路：一块不短于这么长（见 chunkCount 和 notes 里的实测）
+export const MIN_CHUNK_MS = 20_000
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const aborted = () => Object.assign(new Error('aborted'), { name: 'AbortError' })
@@ -75,10 +79,19 @@ export async function quietCut(pcmFile, aroundMs, radiusMs = 20_000, fh = null) 
   return best.at
 }
 
-/** 把 [0, durationMs) 切成约 chunkMs 一块，刀口落在停顿上。→ [{ from, to }] */
-export async function planChunks(pcmFile, durationMs, chunkMs = 240_000, fromMs = 0) {
+/**
+ * 切成几块：路数 parallel 路同时认，所以块数尽量是路数的整数倍（不然最后一轮有的路空着）。
+ * 短的（12 分钟以内）不超过路数，每块不短于 minChunkMs（太短的块连接和收尾的开销比省下的时间还大）；长的块不长于 chunkMs。
+ */
+export function chunkCount(spanMs, { chunkMs = 240_000, parallel = 3, minChunkMs = MIN_CHUNK_MS } = {}) {
+  if (spanMs <= chunkMs * parallel) return Math.max(1, Math.min(parallel, Math.floor(spanMs / minChunkMs)))
+  return parallel * Math.ceil(spanMs / (chunkMs * parallel))
+}
+
+/** 把 [fromMs, durationMs) 切成几块，刀口落在停顿上。→ [{ from, to }] */
+export async function planChunks(pcmFile, durationMs, chunkMs = 240_000, fromMs = 0, { parallel = 3, minChunkMs = MIN_CHUNK_MS } = {}) {
   const span = durationMs - fromMs
-  const n = Math.max(1, Math.round(span / chunkMs))
+  const n = chunkCount(span, { chunkMs, parallel, minChunkMs })
   if (n === 1) return [{ from: fromMs, to: durationMs }]
   const fh = await fs.open(pcmFile, 'r')
   try {
@@ -246,17 +259,24 @@ async function oneConnection({ pcmFile, from, to, key, getKey, url, language, co
  * 云识别整个文件：切块，parallel 路同时认，拼回来按时间排。
  * fromMs、toMs：只认这一段（会员按场切的段）。onProgress(已认完的毫秒数，各块加起来，从这一段的开头算)。→ [{ startMs, endMs, text }]
  */
-export async function recognizeCloud({ pcmFile, durationMs, fromMs = 0, toMs = durationMs, parallel = 3, chunkMs = 240_000, onProgress, signal, ...opts }) {
-  const chunks = await planChunks(pcmFile, toMs, chunkMs, fromMs)
+export async function recognizeCloud({ pcmFile, durationMs, fromMs = 0, toMs = durationMs, parallel = 3, chunkMs = 240_000, minChunkMs = MIN_CHUNK_MS, onProgress, onReach, signal, ...opts }) {
+  const chunks = await planChunks(pcmFile, toMs, chunkMs, fromMs, { parallel, minChunkMs })
   const done = new Array(chunks.length).fill(0) // 每块已认到的毫秒数
+  const started = new Array(chunks.length).fill(false)
   const results = new Array(chunks.length)
   let next = 0
   let broken = false // 一块认不下去就别再开新的
-  const report = () => onProgress?.(done.reduce((a, b) => a + b, 0), chunks.length)
+  // 会员按处理到视频的哪一点算场次：各路里已经开始认的最远的那一点
+  const report = () => {
+    onProgress?.(done.reduce((a, b) => a + b, 0), chunks.length)
+    onReach?.(Math.max(...chunks.map((c, i) => (started[i] ? c.from + done[i] : fromMs))))
+  }
   const worker = async () => {
     while (next < chunks.length && !broken && !signal?.aborted) {
       const i = next++
       const { from, to } = chunks[i]
+      started[i] = true
+      report()
       results[i] = await recognizeChunk({
         ...opts,
         pcmFile,
