@@ -72,7 +72,7 @@ function memberLimit(code) {
   if (code === 'session-ai-limit') return t('这一场的 AI 用量到上限了，这一场不能再用 AI。下一场重新计算；急用可以在「设置 → 账号与 AI」改用自己的 Key')
   if (code === 'device-ai-limit') return t('今天会后整理的 AI 额度用完了：明天再试，或者开始一场记录')
   if (code === 'exhausted') return t('这一场的会员时间用完了，AI 先关着。买了场次，下一场就能用')
-  if (code === 'no-balance') return t('试用场次用完了，买了场次 AI 才能用')
+  if (code === 'no-balance') return t('没有可用的场次，买了场次 AI 才能用')
   return null
 }
 

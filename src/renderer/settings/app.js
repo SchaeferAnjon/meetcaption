@@ -747,15 +747,18 @@ function buildMember() {
     if (!info) {
       rows.push(el('div.form-hint', { text: memberSnap?.error || t('正在连接会员服务器…') }))
     } else {
-      const trial = info.kind !== 'paid'
+      // 早先领过试用场次的设备（trialGranted 不是 false）余额旁照旧标「免费试用」；新设备没有场次，不标
+      const gifted = info.kind !== 'paid' && info.trialGranted !== false
+      const none = info.kind !== 'paid' && info.balance <= 0 && !gifted
       rows.push(
         el(
           'div.member-balance',
           {},
           el('b', { text: String(Math.max(0, info.balance)) }),
-          el('span', { text: t(` 场{0}，每场最长 {1} 小时`, trial ? t('（免费试用）') : '', (info.sessionMs ?? 2 * 3600_000) / 3600_000) }),
+          el('span', { text: none ? ` ${t('场', 0)}` : t(` 场{0}，每场最长 {1} 小时`, gifted ? t('（免费试用）') : '', (info.sessionMs ?? 2 * 3600_000) / 3600_000) }),
         ),
       )
+      if (none) rows.push(el('div.form-hint', { text: t('字幕用本地识别，免费、不限次数；要云识别和 AI，点下面的购买场次，或把「用法」换成自带 Key（免费）。') }))
       if (info.code)
         rows.push(
           el(
@@ -791,7 +794,7 @@ function buildMember() {
             {
               type: 'button',
               onClick: async () => {
-                if (!(await ui.confirm({ title: t('解绑这台电脑？'), message: t('这台电脑不再用这个授权码，退回它自己的试用场次。授权码在别的电脑上照常用，以后输码还能再绑回来。'), okLabel: t('解绑') }))) return
+                if (!(await ui.confirm({ title: t('解绑这台电脑？'), message: t('这台电脑不再用这个授权码。授权码在别的电脑上照常用，以后输码还能再绑回来。'), okLabel: t('解绑') }))) return
                 await P.call('memberUnbind')
               },
             },

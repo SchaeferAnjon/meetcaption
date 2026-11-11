@@ -114,13 +114,14 @@ test('会后的票只给那一场自己用：重做以前的会议不记在它�
   z.stop()
 })
 
-test('免费试用名额发完了才装的：AI 关着，原因说名额发完了，不说试用用完了', async () => {
+test('不送试用场次以后新装的（没领到试用）：AI 关着，原因直说 AI 要买场次或换自带 Key，不提试用', async () => {
   const { f } = trialServer({ granted: false })
   const m = make(tmpFile(), f)
   await m.refresh()
   assert.equal(m.info.balance, 0)
   assert.equal(m.noAi, true)
-  assert.match(m.noAiReason(), /名额发完了/)
+  assert.match(m.noAiReason(), /AI 要买了场次才能用/)
+  assert.doesNotMatch(m.noAiReason(), /试用|名额/)
   m.stop()
 })
 

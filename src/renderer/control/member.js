@@ -1,5 +1,5 @@
 'use strict'
-// 会员：侧栏底部的场次卡片和收费页（照 design/pricing 的方向 A：三栏 + 授权码 + 常见问题，盖在主窗口上，Esc 关）。
+// 会员：侧栏底部的场次卡片和收费页（照 design/pricing 的方向 A：两栏（会员、自带 Key）+ 授权码 + 常见问题，盖在主窗口上，Esc 关）。
 // 主进程的会员模块在 src/main/member/client.js；这里只显示和调 memberBuy / memberActivate。
 
 state.member = null // { info: { kind, code, balance, devices, trialOnly, recent }, session, buying, error }
@@ -9,7 +9,7 @@ const CURRENCY_KEY = 'meetcaption.pricing.currency'
 const PACK_KEY = 'meetcaption.pricing.pack'
 const isMember = () => state.settings?.plan === 'member'
 
-// 一场最长几小时：服务器按授权给（只试用的 1 小时，买过的 2 小时）
+// 一场最长几小时：服务器按授权给（早先领过试用场次、没买过的 1 小时，买过的 2 小时）
 const sessionHours = (info) => (info?.sessionMs ?? 2 * 3600_000) / 3600_000
 
 function memberBalance() {
@@ -41,17 +41,15 @@ function memberCard() {
     text = state.member.error
     warn = true
   } else if (info) {
+    // 不再送试用场次：新设备 trialGranted 是 false、没有场次，字幕照常（本地识别）。早先领过试用的设备（trialGranted 为 true）照旧显示试用的余额
     const trial = info.kind !== 'paid'
-    title = trial ? t('免费试用') : t('会员')
+    const gifted = trial && info.trialGranted !== false
+    title = gifted ? t('免费试用') : t('会员')
     if (n > 0) text = t(`还剩 {0} 场，每场最长 {1} 小时{2}`, n, sessionHours(info), live ? t('。这一场正在计时') : '')
     else if (live && !live.exhausted) text = t(`最后一场正在计时，最长 {0} 小时`, sessionHours(info))
-    else if (trial && info.trialGranted === false) {
-      // 免费试用只发前 100 份（服务器 trialsTotal）：没领到的不能说「试用用完了」
-      title = t('会员')
-      text = t('免费试用的名额已经发完了。字幕照常（本地识别），AI 要买场次或换自带 Key。')
-      warn = true
-    } else {
-      text = trial ? t('试用用完了。字幕照常（本地识别），AI 要买场次或换自带 Key。') : t('场次用完了。字幕照常（本地识别），AI 要再买场次。')
+    else if (trial && !gifted) text = t('还没有场次。字幕照常（本地识别，免费），AI 要买场次或换自带 Key。')
+    else {
+      text = gifted ? t('试用用完了。字幕照常（本地识别），AI 要买场次或换自带 Key。') : t('场次用完了。字幕照常（本地识别），AI 要再买场次。')
       warn = true
     }
   }
@@ -61,7 +59,7 @@ function memberCard() {
     { type: 'button', class: warn ? 'is-warn' : '', onClick: () => openPricing() },
     el('div.member-card-head', {}, icon('sparkles', 14), el('span.member-card-title', { text: title }), count),
     el('div.member-card-text', { text }),
-    el('div.member-card-link', {}, el('span', { text: state.member?.buying ? t('正在等付款…') : warn ? t('买场次') : t('查看方案') }), icon('chevron-right', 12)),
+    el('div.member-card-link', {}, el('span', { text: state.member?.buying ? t('正在等付款…') : warn || n === 0 ? t('买场次') : t('查看方案') }), icon('chevron-right', 12)),
   )
 }
 
@@ -144,29 +142,10 @@ function openPricing({ pack } = {}) {
   function render() {
     const m = state.member ?? {}
     const info = m.info
-    const trialLeft = info && info.kind !== 'paid' ? Math.max(0, info.balance) : null
+    const giftLeft = info && info.kind !== 'paid' && info.trialGranted !== false ? Math.max(0, info.balance) : 0
     const packs = state.memberPacks
     const pack = packs.find((p) => p.id === packId) ?? packs[1] ?? packs[0]
     if (pack) packId = pack.id
-
-    // 免费试用
-    const trialBtn = el('button.btn.pricing-btn', { type: 'button', disabled: true }, el('span', {
-      text: !info ? t('打开会员后自动领取') : info.kind === 'paid' ? t('已是会员') : trialLeft > 0 ? t(`试用中 · 剩 {0} 场`, trialLeft) : info.trialGranted === false ? t('试用名额已发完') : t('试用已用完'),
-    }))
-    if (info && !isMember()) {
-      trialBtn.disabled = false
-      trialBtn.querySelector('span').textContent = t('换成会员用法')
-      trialBtn.addEventListener('click', () => call('updateSettings', { plan: 'member' }))
-    }
-    const trial = column({
-      name: t('免费试用'),
-      tags: [{ text: t('前 100 位新用户') }],
-      price: t('1 场'),
-      unit: t('· 最长 1 小时'),
-      sub: t('装好就能用，不用填任何 Key'),
-      action: trialBtn,
-      items: [t('云识别和 AI 全都能用'), [t('不用注册，'), t('不用登录')], t('一场不到 5 分钟停止的不算'), t('用完以后字幕照常（本地识别）')],
-    })
 
     // 会员：按场买
     const curSeg = el(
@@ -317,7 +296,8 @@ function openPricing({ pack } = {}) {
         ),
         el('div.pricing-note', {}, icon('shield-check', 14), el('span', { text: t('不想花钱也行：本地识别在你电脑上跑，字幕永远免费，断网也能出字。') })),
       ),
-      el('div.pricing-cols', {}, trial, memberCol, own),
+      giftLeft > 0 ? el('div.pricing-note', {}, icon('sparkles', 14), el('span', { text: t(`这台电脑还有 {0} 场试用场次，每场最长 {1} 小时。`, giftLeft, sessionHours(info)) })) : null,
+      el('div.pricing-cols', {}, memberCol, own),
       codeRow,
       faq,
     )

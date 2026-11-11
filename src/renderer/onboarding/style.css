@@ -920,6 +920,9 @@ body.is-win .ob-top {
   color: var(--text-2);
   line-height: 1.6;
 }
+.ob-gift-btn {
+  margin-top: 10px;
+}
 .ob-keys {
   display: grid;
   grid-template-columns: auto 1fr;

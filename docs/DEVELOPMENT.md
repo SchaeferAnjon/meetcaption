@@ -52,7 +52,7 @@ End-to-end without devices: add `--fake-system=a.wav --fake-mic=b.wav` to `--sel
 - `src/main/audio/`: system audio on Mac with audiotee (Core Audio taps), the speech gate, voiceprint (sherpa-onnx + CAM++), a 60-second microphone ring buffer
 - `src/renderer/capture/`: WASAPI loopback on Windows and the microphone on both systems
 - `src/main/asr/`: local recognition (X-ASR in a utility process), Soniox, OpenAI and Doubao streaming recognition
-- `src/main/member/`: membership client (trial, sessions, temporary recognition keys, purchases)
+- `src/main/member/`: membership client (device token, sessions, temporary recognition keys, purchases)
 - `src/main/usagePing.js`: the anonymous daily check-in (`POST /v1/ping`, once per local day, only after the user agrees: `usageConsent` is `""` not asked yet, `yes` or `no`; asked once in onboarding (step 6) or, for people who have not answered, in a dialog when the main window opens (`src/renderer/control/consent.js`, text in `src/renderer/shared/consent.js`); switch in Settings › General)
 - `src/main/i18n.js`, `src/renderer/shared/i18n.js`, `src/i18n/`: interface languages, keyed by the Simplified Chinese source text
 - `src/main/languages.js`: the 60 recognition and translation languages

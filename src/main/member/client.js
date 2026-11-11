@@ -1,4 +1,5 @@
-// 会员：不登录，按这台电脑领 1 场试用（最长 1 小时）；买了场次拿到授权码，别的电脑输码也能用。一场 = 一次记录，买的最长 2 小时。
+// 会员：不登录，按场买；买了场次拿到授权码，别的电脑输码也能用。一场 = 一次记录，最长 2 小时。
+// 2026-11-11 起不再送试用场次（服务器 TRIALS_TOTAL=0，新设备没有场次）；早先领过试用的设备照旧能用，场次最长 1 小时。
 // 服务器在 meetcaption-server（私有仓库），地址 API；识别和 AI 都经它转发，密钥只在服务器上。
 // 这里只管和服务器说话、记住设备令牌；什么时候开一场、用完了怎么退回本地识别由 main.js 决定。
 import { EventEmitter } from 'node:events'
@@ -106,7 +107,7 @@ export class Member extends EventEmitter {
     throw new MemberError(err.code ?? 'http', err.message ?? t(`会员服务器出错（HTTP {0}）`, res.status), res.status)
   }
 
-  /** 第一次用：按设备领试用，存下设备令牌。之后直接返回。 */
+  /** 第一次用：向服务器登记这台电脑，存下设备令牌（服务器对早先名额内的设备还会带一份试用场次）。之后直接返回。 */
   async ensureDevice() {
     if (this.state.token) return this.state.token
     const fp = (await this.fingerprint(this.platform)) ?? (this.state.fallbackId ??= createHash('sha256').update(`${Date.now()}:${Math.random()}`).digest('hex'))
@@ -344,7 +345,7 @@ export class Member extends EventEmitter {
   noAiReason(at = null) {
     if (this.#live(at) && this.session.exhausted) return t('这一场的会员时间用完了，翻译和答题先关着')
     if (this.info?.kind === 'paid') return t('场次用完了，买了场次 AI 才能用')
-    return this.info?.trialGranted === false ? t('免费试用的名额发完了，买了场次 AI 才能用') : t('试用场次用完了，买了场次 AI 才能用')
+    return this.info?.trialGranted === false ? t('AI 要买了场次才能用，也可以在设置里换成自带 Key') : t('试用场次用完了，买了场次 AI 才能用')
   }
 
   /**

@@ -1001,7 +1001,7 @@ async function startMemberSession() {
     member.fallback = true
     if (e.code === 'no-balance') {
       showPricing({ pack: 'p1' })
-      return '会员场次用完了：这一场用本地识别，翻译和答题这些 AI 功能先关着。买了场次，下一场就能用。'
+      return t('没有可用的场次：这一场用本地识别，翻译和答题这些 AI 功能先关着。买了场次，下一场就能用。')
     }
     return e.code === 'network'
       ? t('连不上会员服务器，这一场先用本地识别，AI 功能可能用不了。')

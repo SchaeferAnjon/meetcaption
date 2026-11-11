@@ -64,7 +64,7 @@ function stepInfo() {
     listen: [t('试听'), t('确认字幕出来了')],
     voice: [t('声纹'), t('分清你和对方，可跳过')],
     stats: [t('使用统计'), t('匿名，可以不同意')],
-    ready: [t('开始'), isMember() ? t('送你 1 场') : t('快捷键')],
+    ready: [t('开始'), t('快捷键')],
   }
 }
 
@@ -540,7 +540,7 @@ function stepListen() {
   const srcName = langLabel(S.src)
   return [
     el('h1.ob-h1', { text: t('试听一下') }),
-    el('p.ob-sub', { text: t('放一段有人说话的视频，比如一段 YouTube 演讲，看字幕是不是出来了。试听用本地识别，不联网，不算在送你的那 1 场里。') }),
+    el('p.ob-sub', { text: t('放一段有人说话的视频，比如一段 YouTube 演讲，看字幕是不是出来了。试听用本地识别，不联网，不扣场次。') }),
     pendingRestart().includes('sys')
       ? el('div.ob-callout', {}, icon('triangle-alert', 15), el('span', { text: t('电脑声音拖进列表后还没重开，现在录不到。') }), el('button.btn.btn-sm', { type: 'button', onClick: relaunch }, t('现在重开')))
       : null,
@@ -626,17 +626,22 @@ async function answerStats(agree) {
 
 /* ---------------- 第 7 步：可以开始了 ---------------- */
 
+// 可以开始页上的一张卡：会员用法下说清这台电脑现在有什么。不再送试用场次，新设备没有场次时讲两条路：
+// 字幕用本地识别一直免费，AI 要买场次（或自带 Key）；卡片上的按钮打开主窗口的收费页。早先领过试用的设备照旧显示余额。
 function giftText() {
   const m = S.member
   if (!isMember()) return [t('字幕一直免费'), t('字幕用本地识别，在你电脑上跑，一直免费。翻译和 AI 答题用你在设置里配好的服务。')]
   const info = m?.info
-  if (!info) return m?.error ? [t('送你的 1 场稍后到账'), t('暂时连不上，字幕照常能用，连上后自动到账。')] : [t('正在领取送你的 1 场…'), t('字幕本身不用填任何 Key。')]
+  if (!info) return m?.error ? [t('暂时连不上会员服务器'), t('字幕照常能用（本地识别）。连上以后，要云识别和 AI 可以在主窗口买场次。')] : [t('正在连接会员服务器…'), t('字幕本身不用填任何 Key。')]
   if (info.balance > 0) {
     const hours = (info.sessionMs ?? 2 * 3600_000) / 3600_000
     const body = t('最长 {0} 小时：60 种语言的云识别、AI 答题和会后纪要都能用。字幕本身不用填任何 Key，用完也照常出（本地识别，中文和英文）。', hours)
-    return info.kind === 'paid' ? [t('你的会员还剩 {0} 场', info.balance), body] : [t('送你的 {0} 场已经到账', info.balance), body]
+    return info.kind === 'paid' ? [t('你的会员还剩 {0} 场', info.balance), body] : [t('这台电脑还有 {0} 场试用场次', info.balance), body]
   }
-  return [t('这台电脑的试用场次已经用过了'), t('字幕照常能用（本地识别）；AI 在「设置 → 会员」里买场次或换自带 Key。')]
+  // 价格按界面语言挑币种：中文界面人民币，其他美元（收费页里还能切）
+  const p1 = (init.memberPacks ?? []).find((p) => p.sessions === 1)
+  const price = !p1 ? '' : ['zh', 'zh-Hant'].includes(uiCode()) ? `¥${p1.cny}` : `$${p1.usd}`
+  return [t('字幕一直免费，AI 按场买'), t('字幕用本地识别，免费、不联网、不用填 Key。要云识别和 AI 答题，1 场 {0} 起；也可以在设置里填你自己的 Key，免费、不限场次。', price)]
 }
 
 function stepReady() {
@@ -651,7 +656,18 @@ function stepReady() {
   return [
     el('h1.ob-h1', { text: t('可以开始了') }),
     s.hotkeyRecord ? el('p.ob-sub', {}, t('开会时按 '), ui.kbd(s.hotkeyRecord, { size: 'sm' }), t(' 开始记录，再按一次停止。')) : null,
-    el('div.ob-gift', { dataset: { part: '送你的一场' } }, el('div.ob-gift-i', {}, icon('gift', 16)), el('div', {}, el('div.ob-gift-1', { text: g1 }), el('div.ob-gift-2', { text: g2 }))),
+    el(
+      'div.ob-gift',
+      { dataset: { part: '场次说明' } },
+      el('div.ob-gift-i', {}, icon('sparkles', 16)),
+      el(
+        'div',
+        {},
+        el('div.ob-gift-1', { text: g1 }),
+        el('div.ob-gift-2', { text: g2 }),
+        isMember() && S.member?.info?.balance === 0 ? el('button.btn.btn-sm.ob-gift-btn', { type: 'button', onClick: () => api.showPricing() }, el('span', { text: t('看场次价格') }), icon('arrow-right', 13)) : null,
+      ),
+    ),
     el(
       'div.ob-keys',
       { dataset: { part: '快捷键' } },
@@ -671,7 +687,7 @@ function bar() {
   let btns = []
   if (S.step === 'welcome') {
     // 免费说明放在欢迎页的底栏左边（正文一屏放不下五行卡片加两行说明）
-    const free = isMember() ? [t('送你 1 场完整体验，最长 1 小时。'), t('只看字幕不用填任何 Key。')] : [t('字幕用本地识别，一直免费。'), t('只看字幕不用填任何 Key。')]
+    const free = [t('字幕用本地识别，一直免费。'), t('只看字幕不用填任何 Key。')]
     hint = free.join(['zh', 'zh-Hant', 'ja'].includes(uiCode()) ? '' : ' ')
     btns = [nextBtn(t('开始设置'))]
   }
