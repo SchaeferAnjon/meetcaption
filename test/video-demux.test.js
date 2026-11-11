@@ -3,11 +3,12 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { openMedia } from '../src/main/video/demux.js'
 
 // 视频模式读声音的第一步：不靠 ffmpeg，自己拆 mp4、mov、m4a、webm、mkv、mp3 的封装。
 // 样本文件是用 ffmpeg 做的 3 秒小文件（test/fixtures/video），放的是 test/fixtures/local-asr-en.wav 的前 3 秒。
-const dir = new URL('./fixtures/video/', import.meta.url).pathname
+const dir = fileURLToPath(new URL('./fixtures/video/', import.meta.url))
 const at = (f) => path.join(dir, f)
 
 const CASES = [
