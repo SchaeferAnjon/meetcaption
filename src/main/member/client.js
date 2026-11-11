@@ -23,11 +23,12 @@ export const PACKS = [
 
 export class MemberError extends Error {
   /** message 是给用户看的一句中文；detail 是原始报错（fetch failed、ECONNREFUSED），只进调试日志。 */
-  constructor(code, message, status, detail) {
+  constructor(code, message, status, detail, extra) {
     super(message)
     this.code = code
     this.status = status
     this.detail = detail
+    if (extra) Object.assign(this, extra)
   }
 }
 
@@ -104,7 +105,9 @@ export class Member extends EventEmitter {
       await this.ensureDevice()
       return this.#call(method, p, { body, token: this.state.token, retry: false })
     }
-    throw new MemberError(err.code ?? 'http', err.message ?? t(`会员服务器出错（HTTP {0}）`, res.status), res.status)
+    // 视频开场次不够时服务器回 needed（要几场）和 balance（还剩几场）
+    const extra = err.needed != null ? { needed: err.needed, balance: err.balance } : undefined
+    throw new MemberError(err.code ?? 'http', err.message ?? t(`会员服务器出错（HTTP {0}）`, res.status), res.status, undefined, extra)
   }
 
   /** 第一次用：向服务器登记这台电脑，存下设备令牌（服务器对早先名额内的设备还会带一份试用场次）。之后直接返回。 */
@@ -128,7 +131,7 @@ export class Member extends EventEmitter {
   snapshot() {
     return {
       info: this.info,
-      session: this.session ? { sessionId: this.session.sessionId, remainingMs: this.session.remainingMs, charged: this.session.charged, exhausted: this.session.exhausted, idle: this.session.idle } : null,
+      session: this.session && !this.session.video ? { sessionId: this.session.sessionId, remainingMs: this.session.remainingMs, charged: this.session.charged, exhausted: this.session.exhausted, idle: this.session.idle } : null,
       buying: Boolean(this.poll),
       error: this.error,
     }
@@ -232,6 +235,54 @@ export class Member extends EventEmitter {
     return r
   }
 
+  /**
+   * 处理视频前开一张视频票：整个视频一次开好（服务器按视频时长算要几场，2 小时 1 场，开场就扣、不因为处理得快而退）。
+   * 翻译、笔记、云识别的 Key 都用这一张票；之后每 30 秒一次心跳报告处理到了视频的哪一点（setVideoMs）。
+   * 余额不够：服务器回 402 no-balance，带 needed（要几场）和 balance；→ { sessions, charged, balance }。
+   */
+  async startVideoSession(durationMs) {
+    const token = await this.ensureDevice()
+    let r
+    try {
+      r = await this.#call('POST', '/v1/session/video', { token, body: { durationMs: Math.round(durationMs) } })
+    } catch (e) {
+      if (e.code === 'no-balance') await this.refresh()
+      throw e
+    }
+    this.session = { token: r.session, sessionId: r.sessionId, remainingMs: r.remainingMs, charged: r.charged, exhausted: false, idle: false, video: true, videoMs: 0, sessions: r.sessions }
+    this.state.last = { token: r.session, startedAt: Date.now(), endedAt: null }
+    this.#write()
+    this.running = true
+    this.info = this.info ? { ...this.info, balance: r.balance } : this.info
+    clearInterval(this.hb)
+    this.hb = setInterval(() => this.heartbeat().catch(() => {}), this.heartbeatMs)
+    this.hb.unref?.()
+    this.emit('update', this.snapshot())
+    return { sessions: r.sessions, charged: r.charged, balance: r.balance }
+  }
+
+  /** 视频：成员服务已经开始处理到视频的这一点（毫秒，只增不减），下一次心跳报给服务器。 */
+  setVideoMs(ms) {
+    const s = this.session
+    if (s?.video && ms > s.videoMs) s.videoMs = Math.round(ms)
+  }
+
+  /**
+   * 视频：马上报告要处理到 ms 这一点，等服务器回话（过了每场的界线它会扣下一场，余额不够就标成用完）。
+   * → { charged, exhausted, activeMs }。连不上服务器再试两次。
+   */
+  async reachVideo(ms) {
+    this.setVideoMs(ms)
+    for (let i = 0; ; i++) {
+      try {
+        return await this.heartbeat()
+      } catch (e) {
+        if (e.code !== 'network' || i >= 2) throw e
+        await new Promise((r) => setTimeout(r, 2000))
+      }
+    }
+  }
+
   /** 识别要连 Soniox 时调：拿这一场的票换一把临时 Key（只能连一次，最长连 maxMs）。 */
   async asrKey() {
     const s = this.session
@@ -243,11 +294,16 @@ export class Member extends EventEmitter {
   async heartbeat() {
     const s = this.session
     if (!s) return null
-    const r = await this.#call('POST', '/v1/session/heartbeat', { token: s.token, body: { running: this.running } })
+    const r = await this.#call('POST', '/v1/session/heartbeat', { token: s.token, body: s.video ? { videoMs: s.videoMs } : { running: this.running } })
     if (this.session !== s) return r
     const was = { exhausted: s.exhausted, idle: s.idle, charged: s.charged }
     Object.assign(s, { remainingMs: r.remainingMs, charged: r.charged, exhausted: r.exhausted, idle: r.idle })
     if (this.info) this.info = { ...this.info, balance: r.balance }
+    if (s.video) {
+      // 视频票：用完与否由视频任务自己看返回值，不走实时记录的提示和自动暂停
+      this.emit('update', this.snapshot())
+      return r
+    }
     if (r.exhausted && !was.exhausted) this.emit('session', { type: 'exhausted' })
     if (r.idle && !was.idle) this.emit('session', { type: 'idle' })
     if (r.charged > was.charged) this.emit('session', { type: 'rolled', charged: r.charged })
@@ -277,7 +333,7 @@ export class Member extends EventEmitter {
     if (this.session) this.session.exhausted = true
   }
 
-  /** 停止记录：不到 5 分钟的服务器会退回这一场。 */
+  /** 停止记录：不到 5 分钟的服务器会退回这一场。视频票：不因处理得快退；一点会员服务都没用上（取消得早）才退回。 */
   async endSession() {
     this.fallback = false
     const s = this.session

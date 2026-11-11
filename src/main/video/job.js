@@ -16,8 +16,10 @@ import { t } from '../i18n.js'
 
 // 一个视频从头到尾：读出声音 → 识别（本地或云）→ 翻译 → 分说话人（会议）→ 截画面（课）→ 写笔记或纪要。
 // 做成一场「会议」存进项目里，和实时记下来的会议一样：session.json、字幕记录、课堂笔记或会议纪要，另带 session.video（见下面的 meta）。
-// 会员的场次：视频按每场能管的时长切成几段，一段开一场（member.startSession 扣一场），这一段识别和翻译完结束它，
-// 最后的笔记用刚结束那一场的票做（24 小时内有效）。处理中取消：没开始的段不扣，已经开的那一场不退（不到 5 分钟后台自己退）。
+// 会员的场次：整个视频开一张视频票（member.startVideoSession，服务器按视频时长算 N 场，开场就扣 1 场、不因处理得快退回），
+// 翻译、笔记、云识别的 Key 都用这张票，处理中每 30 秒心跳报告处理到了视频的哪一点，过了每场的界线服务器扣下一场。
+// 视频按每场能管的时长分段，开始下一段前先报告「要处理到这一段了」并等服务器回话：余额不够就停在这里（只处理了前面）。
+// 做完或取消结束这张票：取消得早、一点会员服务都没用上时服务器退回那 1 场，其余不退。
 // 不引 electron，依赖都从 deps 传进来，单测用假的。
 
 // 每一步大约要多久（秒），按视频时长 D（秒）估：用来算总进度和「还要约几分钟」，做到哪一步之后按实测速度改
@@ -160,7 +162,7 @@ export async function runVideo(deps, opts, ctl = {}) {
   let pcm = null
   let slides = []
   let frameJob = null
-  const sessionsUsed = { n: 0 }
+  let ticket = false // 有没有开着视频票
   try {
     check()
     // 取消时马上关掉隐藏窗口，正在里面跑的解码和截画面当场停（不等它这一轮做完）
@@ -251,7 +253,20 @@ export async function runVideo(deps, opts, ctl = {}) {
     timings.audio = Date.now() - t0
     check()
 
-    // 按场次切段，一段一场
+    // 开视频票（音频读好才开：读不出声音的视频不扣）
+    if (charge.sessions) {
+      try {
+        const r = await member.startVideoSession(durationMs)
+        ticket = true
+        // 场次数以服务器为准（和 charge.js 的算法一致，不一致时留个记号）
+        if (r.sessions !== charge.sessions) timings.chargeMismatch = [charge.sessions, r.sessions]
+      } catch (e) {
+        if (e.code === 'no-balance') throw Object.assign(new MediaError('no-balance', t(`场次不够：这个视频要用 {0} 场，你还剩 {1} 场`, e.needed ?? charge.sessions, e.balance ?? member.info?.balance ?? 0)), { need: e.needed ?? charge.sessions, have: e.balance ?? member.info?.balance ?? 0 })
+        throw e
+      }
+    }
+
+    // 按每场管的时长分段（视频票要在每一场的界线上报告进度）
     const parts = segmentsFor(durationMs, charge.sessions, charge.unit)
     const utterances = []
     const all = { segments: [], sentences: [] }
@@ -270,60 +285,60 @@ export async function runVideo(deps, opts, ctl = {}) {
     let translatedFailed = 0
     for (let k = 0; k < parts.length; k++) {
       const { from, to } = parts[k]
-      if (charge.sessions) {
-        try {
-          await member.startSession()
-          sessionsUsed.n++
-        } catch (e) {
-          if (k === 0) throw e
-          // 第一段之后没场次了（别的电脑用掉了）：前面做好的留着，说一声
+      if (ticket && k > 0) {
+        // 下一场：报告要处理到这一段了，服务器过了界线就扣下一场；别的电脑用掉了场次、扣不了：前面做好的留着，说一声
+        const r = await member.reachVideo(from + 1)
+        if (r.exhausted || r.charged <= k) {
           reached = from
-          partialReason = e.code === 'no-balance' ? t('场次不够了，只处理了前面一段') : e.message
+          partialReason = t('场次不够了，只处理了前面一段')
           break
         }
       }
-      try {
-        const base = from / durationMs
-        const part = (to - from) / durationMs
-        const frac = (ms) => base + (part * Math.max(0, Math.min(1, (ms - from) / (to - from)))) * (translate ? 0.7 : 1)
-        const common = { pcmFile: pcm, durationMs, signal }
-        const got =
-          opts.recognition === 'cloud'
-            ? await impl.cloud({
-                ...common,
-                // 只认这一段：云识别切块时按段给起止
-                fromMs: from,
-                toMs: to,
-                key: plan === 'member' ? '' : s.sonioxKey,
-                getKey: plan === 'member' ? () => member.asrKey() : null,
-                language: opts.language,
-                context: project?.context ?? '',
-                hotwords: keywordList(project ?? {}),
-                onProgress: (ms) => progress.update('recognize', frac(from + ms), from + ms),
-              })
-            : await impl.local({ ...common, fromMs: from, toMs: to, onProgress: (ms) => progress.update('recognize', frac(ms), ms) })
-        check()
-        const { segments, sentences } = buildSegments(got, { lang: opts.language, baseAt, speaker: meeting ? '' : t('老师') })
-        if (translate && segments.length) {
-          const r = await impl.translate({
-            texts: segments.map((x) => x.text),
-            llm: meter,
-            target: opts.target,
-            source: opts.language,
-            context: project?.context ?? '',
-            keywords: keywordList(project ?? {}),
-            signal,
-            onProgress: (done, total) => progress.update('recognize', base + part * (0.7 + 0.3 * (done / Math.max(1, total)))),
-          })
-          applyTranslations(segments, r.tr)
-          translatedFailed += r.failed
-        }
-        all.segments.push(...segments)
-        all.sentences.push(...sentences)
-        utterances.push(...got)
-      } finally {
-        if (charge.sessions) await member.endSession()
+      const base = from / durationMs
+      const part = (to - from) / durationMs
+      const frac = (ms) => base + (part * Math.max(0, Math.min(1, (ms - from) / (to - from)))) * (translate ? 0.7 : 1)
+      const common = { pcmFile: pcm, durationMs, signal }
+      const got =
+        opts.recognition === 'cloud'
+          ? await impl.cloud({
+              ...common,
+              // 只认这一段：云识别切块时按段给起止
+              fromMs: from,
+              toMs: to,
+              key: plan === 'member' ? '' : s.sonioxKey,
+              getKey: plan === 'member' ? () => member.asrKey() : null,
+              language: opts.language,
+              context: project?.context ?? '',
+              hotwords: keywordList(project ?? {}),
+              onProgress: (ms) => progress.update('recognize', frac(from + ms), from + ms),
+              // 几路同时认：报给服务器的是各路里走得最远的那一点
+              onReach: (ms) => member?.setVideoMs(ms),
+            })
+          : await impl.local({ ...common, fromMs: from, toMs: to, onProgress: (ms) => progress.update('recognize', frac(ms), ms) })
+      check()
+      const { segments, sentences } = buildSegments(got, { lang: opts.language, baseAt, speaker: meeting ? '' : t('老师') })
+      if (translate && segments.length) {
+        const r = await impl.translate({
+          texts: segments.map((x) => x.text),
+          llm: meter,
+          target: opts.target,
+          source: opts.language,
+          context: project?.context ?? '',
+          keywords: keywordList(project ?? {}),
+          signal,
+          onProgress: (done, total) => {
+            progress.update('recognize', base + part * (0.7 + 0.3 * (done / Math.max(1, total))))
+            // 本地识别时会员服务从翻译开始用：翻到哪一句就是处理到了视频的哪一点
+            const last = segments[Math.min(segments.length, done) - 1]
+            if (last) member?.setVideoMs(last.startedAt - baseAt)
+          },
+        })
+        applyTranslations(segments, r.tr)
+        translatedFailed += r.failed
       }
+      all.segments.push(...segments)
+      all.sentences.push(...sentences)
+      utterances.push(...got)
     }
     progress.done('recognize')
     timings.recognize = Date.now() - t0
@@ -371,7 +386,7 @@ export async function runVideo(deps, opts, ctl = {}) {
         speakers: speakers ?? undefined,
         reachedMs: reached,
         partial: reached < durationMs ? partialReason : undefined,
-        sessionsUsed: sessionsUsed.n,
+        sessionsUsed: ticket ? member.session?.charged ?? charge.sessions : 0,
         translateFailed: translatedFailed || undefined,
       })
     })
@@ -394,11 +409,12 @@ export async function runVideo(deps, opts, ctl = {}) {
     }
     check()
     timings.total = Date.now() - started
+    const sessionsDone = ticket ? member.session?.charged ?? charge.sessions : 0
     store.mutate(id, (x) => {
       Object.assign(x.video, { status: 'done', finishedAt: Date.now(), tookMs: timings.total, timings, notesError: notesError ?? undefined })
       x.video.usage = usage
     })
-    return { sessionId: id, durationMs, kind: meeting ? 'meeting' : 'class', translate, notes, slides: slides.length, partial: partialReason || null, notesError, translateFailed: translatedFailed, usage, timings, sessions: sessionsUsed.n }
+    return { sessionId: id, durationMs, kind: meeting ? 'meeting' : 'class', translate, notes, slides: slides.length, partial: partialReason || null, notesError, translateFailed: translatedFailed, usage, timings, sessions: sessionsDone }
   } catch (e) {
     // 取消或失败：没做完的会议删掉（识别和字幕都没留）
     if (session) {
@@ -408,6 +424,8 @@ export async function runVideo(deps, opts, ctl = {}) {
     }
     throw e
   } finally {
+    // 做完、取消、失败都结束视频票：取消得早、一点会员服务都没用上时服务器退回那 1 场，其余不退
+    if (ticket) await member.endSession()
     await media.close().catch(() => {})
     if (pcm) fs.rm(pcm, { force: true }, () => {})
   }

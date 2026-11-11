@@ -4,8 +4,10 @@
 //   会员云识别：同样每 2 小时 1 场；
 //   自带 Key：不用场次；
 //   还带着早先试用场次的设备（最长 1 小时一场）：试用的 1 场只管 1 小时以内的视频，长的按每小时 1 场算，试用余额不够就得买。
-// 后台那边一场只按开着的时间算（记录中每 30 秒心跳），不认识「视频有多长」，所以应用把视频按每场能管的时长切成几段，
-// 一段开一场（member.startSession 扣一场）、做完这一段结束它，见 job.js。界面只说「这个视频用 N 场」或「不用场次」，不出价格。
+// 后台有一个按视频时长扣场次的接口（POST /v1/session/video）：整个视频开一张票，服务器按 ceil(时长 ÷ 一场多久) 算要几场，
+// 开场就扣 1 场、不因处理得快退回；之后每 30 秒心跳报告处理到视频的哪一点，过了每场的界线（2 小时、试用 1 小时）扣下一场。
+// 这里是算「N 场」的唯一地方，必须和服务器一致（member/client.js 的 startVideoSession、job.js 用同一张票）。
+// 界面只说「这个视频用 N 场」或「不用场次」，不出价格。
 
 export const HOUR = 3600_000
 export const SESSION_MS = 2 * HOUR
@@ -35,7 +37,7 @@ export function enough(sessions, balance) {
   return { ok: have >= sessions, need: sessions, have }
 }
 
-/** 视频按每场管的时长切成几段：[{ from, to }]（毫秒）。不用场次时就一段。 */
+/** 视频按每场管的时长分成几段：[{ from, to }]（毫秒）。开始下一段前要先向服务器报告进度，让它扣下一场。不用场次时就一段。 */
 export function segmentsFor(durationMs, sessions, unit = SESSION_MS) {
   if (sessions <= 1) return [{ from: 0, to: durationMs }]
   const out = []

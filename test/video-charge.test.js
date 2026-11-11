@@ -49,3 +49,14 @@ test('余额够不够；一块一场地切段', () => {
   assert.deepEqual(segmentsFor(2.5 * HOUR, 3, HOUR), [{ from: 0, to: HOUR }, { from: HOUR, to: 2 * HOUR }, { from: 2 * HOUR, to: 2.5 * HOUR }])
   assert.deepEqual(segmentsFor(HOUR, 0), [{ from: 0, to: HOUR }])
 })
+
+test('和服务器同一个算法：ceil(时长 ÷ 一场多久)，视频票开场扣 1 场、过每场界线扣下一场', () => {
+  const server = (ms, unit) => Math.ceil(ms / unit) // 服务器 sessionVideo 里的 n
+  for (const unit of [HOUR, 2 * HOUR]) {
+    for (const ms of [1000, 59_000, HOUR - 1, HOUR, HOUR + 1, 2 * HOUR, 2 * HOUR + 1000, 2.5 * HOUR, 5 * HOUR, 24 * HOUR]) assert.equal(sessionsFor(ms, unit), server(ms, unit), `${ms} / ${unit}`)
+  }
+  assert.equal(videoCharge({ ...M, recognition: 'cloud', ai: true, durationMs: 5 * HOUR }).sessions, 3)
+  assert.equal(videoCharge({ ...M, trial: true, recognition: 'cloud', ai: true, durationMs: 5 * HOUR }).sessions, 5)
+  // 每场的界线：下一段从界线后 1 毫秒起算，服务器那边「严格过了界线」才扣下一场
+  assert.deepEqual(segmentsFor(5 * HOUR, 3).map((x) => x.from), [0, 2 * HOUR, 4 * HOUR])
+})

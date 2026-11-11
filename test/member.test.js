@@ -153,3 +153,36 @@ test('连不上会员服务器：给用户一句中文，不带 fetch failed 和
   assert.equal(e2.message, '连不上会员服务器，稍后再试')
   assert.equal(e2.detail, 'fetch failed')
 })
+
+test('视频票：整个视频开一次，心跳报处理到哪一点，过界线服务器扣下一场；不发实时记录的提示；余额不够带 needed', async () => {
+  let hb = { remainingMs: 7200_000, charged: 1, exhausted: false, idle: false, balance: 4, activeMs: 0 }
+  let fail = null
+  const { f, calls } = fakeFetch({
+    '/v1/trial/start': () => ({ status: 200, body: { token: 'mcd_x', kind: 'paid', balance: 5 } }),
+    '/v1/license/status': () => ({ status: 200, body: { kind: 'paid', balance: 5 } }),
+    '/v1/session/video': () => (fail ? { status: 402, body: { error: { code: 'no-balance', message: 'x', needed: 3, balance: 1 } } } : { status: 200, body: { session: 'mcs_v', sessionId: 9, sessions: 2, charged: 1, balance: 4, remainingMs: 7200_000 } }),
+    '/v1/session/heartbeat': () => ({ status: 200, body: hb }),
+    '/v1/session/end': () => ({ status: 200, body: { balance: 4, refunded: false } }),
+  })
+  const m = new Member({ file: tmpFile(), fetch: f, fingerprint: async () => 'ef'.repeat(32), api: 'https://api.test', heartbeatMs: 1e9 })
+  const r = await m.startVideoSession(2.5 * 3600_000)
+  assert.deepEqual(r, { sessions: 2, charged: 1, balance: 4 })
+  assert.deepEqual(calls.find((c) => c.p === '/v1/session/video').body, { durationMs: 9_000_000 })
+  assert.equal(m.aiKey(), 'mcs_v', '翻译、笔记、云识别的 Key 都用这张票')
+  assert.equal(m.snapshot().session, null, '视频票不进会员卡的「这一场」')
+  const events = []
+  m.on('session', (e) => events.push(e.type))
+  m.setVideoMs(5000)
+  m.setVideoMs(1000)
+  hb = { ...hb, charged: 2, balance: 3 }
+  const g = await m.reachVideo(7200_001)
+  assert.deepEqual(calls.filter((c) => c.p === '/v1/session/heartbeat').map((c) => c.body), [{ videoMs: 7200_001 }], '只增不减，不带 running')
+  assert.equal(g.charged, 2)
+  assert.equal(m.info.balance, 3)
+  assert.deepEqual(events, [], '视频票的扣费不发「已满 2 小时」那种提示')
+  await m.endSession()
+  assert.equal(m.session, null)
+  fail = true
+  await assert.rejects(m.startVideoSession(5 * 3600_000), (e) => e.code === 'no-balance' && e.needed === 3 && e.balance === 1)
+  assert.equal(m.session, null)
+})

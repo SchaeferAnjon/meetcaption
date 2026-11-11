@@ -34,22 +34,41 @@ const fakeMedia = (durationMs, { hasVideo = true } = {}) => ({
   close: async () => {},
 })
 
+// 视频票：整个视频开一次（startVideoSession 扣第 1 场），过了每场界线时 reachVideo 扣下一场，余额不够就标成用完
 class FakeMember {
   constructor({ balance = 5, kind = 'paid', failAt = Infinity } = {}) {
     this.info = { balance, kind }
     this.calls = []
-    this.failAt = failAt
-    this.starts = 0
+    this.reached = []
+    this.failAt = failAt // 能扣到第几场为止（含第一场）
+    this.session = null
   }
   async refresh() {}
-  async startSession() {
-    if (this.starts >= this.failAt) throw Object.assign(new Error('没场次了'), { code: 'no-balance' })
-    this.starts++
+  async startVideoSession(durationMs) {
+    const unit = this.info.kind === 'paid' ? 2 * HOUR : HOUR
+    const sessions = Math.max(1, Math.ceil(durationMs / unit))
+    if (this.info.balance < sessions) throw Object.assign(new Error('没场次了'), { code: 'no-balance', needed: sessions, balance: this.info.balance })
     this.info.balance--
-    this.calls.push('start')
+    this.session = { charged: 1, videoMs: 0, unit, exhausted: false }
+    this.calls.push(`start:${durationMs}`)
+    return { sessions, charged: 1, balance: this.info.balance }
+  }
+  setVideoMs(ms) {
+    this.session.videoMs = Math.max(this.session.videoMs, ms)
+  }
+  async reachVideo(ms) {
+    this.setVideoMs(ms)
+    this.reached.push(ms)
+    const s = this.session
+    while (s.videoMs > s.charged * s.unit && !s.exhausted) {
+      if (s.charged < this.failAt && this.info.balance > 0) (this.info.balance--, s.charged++)
+      else s.exhausted = true
+    }
+    return { charged: s.charged, exhausted: s.exhausted }
   }
   async endSession() {
     this.calls.push('end')
+    this.session = null
   }
   async asrKey() {
     return { key: 'k', maxMs: 300_000 }
@@ -112,15 +131,18 @@ test('会议视频：分说话人，说话人 1、2 记在 video.speakers，每�
   assert.ok(s.segments.every((x) => !x.sentences[0].tr))
 })
 
-test('会员：1 小时视频用云识别 1 场；2.5 小时 2 场，每段各开各结束；本地识别只出原文字幕不开场', async () => {
+test('会员：1 小时视频用云识别 1 张票；2.5 小时 1 张票、过 2 小时那一点再扣第 2 场；本地识别只出原文字幕不开票', async () => {
   let env = setup()
   let m = new FakeMember()
   await runVideo(deps(env, { settings: () => ({ ...DEFAULTS, plan: 'member' }), member: m, steps: { ...steps(), open: async () => fakeMedia(HOUR) } }), { ...base, recognition: 'cloud' })
-  assert.deepEqual(m.calls, ['start', 'end'])
+  assert.deepEqual(m.calls, [`start:${HOUR}`, 'end'])
+  assert.deepEqual(m.reached, [], '1 场的视频不用再报进度')
   env = setup()
   m = new FakeMember()
   const r = await runVideo(deps(env, { settings: () => ({ ...DEFAULTS, plan: 'member' }), member: m, steps: { ...steps(), open: async () => fakeMedia(2.5 * HOUR) } }), { ...base, recognition: 'cloud' })
-  assert.deepEqual(m.calls, ['start', 'end', 'start', 'end'])
+  assert.deepEqual(m.calls, [`start:${2.5 * HOUR}`, 'end'], '整个视频一张票，不是每段一场')
+  assert.deepEqual(m.reached, [2 * HOUR + 1], '第二段开始前报告过了第一场的界线，服务器扣第 2 场')
+  assert.equal(m.info.balance, 3)
   const s = env.store.load(r.sessionId)
   assert.equal(s.video.sessions, 2)
   assert.equal(s.video.sessionsUsed, 2)
@@ -133,19 +155,20 @@ test('会员：1 小时视频用云识别 1 场；2.5 小时 2 场，每段各�
   env = setup()
   m = new FakeMember()
   await runVideo(deps(env, { settings: () => ({ ...DEFAULTS, plan: 'member' }), member: m, steps: { ...steps(), open: async () => fakeMedia(HOUR) } }), { ...base, recognition: 'local', translate: true })
-  assert.deepEqual(m.calls, ['start', 'end'], '本地识别加会员翻译：1 场')
+  assert.deepEqual(m.calls, [`start:${HOUR}`, 'end'], '本地识别加会员翻译：1 场')
+  assert.ok(m.session === null)
 })
 
-test('场次不够：一场都没开、没留半成品；第二段开不了场次：前一段留着，说明只处理了前面', async () => {
+test('场次不够：一场都没开、没留半成品；第二场扣不了：前一段留着，说明只处理了前面', async () => {
   let env = setup()
   const m = new FakeMember({ balance: 1 })
   await assert.rejects(runVideo(deps(env, { settings: () => ({ ...DEFAULTS, plan: 'member' }), member: m, steps: { ...steps(), open: async () => fakeMedia(2.5 * HOUR) } }), { ...base, recognition: 'cloud' }), (e) => e.code === 'no-balance' && e.need === 2 && e.have === 1)
   assert.deepEqual(m.calls, [])
   assert.equal(env.store.list().length, 0)
   env = setup()
-  const m2 = new FakeMember({ balance: 2, failAt: 1 })
+  const m2 = new FakeMember({ balance: 2, failAt: 1 }) // 第一场扣了，别的电脑用掉了第二场
   const r = await runVideo(deps(env, { settings: () => ({ ...DEFAULTS, plan: 'member' }), member: m2, steps: { ...steps(), open: async () => fakeMedia(2.5 * HOUR) } }), { ...base, recognition: 'cloud' })
-  assert.deepEqual(m2.calls, ['start', 'end'])
+  assert.deepEqual(m2.calls, [`start:${2.5 * HOUR}`, 'end'])
   assert.match(r.partial, /场次不够/)
   const s = env.store.load(r.sessionId)
   assert.equal(s.video.reachedMs, 2 * HOUR)
@@ -161,7 +184,7 @@ test('取消：正在识别时中断，会议文件夹删掉，会员这一场�
     if (signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' })
   }
   await assert.rejects(runVideo(deps(env, { settings: () => ({ ...DEFAULTS, plan: 'member' }), member: m, steps: { ...steps({ cloud: slow }), open: async () => fakeMedia(HOUR) } }), { ...base, recognition: 'cloud' }, { signal: ac.signal }), (e) => e.name === 'AbortError')
-  assert.deepEqual(m.calls, ['start', 'end'])
+  assert.deepEqual(m.calls, [`start:${HOUR}`, 'end'])
   assert.equal(env.store.reindex().size, 0, '半成品删掉了')
   const env2 = setup()
   await assert.rejects(runVideo(deps(env2, { steps: { ...steps({ local: async () => [] }), open: async () => fakeMedia(HOUR) } }), base), (e) => e.code === 'no-speech')
@@ -174,7 +197,7 @@ test('本地识别遇到德语：直接说清楚，不开始', async () => {
   assert.equal(env.store.reindex().size, 0)
 })
 
-test('笔记：做完字幕后用刚结束那一场的票做；笔记失败不丢字幕，记在 notesError', async () => {
+test('笔记：做完字幕后接着用这张视频票做；笔记失败不丢字幕，记在 notesError', async () => {
   const env = setup()
   const calls = []
   const summarizer = { generate: async (id, ask, opts) => (calls.push([id, opts.now]), { items: [], htmlError: '图文没做出来' }) }
@@ -234,4 +257,15 @@ test('VideoService 问价：自带 Key 但 AI 没连上，翻译和笔记先拦�
   assert.match(q.errors[0].message, /DeepSeek/)
   assert.deepEqual((await svc.quote({ ...base, translate: false, notes: false })).errors, [])
   assert.equal((await svc.quote({ ...base, translate: false, notes: true })).errors[0].code, 'no-ai')
+})
+
+test('开票时服务器说场次不够（余额变了）：错误带着服务器说的要几场，不留半成品、不留票', async () => {
+  const env = setup()
+  const m = new FakeMember({ balance: 5 })
+  m.startVideoSession = async () => {
+    throw Object.assign(new Error('这个视频要 2 场'), { code: 'no-balance', needed: 2, balance: 1 })
+  }
+  await assert.rejects(runVideo(deps(env, { settings: () => ({ ...DEFAULTS, plan: 'member' }), member: m, steps: { ...steps(), open: async () => fakeMedia(2.5 * HOUR) } }), { ...base, recognition: 'cloud' }), (e) => e.code === 'no-balance' && e.need === 2 && e.have === 1)
+  assert.deepEqual(m.calls, [])
+  assert.equal(env.store.reindex().size, 0)
 })
