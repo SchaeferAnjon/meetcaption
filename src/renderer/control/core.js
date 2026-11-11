@@ -29,6 +29,7 @@ const state = {
   modeChoice: null, // 开始按钮下拉里临时换的模式 { projectId, mode, classSource }，换项目就作废
   projectModes: new Map(), // 项目 id → { mode, classSource }：列表里没带时用 getProject 补
   pendingStart: null, // 刚请求开始时选的模式，engine:state 没带 mode 时用它
+  video: { running: false }, // 视频处理：{ running, name, poster, progress } | { done: {...} } | { failed: {...} }
 }
 
 /* ---------------- 事件 ---------------- */
@@ -1091,7 +1092,7 @@ function wireTodoKeys(list, nav) {
  * 开始按钮的下拉：选项目（showProjects）、选模式（课堂再分教室现场和网课）。
  * 选的模式只管这一次（state.modeChoice），和项目默认不一样时可以一键设成默认。
  */
-function startMenu(anchor, { projectId = state.currentProjectId, showProjects = true } = {}) {
+function startMenu(anchor, { projectId = state.currentProjectId, showProjects = true, modes = true } = {}) {
   const pid = projectId
   const c = startChoice(pid)
   const def = { mode: projectMode(pid), classSource: projectClassSource(pid) }
@@ -1114,6 +1115,11 @@ function startMenu(anchor, { projectId = state.currentProjectId, showProjects = 
   const pick = (mode, classSource) => {
     state.modeChoice = { projectId: pid, mode, classSource: classSource ?? projectClassSource(pid) }
     emit('mode', state.modeChoice)
+  }
+  if (!modes) {
+    // 首页的模式在五张卡里选，这里只剩项目
+    items.pop() // 项目列表后面多出来的那条分隔线
+    return ui.menu(anchor, items, { searchable: items.length > 12, placeholder: t('找项目'), minWidth: 260 })
   }
   items.push({ section: t('模式') })
   items.push({ label: t('会议'), icon: MODES.meeting.icon, description: MODES.meeting.desc, checked: c.mode === 'meeting', onSelect: () => pick('meeting') })

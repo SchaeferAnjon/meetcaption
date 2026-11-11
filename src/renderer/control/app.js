@@ -145,6 +145,28 @@ function wireEvents() {
   })
   subscribe('assist:answer', onAnswer)
   subscribe('ask:update', onAsk)
+  // 视频模式
+  subscribe('video:state', (st) => {
+    if (st.running) state.video = { ...state.video, running: true, name: st.name, progress: st.progress ?? state.video?.progress ?? null }
+    else if (state.video?.running) state.video = { running: false }
+    emit('video')
+  })
+  subscribe('video:progress', (p) => {
+    state.video = { ...state.video, running: true, name: state.video?.name ?? p.name, progress: p }
+    emit('video-progress', p)
+  })
+  subscribe('video:done', (d) => {
+    state.video = { running: false, done: d }
+    emit('video')
+    ui.toast({ title: t(`「{0}」处理好了`, d.name), type: 'success', duration: 8000, action: { label: t('打开'), onClick: () => (dismissVideoJob(), go('meeting', { id: d.sessionId })) } })
+  })
+  subscribe('video:failed', (f) => {
+    state.video = f.cancelled ? { running: false } : { running: false, failed: f }
+    emit('video')
+    if (f.cancelled) ui.toast({ title: t('已取消处理') })
+    else if (f.code === 'no-balance') addNotice('error', f.error, { code: 'video-error', actions: [{ label: t('买场次'), run: () => call('showPricing') }] })
+  })
+  subscribe('video:open', ({ sessionId }) => sessionId && (dismissVideoJob(), go('meeting', { id: sessionId })))
   subscribe('overlay:state', (o) => {
     state.overlay = o
     emit('overlay', o)
@@ -274,6 +296,7 @@ async function boot() {
   wireMember(init)
   if (init.openPricing) openPricing(init.openPricing)
 
+  if (init.video?.running) state.video = { running: true, name: init.video.name, progress: init.video.progress ?? null }
   const snap = init.snapshot ?? { state: 'idle', segments: [] }
   const sess = snap.session ?? {}
   state.engine = { state: snap.state, sessionId: sess.id ?? null, projectId: sess.projectId ?? null, startedAt: sess.startedAt ?? null, mode: snap.mode ?? sess.mode, paused: Boolean(snap.paused) }

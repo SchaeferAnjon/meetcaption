@@ -1,4 +1,4 @@
-import { app, autoUpdater as nativeUpdater, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, screen, shell, systemPreferences, Tray, dialog } from 'electron'
+import { app, autoUpdater as nativeUpdater, BrowserWindow, Notification, desktopCapturer, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, screen, shell, systemPreferences, Tray, dialog } from 'electron'
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -41,6 +41,10 @@ import { notesPdf } from './class/notesPdf.js'
 import { MATERIAL_TYPES, importMaterial, materialKind, removeMaterial } from './class/materials.js'
 import { renderPdf } from './class/pdfRender.js'
 import { ClassAsk } from './class/ask.js'
+import { VideoService } from './video/service.js'
+import { VideoWorker } from './video/worker.js'
+import { DROP_EXTS } from './video/demux.js'
+import { toSrt, writeSrtBesideVideo, SRT_VARIANTS } from './video/srt.js'
 import { setUiLang, systemUiLang, t, uiDict, uiLang } from './i18n.js'
 import { TARGET_CODES } from './languages.js'
 
@@ -59,7 +63,7 @@ const selfTest = process.argv.find((a) => a.startsWith('--selftest'))
 const uiSelfTest = selfTest?.startsWith('--selftest=ui') ? Number(selfTest.split(':')[1]) || 8 : 0
 if (!selfTest && !app.requestSingleInstanceLock()) app.quit()
 
-let settings, projects, store, summarizer, classAsk, engine, capture, chatgptAuth, assistant, vpStore, member
+let settings, projects, store, summarizer, classAsk, engine, capture, chatgptAuth, assistant, vpStore, member, videoService
 let controlWin = null
 let settingsWin = null
 let onboardingWin = null
@@ -1602,6 +1606,18 @@ function takePendingPricing() {
   return p
 }
 
+// 视频处理好了：系统通知，点通知打开主窗口里这个视频的结果页。主窗口在前台时不弹
+function videoNotify({ title, body, sessionId }) {
+  if (process.env.MEETCAPTION_NO_NOTIFY || !Notification.isSupported()) return
+  if (controlWin && !controlWin.isDestroyed() && controlWin.isVisible() && controlWin.isFocused()) return
+  const n = new Notification({ title, body, silent: false })
+  n.on('click', () => {
+    showControl()
+    toUi('video:open', { sessionId })
+  })
+  n.show()
+}
+
 function wireIpc() {
   ipcMain.handle('app:init', (e) => ({
     openPricing: BrowserWindow.fromWebContents(e.sender) === controlWin ? takePendingPricing() : null,
@@ -1631,6 +1647,7 @@ function wireIpc() {
     update: updater?.status() ?? null,
     theme: themeInfo(),
     chrome: chromeInfo(),
+    video: videoService?.snapshot() ?? { running: false },
   }))
   ipcMain.handle('settings:update', (_e, patch) => settings.update(patch))
   ipcMain.handle('engine:start', (_e, opts) => startEngine(opts ?? {}))
@@ -1769,6 +1786,54 @@ function wireIpc() {
   ipcMain.handle('todos:update', (_e, sessionId, itemId, patch) => updateTodo(sessionId, itemId, patch ?? {}))
   ipcMain.handle('todos:remove', (_e, sessionId, itemId) => removeTodo(sessionId, itemId))
   ipcMain.handle('search:query', (_e, query) => searchLibrary({ query, projects: projects.list(), records: store.records() }))
+
+  // 视频模式：首页第五张卡。选文件、问价、开始、取消；结果页导出 SRT、改说话人的名字
+  ipcMain.handle('video:pick', async (e) => {
+    // 自测时用 MEETCAPTION_TEST_VIDEO 指定文件，不弹系统的选文件框
+    if (process.env.MEETCAPTION_TEST_VIDEO) return process.env.MEETCAPTION_TEST_VIDEO
+    const r = await dialog.showOpenDialog(senderWin(e), { title: t('选一个视频'), properties: ['openFile'], filters: [{ name: t('视频和音频'), extensions: [...DROP_EXTS, 'mkv'] }] })
+    return r.canceled ? null : r.filePaths[0]
+  })
+  ipcMain.handle('video:quote', async (_e, q) => videoService.quote(q))
+  ipcMain.handle('video:start', async (_e, opts) => {
+    try {
+      return await videoService.start(opts)
+    } catch (e) {
+      return { ok: false, error: e.message }
+    }
+  })
+  ipcMain.handle('video:cancel', () => videoService.cancel())
+  ipcMain.handle('video:exportSrt', async (e, id, variant) => {
+    try {
+      const session = store.load(id)
+      if (!SRT_VARIANTS.includes(variant)) variant = 'both'
+      const content = toSrt(session.segments, session.startedAt, variant)
+      let file = session.video?.file ? writeSrtBesideVideo(session.video.file, content, variant) : null
+      // 视频所在的位置写不了（只读的盘、视频被挪走了）：让用户选
+      if (!file) {
+        const r = await dialog.showSaveDialog(senderWin(e), { title: t('导出 SRT 字幕'), defaultPath: path.join(store.dir(id), `${path.parse(session.video?.name ?? 'subtitle').name}.srt`), filters: [{ name: 'SRT', extensions: ['srt'] }] })
+        if (r.canceled || !r.filePath) return null
+        fs.writeFileSync(r.filePath, content)
+        file = r.filePath
+      }
+      shell.showItemInFolder(file)
+      return { ok: true, file, name: path.basename(file), variant }
+    } catch (err) {
+      return { ok: false, error: err.message }
+    }
+  })
+  ipcMain.handle('video:renameSpeaker', (_e, id, index, name) => {
+    const clean = String(name ?? '').trim().slice(0, 40)
+    if (!clean) return { ok: false, error: t('名字不能是空的') }
+    const s = store.mutate(id, (x) => {
+      const names = x.video?.speakers
+      if (!names || !(index in names)) throw new Error(t('找不到这个说话人'))
+      names[index] = clean
+      for (const seg of x.segments) if (seg.sp === index) seg.speaker = clean
+    })
+    emitSessions({ sessionId: id })
+    return { ok: true, speakers: s.video.speakers }
+  })
 
   // 窗口和引导
   ipcMain.handle('window:openSettings', (_e, section) => openSettings(section))
@@ -2110,6 +2175,8 @@ app.whenReady().then(async () => {
   projects = new ProjectStore({ root: rootDir, trash })
   store = new SessionStore({ projects, trash })
   const library = initLibrary()
+  // 视频处理到一半就退出了应用：留下的半成品清掉
+  store.sweepVideos()
   // 升级（initLibrary 里的 upgradePatch）可能定了界面语言（0.6 以前的老用户保持中文）：窗口还没开，按升级后的再定一次
   setUiLang(settings.get().uiLang, app.getPreferredSystemLanguages()[0] ?? app.getLocale())
   capture = new RendererCapture({ preload: path.join(root, 'preload/capture.cjs'), page: path.join(root, 'renderer/capture/index.html') })
@@ -2152,6 +2219,20 @@ app.whenReady().then(async () => {
     projectOf: (s) => projects.get(s.projectId),
     loadImage: slideDataUrl,
     onSaved: refreshNotesHtmlSoon,
+  })
+
+  videoService = new VideoService({
+    store,
+    projects,
+    settings: () => settings.get(),
+    member,
+    llm,
+    summarizer,
+    voiceprint: () => loadVoiceprintScorer(),
+    makeWorkers: () => ({ audio: new VideoWorker(), frames: new VideoWorker() }),
+    emit: (channel, payload) => (toUi(channel, payload), channel === 'video:done' && (emitSessions({ sessionId: payload.sessionId }), emitProjects(), emitTodos({ sessionId: payload.sessionId }))),
+    notify: videoNotify,
+    busy: () => engine.state !== 'idle',
   })
 
   if (useFakes) engine.useFakeSources(fakeFiles)

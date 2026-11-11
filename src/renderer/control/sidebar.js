@@ -35,6 +35,19 @@ function renderSidebar() {
     )
   }
 
+  // 视频在处理：侧栏顶上一条进度，点一下回首页看
+  if (state.video?.running) {
+    const pct = Math.round((state.video.progress?.fraction ?? 0) * 100)
+    nav.append(
+      el(
+        'button.side-job',
+        { type: 'button', dataset: { nav: 'video-job' }, title: state.video.name, onClick: () => go('home', {}, { root: true }) },
+        el('span.side-job-row', {}, icon('video', 14), el('span.nav-label', { text: t('视频处理中') }), el('span.count.num', { text: `${pct}%` })),
+        el('span.vm-bar', {}, el('i', { style: { width: `${pct}%` } })),
+      ),
+    )
+  }
+
   const openTodos = activeProjects().reduce((n, p) => n + (p.openTodos || 0), 0)
   nav.append(
     navItem({ key: 'home', lead: icon('house', 16), label: t('首页'), onClick: () => go('home', {}, { root: true }) }),
@@ -211,6 +224,14 @@ document.getElementById('sidebar').addEventListener('keydown', (e) => {
   next?.focus()
 })
 
+on('video', renderSidebar)
+on('video-progress', () => {
+  const job = document.querySelector('#sidebar .side-job')
+  if (!job) return renderSidebar()
+  const pct = Math.round((state.video.progress?.fraction ?? 0) * 100)
+  job.querySelector('.count').textContent = `${pct}%`
+  job.querySelector('.vm-bar > i').style.width = `${pct}%`
+})
 on('route', (v) => (v?.name === 'project' && projectOf(v.id)?.archived ? renderSidebar() : markSidebarActive()))
 on('projects', renderSidebar)
 on('status', renderSidebar)

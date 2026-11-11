@@ -44,6 +44,12 @@ const EVENTS = new Set([
   'member:paid', // 付完款、场次加上了：{ kind, code, balance, ... }
   'member:showPricing', // 别的窗口（设置）要求主窗口打开收费页
   'guide:show', // 主窗口导览（引导最后点「带我看一遍主窗口」，或设置里点「看主窗口导览」）
+  'video:state', // { running, file?, name?, progress? }：有没有视频在处理
+  'video:progress', // { steps: [{ id, label, state, fraction }], fraction, atMs, durationMs, etaSec, name }
+  'video:started', // { sessionId }
+  'video:done', // { sessionId, name, partial, notesError, translateFailed, usage, timings, sessions }
+  'video:failed', // { name, cancelled, error, code }
+  'video:open', // 点系统通知：打开这个视频的结果页 { sessionId }
   'slides:added', // 截取了一张画面 { sessionId, file: 'slides/时.分.秒.jpg', at（截图时刻，毫秒时间戳，同 seg.startedAt）, url（file:// 地址）}
 ])
 
@@ -69,6 +75,14 @@ contextBridge.exposeInMainWorld('app', {
   toggleOverlay: invoke('overlay:toggle'),
   editOverlay: invoke('overlay:edit'),
   resetOverlayPosition: invoke('overlay:resetPosition'),
+
+  // 视频模式
+  videoPick: invoke('video:pick'), // → 本地路径 | null（取消）
+  videoQuote: invoke('video:quote'), // ({ file, kind, recognition, translate, notes, language, target }) → { ok, probe, sessions, enough, estSec, errors: [{ code, message }], balance, plan, cloudAvailable }
+  videoStart: invoke('video:start'), // 同上，→ { ok } | { ok: false, code, error }
+  videoCancel: invoke('video:cancel'),
+  videoExportSrt: invoke('video:exportSrt'), // (sessionId, 'both' | 'orig' | 'tr') → { ok, file, name } | null | { ok: false, error }：存在视频旁边，同名
+  videoRenameSpeaker: invoke('video:renameSpeaker'), // (sessionId, 第几个说话人, 新名字) → { ok, speakers }
 
   // 项目
   listProjects: invoke('projects:list'),

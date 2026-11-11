@@ -6,12 +6,13 @@ VIEWS.home = {
     ctx.header({ crumbs: [el('span.crumb.crumb-title', { text: t('首页') })] })
 
     const hero = el('section.home-hero')
+    const vmJob = el('div.vm-job-slot')
     const guide = el('div.home-guide')
     const recentList = el('div.list', { role: 'listbox', 'aria-label': t('最近的会议') })
     const todoList = el('div.list', { role: 'listbox', 'aria-label': t('快到期的待办') })
     const recentTitle = sectionTitle(t('最近 3 天'))
     const todoTitle = sectionTitle(t('快到期的待办'))
-    const page = el('div.page.home', {}, hero, guide, el('section.home-section', {}, recentTitle, recentList), el('section.home-section', {}, todoTitle, todoList))
+    const page = el('div.page.home', {}, hero, vmJob, guide, el('section.home-section', {}, recentTitle, recentList), el('section.home-section', {}, todoTitle, todoList))
     ctx.body.append(el('div.pane-body', {}, page))
 
     const recentNav = navList(recentList)
@@ -60,10 +61,10 @@ VIEWS.home = {
       )
       const pick = el('button.btn.btn-primary.btn-lg.btn-icon', {
         type: 'button',
-        'aria-label': t('换项目或模式'),
-        title: t('换项目或模式'),
+        'aria-label': t('换项目'),
+        title: t('换项目'),
         disabled: loading,
-        onClick: () => startMenu(pick),
+        onClick: () => startMenu(pick, { modes: false }),
       }, icon('chevron-down', 16))
       const s = state.settings ?? {}
       const hints = []
@@ -80,7 +81,36 @@ VIEWS.home = {
       // 开始按钮旁边一直显示这个项目的语言对，点开就能改（design/onboarding-v2：回答「语言在哪设置」）
       const langBtn = el('button.btn.btn-lg.home-lang', { type: 'button', title: t('对方说的语言和翻成的语言'), onClick: () => langMenu(langBtn, state.currentProjectId) }, icon('languages', 16), el('span.home-lang-pair'), icon('chevron-down', 14))
       fillLangButton(langBtn, state.currentProjectId)
-      hero.append(...[el('div.home-start-row', {}, el('div.btn-group', {}, startBtn, pick), langBtn), hints.length ? el('div.home-hints.text-2.text-sm', {}, ...hints) : null, projectHint].filter(Boolean))
+      // 五张卡一排：前四张选这次开始用什么模式，第五张「视频」收文件
+      const modeCard = ({ mode, src, icn, tint, title, desc }) => {
+        const on = choice.mode === mode && (mode !== 'class' || sourceOf(choice.classSource) === src)
+        return el(
+          'button.mode-card',
+          {
+            type: 'button',
+            class: on ? 'is-on' : '',
+            role: 'radio',
+            'aria-checked': String(on),
+            dataset: { mode: mode === 'class' ? `class-${src}` : mode },
+            onClick: () => {
+              state.modeChoice = { projectId: state.currentProjectId, mode, classSource: mode === 'class' ? src : projectClassSource(state.currentProjectId) }
+              emit('mode', state.modeChoice)
+            },
+          },
+          el('span.mode-card-head', {}, ui.iconBox(icn, tint, { size: 'sm' }), el('span.mode-card-title', { text: title })),
+          el('span.mode-card-desc', { text: desc }),
+        )
+      }
+      const cards = el(
+        'div.mode-cards',
+        { role: 'radiogroup', 'aria-label': t('这次做什么') },
+        modeCard({ mode: 'meeting', icn: MODES.meeting.icon, tint: MODES.meeting.tint, title: MODES.meeting.label, desc: MODES.meeting.desc }),
+        modeCard({ mode: 'interview', icn: MODES.interview.icon, tint: MODES.interview.tint, title: MODES.interview.label, desc: MODES.interview.desc }),
+        modeCard({ mode: 'class', src: 'mic', icn: 'mic', tint: 'purple', title: t('课堂'), desc: CLASS_SOURCES.mic.desc }),
+        modeCard({ mode: 'class', src: 'system', icn: 'monitor', tint: 'purple', title: CLASS_SOURCES.system.label, desc: CLASS_SOURCES.system.desc }),
+        videoCard(),
+      )
+      hero.append(...[cards, el('div.home-start-row', {}, el('div.btn-group', {}, startBtn, pick), langBtn), hints.length ? el('div.home-hints.text-2.text-sm', {}, ...hints) : null, projectHint].filter(Boolean))
     }
 
     function renderGuide() {
@@ -164,10 +194,29 @@ VIEWS.home = {
       if (document.activeElement !== todoList) todoNav.select(-1)
     }
 
+    function renderVideoJob() {
+      const card = videoJobCard()
+      ui.clear(vmJob)
+      vmJob.hidden = !card
+      if (card) vmJob.append(card)
+    }
+    // 进度每秒几次：只改进度条和那一行字，不整张卡重画
+    function updateVideoProgress() {
+      const live = vmJob.querySelector('[data-vm-job="running"]')
+      if (!live) return renderVideoJob()
+      const fresh = videoJobCard()
+      if (!fresh) return renderVideoJob()
+      live.querySelector('.vm-job-sub').textContent = fresh.querySelector('.vm-job-sub').textContent
+      live.querySelector('.vm-bar > i').style.width = fresh.querySelector('.vm-bar > i').style.width
+      live.querySelector('.vm-phases').replaceChildren(...fresh.querySelector('.vm-phases').childNodes)
+    }
     renderHero()
+    renderVideoJob()
     renderGuide()
     loadRecent()
     loadTodos()
+    ctx.on('video', () => (renderVideoJob(), renderHero()))
+    ctx.on('video-progress', updateVideoProgress)
     ctx.on('engine', renderHero)
     ctx.on('projects', () => (renderHero(), loadRecent()))
     ctx.on('settings', renderHero)
@@ -237,7 +286,8 @@ function meetingRow(s, { showProject = false, onOpen } = {}) {
   if (s.count) sub.push(t(`{0} 段`, s.count))
   const acc = []
   if (s.live) acc.push(el('span.tag.tag-error', {}, el('span.dot.dot-live'), t('进行中')))
-  if (s.mode === 'class' || s.mode === 'interview') acc.push(el('span.tag.mode-tag', { dataset: { tint: modeInfo(s.mode).tint } }, icon(modeInfo(s.mode).icon, 12), modeInfo(s.mode).label))
+  if (s.video) acc.push(el('span.tag.mode-tag', { dataset: { tint: 'teal' } }, icon('video', 12), s.mode === 'class' ? t('视频 · 课') : t('视频 · 会')))
+  else if (s.mode === 'class' || s.mode === 'interview') acc.push(el('span.tag.mode-tag', { dataset: { tint: modeInfo(s.mode).tint } }, icon(modeInfo(s.mode).icon, 12), modeInfo(s.mode).label))
   if (s.todos) acc.push({ icon: 'circle-check', text: String(s.todos), title: t(`{0} 条待办没做完`, s.todos) })
   if (s.answers) acc.push({ icon: 'sparkles', text: String(s.answers), title: t(`{0} 条 AI 回答`, s.answers) })
   if (!s.live) acc.push(el('span.num.meeting-duration', { text: s.durationMs != null ? fmtDuration(s.durationMs) : '' }))

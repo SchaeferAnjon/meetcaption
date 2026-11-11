@@ -30,9 +30,16 @@ VIEWS.meeting = {
     const isClass = () => s?.mode === 'class'
     const liveNotesOf = () => (isLive() && state.live?.notes) || s?.liveNotes || null
     const hasLiveNotes = () => ['sections', 'emphasis', 'homework', 'terms'].some((k) => notesList(liveNotesOf()?.[k]).length)
-    const tabList = () => (isClass() ? CLASS_TABS.filter((k) => (k !== 'answers' || s.answers?.length) && (k !== 'ask' || (!isLive() && s.segments.some((x) => x.text)))) : MEETING_TABS).filter((k) => (k !== 'notes' || hasLiveNotes()) && (k !== 'html' || s.summary?.markdown))
+    const isVideo = () => Boolean(s?.video)
+    // 视频：字幕、（图文笔记）、笔记或纪要、待办或作业、术语；截图在视频下面一排，不单列一页
+    const VIDEO_TABS = () => (isClass() ? ['transcript', 'html', 'summary', 'terms', 'todos'] : ['transcript', 'summary', 'todos', 'terms'])
+    const tabList = () =>
+      isVideo()
+        ? VIDEO_TABS().filter((k) => (k !== 'html' || s.summary?.markdown) && (k !== 'terms' || glossary(s).length))
+        : (isClass() ? CLASS_TABS.filter((k) => (k !== 'answers' || s.answers?.length) && (k !== 'ask' || (!isLive() && s.segments.some((x) => x.text)))) : MEETING_TABS).filter((k) => (k !== 'notes' || hasLiveNotes()) && (k !== 'html' || s.summary?.markdown))
     const panel = el('div.tab-panel', { role: 'tabpanel' })
-    const page = el('div.page.meeting-page', {}, el('section.meeting-head', {}, titleInput, el('div.meeting-meta-row', {}, projectBtn, modeTag, meta)), liveNote, tabs, panel)
+    const head = el('section.meeting-head', {}, titleInput, el('div.meeting-meta-row', {}, projectBtn, modeTag, meta))
+    const page = el('div.page.meeting-page', {}, head, liveNote, tabs, panel)
     const scroller = el('div.pane-body', {}, page)
     ctx.body.append(scroller)
     wireTabs(tabs, (tv) => setTab(tv), panel)
@@ -51,7 +58,7 @@ VIEWS.meeting = {
           s ? el('button.crumb-button', { type: 'button', onClick: () => go('project', { id: s.projectId }) }, projectBox(p, 'sm'), el('span.truncate', { text: p?.name ?? t('未归类') })) : null,
           el('span.crumb.truncate', { text: s ? sessionTitle(s) : t('会议') }),
         ],
-        actions: s ? [menuBtn] : [],
+        actions: s ? [isVideo() ? exportBtn : null, menuBtn] : [],
       })
     }
 
@@ -60,23 +67,33 @@ VIEWS.meeting = {
       titleInput.placeholder = sessionTitle({ startedAt: s.startedAt, mode: s.mode })
       fill(projectBtn, projectTag(s.projectId), icon('chevrons-up-down', 12))
       const m = modeInfo(s.mode)
-      modeTag.hidden = s.mode !== 'class' && s.mode !== 'interview'
-      fill(modeTag, icon(m.icon, 12), s.mode === 'class' && s.classSource ? `${m.label} · ${CLASS_SOURCES[sourceOf(s.classSource)].label}` : m.label)
-      modeTag.dataset.tint = m.tint
+      modeTag.hidden = !isVideo() && s.mode !== 'class' && s.mode !== 'interview'
+      if (isVideo()) {
+        fill(modeTag, icon('video', 12), s.mode === 'class' ? t('视频 · 课') : t('视频 · 会'))
+        modeTag.dataset.tint = 'teal'
+      } else {
+        fill(modeTag, icon(m.icon, 12), s.mode === 'class' && s.classSource ? `${m.label} · ${CLASS_SOURCES[sourceOf(s.classSource)].label}` : m.label)
+        modeTag.dataset.tint = m.tint
+      }
       // 标签页：课堂和会议不一样
       const labels = TAB_LABELS[isClass() ? 'class' : 'meeting']
       const shown = tabList()
       for (const [k, b] of Object.entries(tabBtns)) {
         b.hidden = !shown.includes(k)
-        b.querySelector('.tab-label').textContent = labels[k] ?? ''
+        b.querySelector('.tab-label').textContent = isVideo() && k === 'transcript' ? t('字幕') : (labels[k] ?? '')
       }
       for (const k of shown) tabs.append(tabBtns[k])
       const segs = s.segments.filter((x) => x.text)
-      const bits = [fmtWhen(s.startedAt)]
-      if (s.endedAt) bits.push(fmtDuration(s.endedAt - s.startedAt))
-      bits.push(t(`{0} 段`, segs.length))
-      if (s.engineLabel) bits.push(s.engineLabel)
-      fill(meta, icon('clock', 13), bits.join(' · '))
+      let bits = [fmtWhen(s.startedAt)]
+      if (isVideo()) {
+        const v = s.video
+        bits = [fmtLen(v.durationMs), s.target ? `${langLabel(s.language ?? 'en')} → ${langLabel(s.target)}` : langLabel(s.language ?? 'en'), v.recognition === 'local' ? t('本地识别') : v.plan === 'member' ? t('会员云识别') : t('云识别'), v.plan !== 'member' || !v.sessions ? (v.plan === 'member' ? t('没用场次') : '') : t(`用了 {0} 场`, v.sessionsUsed ?? v.sessions)].filter(Boolean)
+      } else {
+        if (s.endedAt) bits.push(fmtDuration(s.endedAt - s.startedAt))
+        bits.push(t(`{0} 段`, segs.length))
+        if (s.engineLabel) bits.push(s.engineLabel)
+      }
+      fill(meta, isVideo() ? null : icon('clock', 13), bits.join(' · '))
       ui.clear(liveNote)
       if (isLive())
         liveNote.append(
@@ -339,6 +356,7 @@ VIEWS.meeting = {
       prose.hidden = false
       renderMarkdown(prose, md)
       fixImages(prose)
+      vm?.decorate(prose)
     }
 
     // 课堂笔记里用相对路径引用截图（slides/xxx.jpg），换成会议文件夹里的实际地址；点一下放大
@@ -395,7 +413,10 @@ VIEWS.meeting = {
     ctx.dispose(() => frameFit.disconnect())
     // 框架里的页面不能自己存东西（没有 allow-same-origin）：目录收起还是展开，页面发消息过来，这里记下（见 shared/notes-toc.js），每次把框架放回页面时写在地址里带回去
     const onFrameMessage = (e) => {
-      if (htmlFrame?.contentWindow && e.source === htmlFrame.contentWindow) notesToc.accept(store, e.data)
+      if (!htmlFrame?.contentWindow || e.source !== htmlFrame.contentWindow) return
+      // 视频的图文笔记：点时间标签或截图旁的「视频 mm:ss」，让左边的视频跳过去播
+      if (e.data?.type === 'meetcaption-seek' && vm && Number.isFinite(e.data.ms)) return vm.seek(e.data.ms, true)
+      notesToc.accept(store, e.data)
     }
     window.addEventListener('message', onFrameMessage)
     ctx.dispose(() => window.removeEventListener('message', onFrameMessage))
@@ -698,6 +719,46 @@ VIEWS.meeting = {
       )
     }
 
+    // 视频：左边播放器，右边标签页
+    let vm = null
+    let unTranscript = null
+    ctx.dispose(() => (unTranscript?.(), vm?.destroy()))
+
+    function enterVideoLayout() {
+      if (vm) return
+      vm = videoView(ctx, s, { onRename: () => reloadSoon() })
+      page.classList.add('video-page')
+      scroller.classList.add('is-video')
+      page.replaceChildren(el('div.vm-leftcol', {}, head, liveNote, vm.left), el('div.vm-right', {}, tabs, panel))
+    }
+
+    function exportMenu(anchor) {
+      const has = s.segments.some((x) => (x.sentences ?? []).some((y) => y.tr))
+      const srt = async (variant) => {
+        const r = await call('videoExportSrt', id, variant)
+        if (r == null) return
+        if (failed(r)) return ui.toast({ title: t('没能导出'), message: r?.error, type: 'error' })
+        ui.toast({ title: t(`已存好「{0}」`, r.name), message: variant === 'both' ? (has ? t('原文和译文两行，放在视频旁边，播放器会自动加载') : t('放在视频旁边，播放器会自动加载')) : variant === 'orig' ? t('只有原文，放在视频旁边') : t('只有译文，放在视频旁边'), type: 'success', duration: 6000 })
+      }
+      ui.menu(
+        anchor,
+        [
+          { section: t('字幕') },
+          { label: has ? t('SRT 字幕：原文和译文') : t('SRT 字幕'), icon: 'captions', onSelect: () => srt('both') },
+          has && { label: t('SRT 字幕：只要原文'), icon: 'captions', onSelect: () => srt('orig') },
+          has && { label: t('SRT 字幕：只要译文'), icon: 'captions', onSelect: () => srt('tr') },
+          isClass() && s.summary?.markdown && { section: t('笔记') },
+          isClass() && s.summary?.markdown && { label: t('图文笔记：用浏览器打开'), icon: 'external-link', onSelect: () => openHtml(anchor) },
+          isClass() && s.summary?.markdown && { label: t('图文笔记：导出 PDF'), icon: 'file-down', onSelect: () => exportPdf(anchor) },
+          isClass() && s.summary?.markdown && { label: t('导出到笔记库…'), icon: 'folder-output', onSelect: () => exportNotes(anchor) },
+          'sep',
+          { label: t('打开文件夹'), icon: 'external-link', onSelect: () => call('openFolder', id) },
+        ].filter(Boolean),
+        { align: 'end', minWidth: 260 },
+      )
+    }
+    const exportBtn = el('button.btn', { type: 'button', onClick: () => exportMenu(exportBtn) }, icon('download', 14), t('导出'), icon('chevron-down', 12))
+
     function setTab(tv) {
       if (s && !tabList().includes(tv)) tv = 'summary'
       else if (!s && !CLASS_TABS.includes(tv) && !MEETING_TABS.includes(tv)) tv = 'summary'
@@ -708,7 +769,12 @@ VIEWS.meeting = {
         b.tabIndex = k === tv ? 0 : -1
       }
       summaryParts = null
-      page.classList.toggle('is-wide', tv === 'html')
+      page.classList.toggle('is-wide', tv === 'html' && !isVideo())
+      // 看笔记时右栏变宽，视频缩小但一直在，下面是正在说的那句
+      page.classList.toggle('vm-wide', isVideo() && (tv === 'html' || tv === 'summary'))
+      vm?.setWide(tv === 'html' || tv === 'summary')
+      unTranscript?.()
+      unTranscript = null
       if (tv !== 'transcript') {
         unwireAsk?.()
         unwireAsk = null
@@ -718,7 +784,7 @@ VIEWS.meeting = {
       if (tv === 'summary') renderSummary()
       if (tv === 'html') renderHtml()
       if (tv === 'todos') renderTodos()
-      if (tv === 'transcript') renderTranscript()
+      if (tv === 'transcript') (vm ? (unTranscript = vm.renderTranscript(panel)) : renderTranscript())
       if (tv === 'answers') renderAnswers()
       if (tv === 'terms') renderTerms()
       if (tv === 'slides') renderSlides()
@@ -744,6 +810,7 @@ VIEWS.meeting = {
       const first = !s
       s = r
       segById = null
+      if (s.video) (vm ? vm.update(s) : enterVideoLayout())
       ctx.setParam('projectId', s.projectId)
       markSidebarActive()
       renderHeader()
@@ -752,7 +819,7 @@ VIEWS.meeting = {
         autoRename = false
         requestAnimationFrame(() => (titleInput.focus(), titleInput.select()))
       }
-      if (first && !tab) tab = s.summary?.markdown || !s.segments.some((x) => x.text) ? 'summary' : 'transcript'
+      if (first && !tab) tab = s.video ? 'transcript' : s.summary?.markdown || !s.segments.some((x) => x.text) ? 'summary' : 'transcript'
       if (first && autoSummarize) {
         autoSummarize = false
         tab = 'summary'
