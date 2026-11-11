@@ -1825,5 +1825,6 @@
  "出纪要和待办；说话的人标成「说话人 1、2、3」，之后能改成真名": "Makes minutes and to-dos; speakers are labeled \"Speaker 1, 2, 3\" and can be renamed later",
  "{0} 个小节": "{0} {0|section|sections}",
  "{0} 张自动截的画面": "{0} {0|frame|frames} captured automatically",
- "老师原话 {0} 句": "What the teacher said, {0} {0|line|lines}"
+ "老师原话 {0} 句": "What the teacher said, {0} {0|line|lines}",
+ "全部 {0} 节": "All {0} {0|section|sections}"
 }

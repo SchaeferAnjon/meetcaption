@@ -433,14 +433,16 @@ VIEWS.meeting = {
         ? [ui.spinner(12), making ? (s.materials?.length ? t('正在做图文笔记：把老师讲的对到课件上…') : t('正在做图文笔记…')) : t('课堂笔记正在生成，写好后图文笔记跟着重做')]
         : summaryError.get(id)
           ? [el('span.summary-error', {}, icon('circle-alert', 14), summaryError.get(id))]
-          : has
+          : has && isVideo()
+            ? []
+            : has
             ? [t(`课件页插在老师讲到的地方，框出他对着讲的那几行{0}`, s.summary.htmlAt ? t(` · {0} 做的`, fmtClock(s.summary.htmlAt)) : '')]
             : []
       const bar = el('div.summary-toolbar.html-toolbar', {}, el('div.html-note.text-2.text-sm', {}, ...note), redoBtn, browserBtn, pdfBtn)
       // 视频课：左截图右要点、每节带时间的笔记画在页面里（不用 HTML 文件），按钮放在最后；笔记的小节认不出来时还用下面的框架
       if (isVideo() && s.summary?.markdown) {
         const key = `${s.summary.createdAt}:${s.slides?.length ?? 0}:${s.segments?.length ?? 0}:${s.dir}`
-        if (videoNotes?.key !== key) videoNotes = { key, view: videoNotesView(s, vm) }
+        if (videoNotes?.key !== key) (videoNotes?.view?.destroy(), (videoNotes = { key, view: videoNotesView(s, vm) }))
         if (videoNotes.view) {
           bar.classList.add('vn-foot')
           fill(panel, videoNotes.view.node, bar)

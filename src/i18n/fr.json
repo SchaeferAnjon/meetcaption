@@ -1825,5 +1825,6 @@
  "出纪要和待办；说话的人标成「说话人 1、2、3」，之后能改成真名": "Produit un compte rendu et des tâches ; les intervenants sont nommés « Intervenant 1, 2, 3 » et peuvent être renommés ensuite",
  "{0} 个小节": "{0} {0|section|sections}",
  "{0} 张自动截的画面": "{0} {0|image capturée|images capturées} automatiquement",
- "老师原话 {0} 句": "Propos de l'enseignant, {0} {0|phrase|phrases}"
+ "老师原话 {0} 句": "Propos de l'enseignant, {0} {0|phrase|phrases}",
+ "全部 {0} 节": "Les {0} {0|section|sections}"
 }

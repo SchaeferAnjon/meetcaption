@@ -1825,5 +1825,6 @@
  "出纪要和待办；说话的人标成「说话人 1、2、3」，之后能改成真名": "Crea verbale e attività; chi parla è indicato come «Speaker 1, 2, 3» e si può rinominare dopo",
  "{0} 个小节": "{0} {0|sezione|sezioni}",
  "{0} 张自动截的画面": "{0} {0|schermata catturata|schermate catturate} automaticamente",
- "老师原话 {0} 句": "Parole dell'insegnante, {0} {0|frase|frasi}"
+ "老师原话 {0} 句": "Parole dell'insegnante, {0} {0|frase|frasi}",
+ "全部 {0} 节": "Tutte le {0} {0|sezione|sezioni}"
 }

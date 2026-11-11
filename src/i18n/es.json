@@ -1825,5 +1825,6 @@
  "出纪要和待办；说话的人标成「说话人 1、2、3」，之后能改成真名": "Genera acta y tareas; los hablantes se marcan como «Hablante 1, 2, 3» y luego se pueden renombrar",
  "{0} 个小节": "{0} {0|sección|secciones}",
  "{0} 张自动截的画面": "{0} {0|captura automática|capturas automáticas}",
- "老师原话 {0} 句": "Lo que dijo el profesor, {0} {0|frase|frases}"
+ "老师原话 {0} 句": "Lo que dijo el profesor, {0} {0|frase|frases}",
+ "全部 {0} 节": "Las {0} {0|sección|secciones}"
 }

@@ -53,13 +53,20 @@ function parseVideoNotes(md) {
     x.figs = []
     x.body = x.body.replace(NOTE_IMG, (all, alt, name) => (x.figs.push(decodeURIComponent(name)), ''))
   }
+  const empty = /^[（(]?(无|無|none|なし|없음|keine|aucun[e]?|ninguno|nessuno)[）)]?[。.]?$/i
   const pre = h2s.slice(0, outline)
   return {
     overview: pre[0] ? pre[0].body.join('\n').trim() : '',
     intro: o.body.join('\n').trim(),
     sections,
-    extras: [...pre.slice(1), ...h2s.slice(outline + 1)].map((h) => ({ title: h.title, body: [...h.body, ...h.subs.flatMap((x) => [`\n### ${x.title}`, ...x.body])].join('\n').trim() })).filter((x) => x.body),
+    extras: [...pre.slice(1), ...h2s.slice(outline + 1)].map((h) => ({ title: h.title, body: [...h.body, ...h.subs.flatMap((x) => [`\n### ${x.title}`, ...x.body])].join('\n').trim() })).filter((x) => x.body && !empty.test(x.body.replace(/\s+/g, ''))),
   }
+}
+
+/** 展开或收起一块：展开时按钮换成「收起」。 */
+function toggle(box, btn, label) {
+  const open = box.classList.toggle('is-collapsed') === false
+  btn.textContent = open ? t('收起') : label
 }
 
 /** 画出图文笔记。s：这场会议；vm：视频播放器（seek）；→ { node } 或 null（笔记不是带时间的小节，调用的地方换回原来的）。 */
@@ -68,7 +75,6 @@ function videoNotesView(s, vm) {
   if (!parsed) return null
   const slides = [...(s.slides ?? [])].filter((x) => x.file).map((x) => ({ ...x, ms: x.at - s.startedAt })).sort((p, q) => p.ms - q.ms)
   const byName = new Map(slides.map((x) => [String(x.file).split('/').pop(), x]))
-  const cited = new Set(parsed.sections.flatMap((x) => x.figs))
   const segs = (s.segments ?? []).filter((x) => x.text).map((x) => ({ x, ms: x.startedAt - s.startedAt })).sort((p, q) => p.ms - q.ms)
   const { sections } = parsed
 
@@ -81,13 +87,17 @@ function videoNotesView(s, vm) {
   const jump = (ms) => vm?.seek(ms, true)
   const chip = (ms) => el('button.vm-tchip', { type: 'button', title: t('回到视频这一刻'), onClick: () => jump(ms) }, icon('play', 10), fmtOffset(ms))
 
+  // 模型引用的截图只在时间落进这一节时留着（模型有时把别处的图挂错小节）；没留下的和没引用的按时间放进所属的小节
+  const endOf = (i) => sections[i + 1]?.at ?? Infinity
+  const placed = new Set()
   sections.forEach((x, i) => {
-    const end = sections[i + 1]?.at ?? Infinity
-    // 模型引用的截图在前；没引用的、落在这一节时间里的补在后面
-    const own = x.figs.map((f) => byName.get(f)).filter(Boolean)
-    const rest = slides.filter((sl) => !cited.has(String(sl.file).split('/').pop()) && sl.ms >= x.at && sl.ms < end)
-    x.shots = [...own, ...rest].filter((v, k, a) => a.indexOf(v) === k).sort((p, q) => p.ms - q.ms).slice(0, MAX_FIGS)
-    x.said = segs.filter((q) => q.ms >= x.at && q.ms < end)
+    x.shots = x.figs.map((f) => byName.get(f)).filter((sl) => sl && sl.ms >= x.at && sl.ms < endOf(i))
+    x.shots.forEach((sl) => placed.add(sl))
+  })
+  sections.forEach((x, i) => {
+    const rest = slides.filter((sl) => !placed.has(sl) && sl.ms >= x.at && sl.ms < endOf(i))
+    x.shots = [...x.shots, ...rest].sort((p, q) => p.ms - q.ms).slice(0, MAX_FIGS)
+    x.said = segs.filter((q) => q.ms >= x.at && q.ms < endOf(i))
   })
 
   const figure = (sl) =>
@@ -129,18 +139,33 @@ function videoNotesView(s, vm) {
 
   const durationMs = s.video?.durationMs ?? (s.endedAt ?? s.startedAt) - s.startedAt
   const lead = [fmtLen(durationMs), t(`{0} 个小节`, sections.length), slides.length ? t(`{0} 张自动截的画面`, slides.length) : ''].filter(Boolean).join(' · ')
-  const toc = el(
-    'nav.vn-toc',
-    { 'aria-label': t('目录') },
-    el('span.vn-toc-l', { text: t('目录') }),
+  const tocList = el(
+    'div.vn-toc-list',
+    {},
     ...sections.map((x, i) =>
-      el('button', { type: 'button', onClick: () => document.getElementById(`vn-${i + 1}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }) }, el('span.num', { text: String(i + 1) }), ' ', x.title.replace(/[*_`$]/g, '')),
+      el('button', { type: 'button', onClick: () => document.getElementById(`vn-${i + 1}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }) }, el('span.vn-toc-n.num', { text: String(i + 1) }), x.title.replace(/[*_`$]/g, '')),
     ),
   )
-  const head = el('header.vn-head', {}, el('h2.vn-title', { text: s.title }), el('div.vn-meta.num', { text: lead }))
+  // 目录默认收成一行，装不下的点「全部 N 节」展开（目录可收起）
+  const tocMore = el('button.vn-more', { type: 'button', hidden: true, onClick: () => toggle(toc, tocMore, t(`全部 {0} 节`, sections.length)) })
+  const toc = el('nav.vn-toc.is-collapsed', { 'aria-label': t('目录') }, el('span.vn-toc-l', { text: t('目录') }), tocList, tocMore)
+  const head = el('header.vn-head', {}, el('div.vn-meta.num', { text: lead }))
   const overview = parsed.overview ? prose(parsed.overview) : null
-  overview?.classList.add('vn-overview')
+  overview?.classList.add('vn-overview', 'is-collapsed')
+  const overMore = overview ? el('button.vn-more', { type: 'button', hidden: true, onClick: () => toggle(overview, overMore, t('展开')) }) : null
   const extras = parsed.extras.map((x) => el('section.vn-extra', {}, el('h3.vn-extra-h', { text: x.title.replace(/[*_`]/g, '') }), prose(x.body)))
-  const node = el('div.vn', {}, head, overview, parsed.intro ? prose(parsed.intro) : null, toc, ...secNodes, ...extras)
-  return { node }
+  const node = el('div.vn', {}, head, overview, overMore, parsed.intro ? prose(parsed.intro) : null, toc, ...secNodes, ...extras)
+  // 概览限两行、目录限一行：页面画出来、量过高度之后才知道要不要放「展开」
+  const fit = () => {
+    if (!node.isConnected) return
+    for (const [box, btn, label] of [[overview, overMore, t('展开')], [toc, tocMore, t(`全部 {0} 节`, sections.length)]]) {
+      if (!box || !box.classList.contains('is-collapsed')) continue
+      const probe = box === toc ? tocList : box
+      btn.hidden = probe.scrollHeight <= probe.clientHeight + 1
+      btn.textContent = label
+    }
+  }
+  const watch = new ResizeObserver(fit)
+  watch.observe(node)
+  return { node, destroy: () => watch.disconnect() }
 }
