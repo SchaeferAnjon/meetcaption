@@ -666,6 +666,7 @@ VIEWS.meeting = {
           terms: () => liveNotesOf()?.terms ?? [],
           notes: () => liveNotesOf(),
           scrollEl: () => scroller,
+          onState: (ok) => askPage?.querySelector('.ask-after-note')?.toggleAttribute('hidden', !ok),
         })
         askPanelView.load(s.asks ?? [])
         askPage = el('div.ask-page', {}, el('div.ask-after-note', { dataset: { part: '下课后' } }, icon('info', 13), el('span', { text: t('下课了也能接着问：AI 用整节课的字幕、实时笔记、课堂笔记和课件来答，时间点一下就打开「字幕记录」里那一句。') })), askPanelView.root)

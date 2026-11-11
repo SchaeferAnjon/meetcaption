@@ -153,6 +153,10 @@ test('parseAsk: reads cover, gist, points (inline and display formulas), sources
   assert.deepEqual(p.points.map((x) => x.tex ?? x.text), ['σ 是所有自旋的取值（老师说的 plus one or minus one）', '$J_{ij}$ 是耦合（coupling）：', 'H(\\sigma)=-\\sum J_{ij}\\sigma_i\\sigma_j', '找最优解就是找让 $H$ 最小的取值'])
   assert.deepEqual(p.src, [{ type: 'seg', id: 'g3' }, { type: 'seg', id: 'g5' }, { type: 'note', n: 1 }, { type: 'slide', file: 'slides/a.jpg', at: 5 }, { type: 'page', mat: 1, n: 14, matId: 'm1', name: '课件.pdf' }])
   assert.equal(p.next.length, 2)
+  // 一条要点只有一个公式时当独占一行的公式；接着问里不带公式符号
+  const one = parseAsk('要点：x\n- $J_{ij}\\sigma_i$。\n- 普通的一条\n接着问：$J_{ij}$ 和 \\sigma 是什么｜h_i 呢', refs, { final: true })
+  assert.deepEqual(one.points, [{ tex: 'J_{ij}\\sigma_i' }, { text: '普通的一条' }])
+  assert.deepEqual(one.next, ['J_ij 和 sigma 是什么', 'h_i 呢'])
   // 流式：写到一半
   const half = parseAsk('覆盖：讲过\n要点：H(σ) 是能量\n- σ 是自旋的取\n$$H(\\sig', refs)
   assert.equal(half.cover.kind, 'full')
@@ -189,8 +193,10 @@ test('withAsked: adds one line per question at the end, replaces the old part, l
     { id: 'd', q: '没答出来的', askedAt: START, gist: '', points: [] },
   ]
   const once = withAsked(md, asks, START)
-  assert.match(once, /<!--asked-->\n## 课上问过的\n\n- 13:00 \*\*H\(σ\) 是什么？\*\*：给每种取值打的能量分\n- 50:00 \*\*为什么 H 最小就是最优解？\*\*：把「好」定义成了「能量低」\n- 下课后 \*\*下课后问的\*\*：先说这个\n$/)
+  assert.match(once, /<!--asked-->\n## 课上问过的\n\n- 13:00 \*\*H\(σ\) 是什么？\*\* 给每种取值打的能量分\n- 50:00 \*\*为什么 H 最小就是最优解？\*\* 把「好」定义成了「能量低」\n- 下课后 \*\*下课后问的\*\*：先说这个\n\n完整的回答在「问 AI」里看，点时间回到那句字幕。\n$/)
   assert.ok(!once.includes('没答出来的'))
+  const withQuote = withAsked(md, [{ id: 'q', q: '这句什么意思？', askedAt: START + 5 * 60_000, quote: { text: 'And then we write it as the Ising Hamiltonian, H of sigma, where sigma is the configuration', segId: 'g' }, gist: '把问题写成能量', points: [] }], START)
+  assert.match(withQuote, /- 05:00 \*\*这句什么意思？\*\*（引用「And then we write it as …」） 把问题写成能量/)
   const twice = withAsked(once, asks.slice(0, 1), START)
   assert.equal(twice.split(ASKED_MARK).length, 2)
   assert.ok(!twice.includes('H(σ) 是什么'))
@@ -273,6 +279,26 @@ test('ClassAsk after class: asks with the session start time (same credential as
   assert.ok(s.summary.markdown.includes('## 课上问过的') && s.summary.markdown.includes('下课后'))
   assert.ok(fs.readFileSync(path.join(t.dir, '课堂笔记.md'), 'utf8').includes('课上问过的'))
   assert.ok(t.events.some((e) => e[0] === 'saved' && e[1] === t.id))
+  fs.rmSync(t.root, { recursive: true, force: true })
+})
+
+test('ClassAsk: a quoted sentence (sen) becomes the quote text, and the whole line still goes in the transcript', async () => {
+  const t = ask()
+  const seg = t.store.load(t.id).segments.find((x) => x.id === 'g41')
+  assert.equal(seg.sentences.length, 1)
+  t.store.mutate(t.id, (s) => {
+    const x = s.segments.find((y) => y.id === 'g41')
+    x.sentences = [{ text: 'First sentence of the line.' }, { text: 'Second sentence of the line.' }]
+    x.text = 'First sentence of the line. Second sentence of the line.'
+  })
+  const fin = t.done()
+  await t.a.ask({ sessionId: t.id, question: '这句什么意思？', quote: { segId: 'g41', sen: 1 } })
+  const u = await fin
+  assert.equal(u.quote.text, 'Second sentence of the line.')
+  assert.equal(u.quote.sel, undefined)
+  const last = t.calls[0].messages.at(-1).content
+  assert.match(last, /我引用了这一句字幕（#\d+）：「Second sentence of the line\.」/)
+  assert.match(last, /First sentence of the line\. Second sentence of the line\./)
   fs.rmSync(t.root, { recursive: true, force: true })
 })
 
@@ -427,7 +453,7 @@ test('Summarizer.generate keeps the questions asked in class at the end of the c
   }
   const sum = new Summarizer({ store, projects: ps, llm, aiStatus: () => ({ ready: true }) })
   const r = await sum.generate(s.id, '')
-  assert.match(r.markdown, /## 课上问过的\n\n- 13:00 \*\*H\(σ\) 是什么？\*\*：能量分/)
+  assert.match(r.markdown, /## 课上问过的\n\n- 13:00 \*\*H\(σ\) 是什么？\*\* 能量分/)
   assert.ok(!calls.some((c) => JSON.stringify(c.messages).includes('课上问过的')), '作业提取和课件对照看不到这一段')
   const html = fs.readFileSync(path.join(store.dir(s.id), '课堂笔记.html'), 'utf8')
   assert.ok(html.includes('课上问过的') && html.includes('能量分'))

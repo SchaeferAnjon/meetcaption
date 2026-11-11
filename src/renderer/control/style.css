@@ -2666,3 +2666,20 @@ button.nav-section:focus-visible {
 .ask-notice[hidden] { display: none; }
 .ask-notice { margin-bottom: 8px; }
 @container main (max-width: 760px) { .ask-hint-what { display: none; } }
+
+/* 设计复审后的调整 */
+.ask-stopped { color: var(--text-2); }
+.ask-cover { text-wrap: pretty; }
+.ask-bubble { max-width: min(100%, 560px); }
+.ask-bubble .ask-quote-text { -webkit-line-clamp: 1; }
+.ask-src-chip { max-width: 240px; }
+.ask-src.is-copy-only { margin-top: -6px; justify-content: flex-end; }
+.ask-input { overflow-y: hidden; }
+.ask-input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ask-back { left: auto; right: 24px; transform: none; }
+.ask-body.is-after { min-height: calc(100vh - 320px); }
+.ask-body.is-after .ask-scroll { flex: 1; }
+.ask-body.is-after .ask-composer::before { content: ''; position: absolute; left: 0; right: 0; top: -18px; height: 18px; background: linear-gradient(transparent, var(--bg)); pointer-events: none; }
+.ask-body.is-after .ask-answer, .ask-body.is-after .ask-points { max-width: 52em; }
+.ask-body.is-after .ask-empty { padding-left: 0; padding-right: 0; }
+.ask-after-note[hidden] { display: none; }

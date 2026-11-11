@@ -81,7 +81,9 @@ export class ClassAsk extends EventEmitter {
     const base = session.startedAt
     const clockTime = live ? hhmm : (ms) => clock(ms - base)
     const seg = quote?.segId != null ? segments.find((s) => s.id === quote.segId) : null
-    const quoted = seg ? { segId: seg.id, at: seg.startedAt, text: seg.text, ...(quote.sel && String(quote.sel).trim() !== seg.text.trim() ? { sel: String(quote.sel).trim().slice(0, 300) } : {}) } : null
+    // 引用的是这一段里的某一句（sen 是第几句）或选中的几个词；段落本身在字幕里整段给了模型
+    const sentence = seg && Number.isInteger(quote.sen) ? seg.sentences?.[quote.sen]?.text : null
+    const quoted = seg ? { segId: seg.id, at: seg.startedAt, text: sentence || seg.text, ...(quote.sel && String(quote.sel).trim() !== (sentence || seg.text).trim() ? { sel: String(quote.sel).trim().slice(0, 300) } : {}) } : null
     const notes = session.liveNotes ?? null
     const terms = [
       ...(notes?.terms ?? []),

@@ -212,11 +212,11 @@ export function slidesForAsk(slides, { quoteAt = null, clockTime, limit = ASK_LI
 
 const TAIL = [
   '回答按下面的行写，一行一件事，不用 Markdown 标题、粗体和表格：',
-  '第 1 行：「覆盖：」后面写 讲过、提了一句、没讲到 三选一。讲过：这节课（字幕、笔记或课件）讲到了问题问的内容；提了一句：只在举例时顺带提到、没有展开，这时在后面加上提到它的那句的编号，写成「覆盖：提了一句 #12」；没讲到：资料里完全没有。',
+  '第 1 行：「覆盖：」后面写 讲过、提了一句、没讲到 三选一。讲过：这节课（字幕、笔记或课件）讲到了问题问的内容；提了一句：老师只在举别的例子时顺带说了一个词或一句话、完全没有解释，这时在后面加上提到它的那句的编号，写成「覆盖：提了一句 #12」；没讲到：资料里完全没有。老师用几句话解释过的就是「讲过」，拿不准时写「讲过」。',
   '第 2 行：「要点：」后面一句话直接回答问题，不超过 30 个字。',
   '第 3 行起：2 到 4 行，每行以「- 」开头，只讲一件事；公式用 $…$ 写在句子里，重要的公式单独占一行、用 $$…$$ 包住（每个公式只占一行，不换行）。',
   '倒数第 2 行：「依据：」后面列出你用到的资料，用资料里的编号，空格隔开，例如「依据：#12 #15 笔记2 截图1 课件p14」；只列真正用到的，字幕编号最多 4 个（挑最能说明问题的），没有就写「依据：无」。',
-  '最后一行：「接着问：」后面给我一到两个顺着这个回答最可能想接着问的问题，每个不超过 20 个字，用「｜」隔开，只写普通文字，不要公式和 $ 符号。',
+  '最后一行：「接着问：」后面给我一到两个顺着这个回答最可能想接着问的问题，每个不超过 20 个字，用「｜」隔开，只写普通文字：不要公式、$ 符号、下标和花括号，变量直接写字母。',
 ]
 
 export function askSystem({ lang = 'zh', live = true } = {}) {
@@ -287,6 +287,9 @@ function historyText(h) {
 
 /* ---------------- 解析回答 ---------------- */
 
+// 接着问的按钮里不画公式：去掉 $ 和 LaTeX 的下标、花括号、反斜杠
+const plain = (v) => v.replace(/\$/g, '').replace(/_\{([^}]*)\}/g, '_$1').replace(/\\([a-zA-Z]+)/g, '$1').replace(/[{}]/g, '')
+
 const COVER = { 讲过: 'full', 没讲到: 'none', 提了一句: 'partial' }
 
 function stripMd(s) {
@@ -337,7 +340,10 @@ export function parseAsk(raw, refs = null, { final = false } = {}) {
       if (/^\$\$[\s\S]+\$\$$/.test(line) && line.length > 4) out.points.push({ tex: line.replace(/^\$\$|\$\$$/g, '').trim() })
       else open = { text: line }
     } else if ((m = line.match(/^(?:[-*•·]|\d+[.、)])\s+(.*)$/))) {
-      if (m[1].trim()) out.points.push({ text: m[1].trim() })
+      // 一条要点只有一个公式时当独占一行的公式画，和别的公式一样
+      const only = m[1].trim().match(/^\$([^$]+)\$[。.，,;；]?$/)
+      if (only) out.points.push({ tex: only[1].trim() })
+      else if (m[1].trim()) out.points.push({ text: m[1].trim() })
     } else if (out.formatted && out.points.length) {
       // 上一条写到下一行去了
       const last = out.points.at(-1)
@@ -351,7 +357,7 @@ export function parseAsk(raw, refs = null, { final = false } = {}) {
   out.points = out.points.filter((p) => (p.tex ?? p.text)?.length).slice(0, 6)
   out.next = nextLine
     .split(/[｜|]/)
-    .map((s) => s.replace(/\$/g, '').trim().replace(/^["「“]|["」”]$/g, ''))
+    .map((s) => plain(s).trim().replace(/^["「“]|["」”]$/g, ''))
     .filter((s) => s && s !== '无')
     .slice(0, 2)
   if (final) out.src = resolveSources(srcLine, refs)
@@ -410,8 +416,10 @@ const askedAt = (r, startedAt) => (r.after ? t('下课后') : clock(r.askedAt - 
 /** 一条问答在课堂笔记里的一行：时间、问题、一句要点 */
 export function askedLine(r, startedAt) {
   const q = oneLine(r.q).slice(0, 120)
+  const quoted = r.quote?.text ? oneLine(r.quote.sel || r.quote.text) : ''
   const gist = oneLine(r.gist || r.points?.find((p) => p.text)?.text || '').slice(0, 160)
-  return `- ${askedAt(r, startedAt)} **${q}**${gist ? `：${gist}` : ''}`
+  // 问句末尾已经有问号：后面直接接要点，不再加冒号（全角冒号紧跟问号，粗体后面会空出一截）
+  return `- ${askedAt(r, startedAt)} **${q}**${quoted ? t(`（引用「{0}」）`, quoted.length > 24 ? `${quoted.slice(0, 24)}…` : quoted) : ''}${gist ? `${/[?？]$/.test(q) ? ' ' : '：'}${gist}` : ''}`
 }
 
 /** 课堂笔记的 Markdown 末尾接上「课上问过的」（已经有的先去掉）；一条都没有就不接。asks 里没答出内容的不算。 */
@@ -421,6 +429,6 @@ export function withAsked(markdown, asks, startedAt) {
   const base = i >= 0 ? md.slice(0, i).replace(/\s+$/, '\n') : md
   const list = (asks ?? []).filter((r) => r.gist || r.points?.length).sort((a, b) => a.askedAt - b.askedAt)
   if (!md.trim() || !list.length) return base
-  return `${base.replace(/\s+$/, '')}\n\n${ASKED_MARK}\n## ${t('课上问过的')}\n\n${list.map((r) => askedLine(r, startedAt)).join('\n')}\n`
+  return `${base.replace(/\s+$/, '')}\n\n${ASKED_MARK}\n## ${t('课上问过的')}\n\n${list.map((r) => askedLine(r, startedAt)).join('\n')}\n\n${t('完整的回答在「问 AI」里看，点时间回到那句字幕。')}\n`
 }
 

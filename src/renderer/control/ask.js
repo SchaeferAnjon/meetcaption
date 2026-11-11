@@ -38,6 +38,13 @@ function askPanel(host) {
   const dist = () => box().scrollHeight - box().scrollTop - box().clientHeight
   const scrollEnd = () => (box().scrollTop = box().scrollHeight)
   box().addEventListener('scroll', () => (follow = dist() < 80))
+  // 引用一句、出现现成问法时输入区变高：原来在最底下的话，跟着往上顶，最新一条回答不被盖住
+  let composerH = 0
+  const composerWatch = new ResizeObserver(() => {
+    const h = composer.offsetHeight
+    if (composerH && h !== composerH && follow) requestAnimationFrame(scrollEnd)
+    composerH = h
+  })
 
   /* ---------- 时间和引用 ---------- */
 
@@ -57,13 +64,15 @@ function askPanel(host) {
       'div.ask-quote',
       { dataset: { part: '引用的字幕' } },
       label ? el('button.ask-quote-time.num', { type: 'button', title: t('回到这句字幕'), text: label, onClick: () => host.jump(q.segId) }) : null,
-      el('span.ask-quote-text', { text: q.sel || q.text || s?.text || '' }),
+      el('span.ask-quote-text', { text: q.sel || q.text || s?.text || '', title: q.text || '' }),
       onRemove ? el('button.ask-quote-x', { type: 'button', 'aria-label': t('不引用这句'), title: t('不引用这句'), onClick: onRemove }, icon('x', 12)) : null,
     )
   }
 
   function setQuote(q) {
-    quote = q ? { segId: q.segId, at: host.seg(q.segId)?.startedAt, sel: q.sel || '', text: q.text || host.seg(q.segId)?.text || '' } : null
+    const seg = q ? host.seg(q.segId) : null
+    const sentence = Number.isInteger(q?.sen) ? seg?.sentences?.[q.sen]?.text : ''
+    quote = q ? { segId: q.segId, at: seg?.startedAt, sen: Number.isInteger(q.sen) ? q.sen : undefined, sel: q.sel || '', text: q.text || sentence || seg?.text || '' } : null
     ui.clear(quoteBox)
     if (quote) quoteBox.append(quoteNode(quote, { onRemove: () => (setQuote(null), input.focus()) }))
     input.placeholder = quote ? t('问这一句，直接按 ↵ 就是「这句什么意思」') : t('问这节课，比如：H(σ) 到底是什么？')
@@ -153,7 +162,21 @@ function askPanel(host) {
       src.hidden = !done
       if (done && !src.dataset.built) {
         src.dataset.built = '1'
-        const chipsList = (cur.src ?? []).map(srcChip).filter(Boolean)
+        // 同一个时间只出一次（实时页只到分钟，一分钟里引了好几句时合成一个，悬停看这几句）
+        const byLabel = new Map()
+        const chipsList = []
+        for (const x of cur.src ?? []) {
+          const c = srcChip(x)
+          if (!c) continue
+          const key = x.type === 'seg' ? c.textContent : null
+          const had = key != null ? byLabel.get(key) : null
+          if (had) had.title += `\n\n${c.title}`
+          else {
+            if (key != null) byLabel.set(key, c)
+            chipsList.push(c)
+          }
+        }
+        src.classList.toggle('is-copy-only', !chipsList.length)
         fill(src, chipsList.length ? el('span.ask-src-label', { text: t('依据') }) : null, ...chipsList, copy)
       }
     }
@@ -265,7 +288,7 @@ function askPanel(host) {
     setQuote(null)
     grow()
     follow = true
-    const r = await call('askStart', { sessionId: host.sessionId(), question, quote: used ? { segId: used.segId, sel: used.sel } : null, replaceId })
+    const r = await call('askStart', { sessionId: host.sessionId(), question, quote: used ? { segId: used.segId, sel: used.sel, sen: used.sen } : null, replaceId })
     if (!alive) return
     if (failed(r)) {
       if (!text) input.value = sent
@@ -275,6 +298,7 @@ function askPanel(host) {
         ready = false
         reason = r.error || reason
         renderState()
+        host.onState?.(ready)
       } else ui.toast({ title: t('没能提问'), message: r?.error, type: 'error' })
     }
   }
@@ -283,6 +307,7 @@ function askPanel(host) {
     if (input.offsetParent) {
       input.style.height = 'auto'
       input.style.height = `${Math.min(input.scrollHeight, 132)}px`
+      input.style.overflowY = input.scrollHeight > 132 ? 'auto' : 'hidden'
     }
     renderSend()
   }
@@ -368,11 +393,13 @@ function askPanel(host) {
     ready = next
     reason = r.reason ?? ''
     renderState()
+    host.onState?.(ready)
   }
 
   renderEmpty()
   renderSend()
   refreshStatus()
+  composerWatch.observe(composer)
 
   return {
     root,
@@ -384,7 +411,7 @@ function askPanel(host) {
     scrollEnd: () => requestAnimationFrame(scrollEnd),
     busy: () => busy,
     count: () => records.size,
-    destroy: () => (alive = false),
+    destroy: () => ((alive = false), composerWatch.disconnect()),
   }
 }
 
@@ -397,11 +424,18 @@ function wireAskTranscript(container, onAsk) {
   let pop = null
   const hide = () => (pop?.remove(), (pop = null))
   const lineOf = (n) => n?.parentElement?.closest?.('.tline[data-id]') ?? null
+  // 一段字幕里有好几句：问的是鼠标最后停过的那一句（挪向右上角的「问」时不会变）
+  const onOver = (e) => {
+    const pair = e.target.closest?.('.tline-pair')
+    const line = pair?.closest('.tline[data-id]')
+    if (line) line.dataset.askSen = String([...line.querySelectorAll('.tline-pair')].indexOf(pair))
+  }
+  container.addEventListener('mouseover', onOver)
   const add = () => {
     for (const line of container.querySelectorAll('.tline[data-id]:not(.tline-slide)')) {
       if (line.querySelector('.ask-line-btn')) continue
       line.append(
-        el('button.ask-line-btn', { type: 'button', title: t('问 AI 这一句'), 'aria-label': t('问 AI 这一句'), dataset: { part: '字幕行上的问' }, onClick: (e) => (e.stopPropagation(), onAsk({ segId: line.dataset.id, sel: '' })) }, icon('message-circle-question', 14), el('span', { text: t('问') })),
+        el('button.ask-line-btn', { type: 'button', title: t('问 AI 这一句'), 'aria-label': t('问 AI 这一句'), dataset: { part: '字幕行上的问' }, onClick: (e) => (e.stopPropagation(), onAsk({ segId: line.dataset.id, sel: '', sen: Number(line.dataset.askSen ?? 0) })) }, icon('message-circle-question', 14), el('span', { text: t('问') })),
       )
     }
   }
@@ -427,7 +461,7 @@ function wireAskTranscript(container, onAsk) {
     const box = (container.closest('.pane-body') ?? container).getBoundingClientRect()
     if (r.bottom < box.top + 4 || r.top > box.bottom - 4) return hide()
     pop.style.left = `${Math.max(8, Math.round(r.left + r.width / 2 - pop.offsetWidth / 2))}px`
-    pop.style.top = `${Math.max(8, Math.round(r.top - pop.offsetHeight - 6))}px`
+    pop.style.top = `${Math.max(8, Math.round(r.top - pop.offsetHeight - 10))}px`
   }
   const onDown = (e) => {
     if (!e.target.closest?.('.ask-sel')) hide()
@@ -443,6 +477,7 @@ function wireAskTranscript(container, onAsk) {
     mo.disconnect()
     hide()
     container.removeEventListener('mouseup', onUp)
+    container.removeEventListener('mouseover', onOver)
     document.removeEventListener('mousedown', onDown)
     scrollParent?.removeEventListener('scroll', place)
   }

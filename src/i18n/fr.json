@@ -1664,5 +1664,7 @@
  "回到「问 AI」": "Retour à « Demander à l'IA »",
  "找不到这一句字幕": "Ligne de sous-titre introuvable",
  "下课了也能接着问：AI 用整节课的字幕、实时笔记、课堂笔记和课件来答，时间点一下就打开「字幕记录」里那一句。": "Vous pouvez continuer à poser des questions après le cours : l'IA répond à partir des sous-titres, notes en direct, notes de cours et diapositives de tout le cours. Cliquez sur une heure pour ouvrir cette ligne dans la transcription.",
- "课堂里：打开「问 AI」，光标放进输入框。": "En cours : ouvre « Demander à l'IA » et place le curseur dans le champ de saisie."
+ "课堂里：打开「问 AI」，光标放进输入框。": "En cours : ouvre « Demander à l'IA » et place le curseur dans le champ de saisie.",
+ "（引用「{0}」）": " (citation : « {0} »)",
+ "完整的回答在「问 AI」里看，点时间回到那句字幕。": "Les réponses complètes sont dans « Demander à l'IA » ; cliquez sur l'heure pour revenir à la ligne de sous-titre."
 }
