@@ -157,6 +157,10 @@ test('parseAsk: reads cover, gist, points (inline and display formulas), sources
   const one = parseAsk('要点：x\n- $J_{ij}\\sigma_i$。\n- 普通的一条\n接着问：$J_{ij}$ 和 \\sigma 是什么｜h_i 呢', refs, { final: true })
   assert.deepEqual(one.points, [{ tex: 'J_{ij}\\sigma_i' }, { text: '普通的一条' }])
   assert.deepEqual(one.next, ['J_ij 和 sigma 是什么', 'h_i 呢'])
+  // 公式写到一半先不露出
+  const openMath = parseAsk('要点：能量是 $H(\\sigma)$ 的值\n- 每个自旋取 $\\sigma_i = \\pm', refs)
+  assert.equal(openMath.gist, '能量是 $H(\\sigma)$ 的值')
+  assert.deepEqual(openMath.points, [{ text: '每个自旋取' }])
   // 流式：写到一半
   const half = parseAsk('覆盖：讲过\n要点：H(σ) 是能量\n- σ 是自旋的取\n$$H(\\sig', refs)
   assert.equal(half.cover.kind, 'full')

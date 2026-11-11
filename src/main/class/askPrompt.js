@@ -290,6 +290,9 @@ function historyText(h) {
 // 接着问的按钮里不画公式：去掉 $ 和 LaTeX 的下标、花括号、反斜杠
 const plain = (v) => v.replace(/\$/g, '').replace(/_\{([^}]*)\}/g, '_$1').replace(/\\([a-zA-Z]+)/g, '$1').replace(/[{}]/g, '')
 
+// 公式写到一半（$ 没配成对）：先不露出那半截，写完那一刻才出现；停在半截时也不留一堆源码
+const noOpenMath = (v) => ((v.match(/(?<!\\)\$/g) ?? []).length % 2 ? v.slice(0, v.lastIndexOf('$')).trimEnd() : v)
+
 const COVER = { 讲过: 'full', 没讲到: 'none', 提了一句: 'partial' }
 
 function stripMd(s) {
@@ -354,6 +357,8 @@ export function parseAsk(raw, refs = null, { final = false } = {}) {
       else out.points.push({ text: line })
     }
   }
+  out.gist = noOpenMath(out.gist)
+  for (const p of out.points) if (p.text != null) p.text = noOpenMath(p.text)
   out.points = out.points.filter((p) => (p.tex ?? p.text)?.length).slice(0, 6)
   out.next = nextLine
     .split(/[｜|]/)
