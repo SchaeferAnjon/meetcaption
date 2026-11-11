@@ -96,7 +96,7 @@ export class VideoService {
     const workers = d.makeWorkers()
     try {
       const r = await runVideo(
-        { ...d, audioWorker: workers.audio, frameWorker: workers.frames, emit: (ch, p) => (ch === 'video:progress' && (job.progress = p), d.emit(ch, p)) },
+        { ...d, audioWorker: workers.audio, frameWorker: workers.frames, emit: (ch, p) => (ch === 'video:progress' && (job.progress = p), ch === 'video:started' && (job.sessionId = p.sessionId), d.emit(ch, p)) },
         opts,
         { signal: job.ctl.signal },
       )
@@ -107,7 +107,7 @@ export class VideoService {
     } catch (e) {
       this.job = null
       const cancelled = e.name === 'AbortError' || job.ctl.signal.aborted
-      d.emit('video:failed', { name: job.name, cancelled, error: cancelled ? t('已取消') : e.message, code: e.code ?? null })
+      d.emit('video:failed', { name: job.name, sessionId: job.sessionId ?? null, cancelled, error: cancelled ? t('已取消') : e.message, code: e.code ?? null })
       d.emit('video:state', this.snapshot())
     } finally {
       workers.audio?.close()

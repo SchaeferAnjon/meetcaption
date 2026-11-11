@@ -156,11 +156,15 @@ function wireEvents() {
     emit('video-progress', p)
   })
   subscribe('video:done', (d) => {
+    // 处理中主进程替这个视频做笔记，笔记进度事件会在这里留下「生成中」的记号：做完了清掉
+    state.summaries.delete(d.sessionId)
+    emit('summary', { id: d.sessionId, done: true })
     state.video = { running: false, done: d }
     emit('video')
     ui.toast({ title: t(`「{0}」处理好了`, d.name), type: 'success', duration: 8000, action: { label: t('打开'), onClick: () => (dismissVideoJob(), go('meeting', { id: d.sessionId })) } })
   })
   subscribe('video:failed', (f) => {
+    if (f.sessionId) state.summaries.delete(f.sessionId)
     state.video = f.cancelled ? { running: false } : { running: false, failed: f }
     emit('video')
     if (f.cancelled) ui.toast({ title: t('已取消处理') })

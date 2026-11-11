@@ -226,7 +226,7 @@ VIEWS.meeting = {
         if (e.key === 'Enter' && !e.isComposing && !genBtn.disabled) generate()
       })
       genBtn.addEventListener('click', () => generate())
-      const materials = cls ? el('div.materials-bar') : null
+      const materials = cls && !isVideo() ? el('div.materials-bar') : null
       fill(panel, 
         el('div.summary-toolbar', {}, el('label.field.summary-extra', {}, icon('sparkles', 14), extra), genBtn, cancelBtn, exportBtn, copyBtn),
         materials,
