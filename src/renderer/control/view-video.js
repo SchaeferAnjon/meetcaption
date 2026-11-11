@@ -254,7 +254,7 @@ async function openVideoSheet(file) {
     if (q.plan !== 'member') return el('span.vm-choice-x', { text: t('用你自己的 Key，不用场次') })
     if (!q.sessions) return el('span.vm-choice-x', { text: t('不用场次') })
     const bad = q.enough === false
-    return el('span.vm-choice-x', { class: bad ? 'is-bad' : '' }, t('这个视频用 '), el('b', { text: String(q.sessions) }), t(' 场'), bad ? '' : t(' · 还剩 {0} 场', q.balance))
+    return el('span.vm-choice-x', { class: bad ? 'is-bad' : '' }, bad ? t('这个视频要用 {0} 场', q.sessions) : t('这个视频用 {0} 场，还剩 {1} 场', q.sessions, q.balance))
   }
 
   function render() {
