@@ -79,7 +79,7 @@ function videoCard() {
     { type: 'button', class: busy ? 'is-busy' : '', dataset: { mode: 'video' }, 'aria-label': t('视频：拖进视频或点这里选文件') },
     el('span.mode-card-head', {}, ui.iconBox('video', 'teal', { size: 'sm' }), el('span.mode-card-title', { text: t('视频') }), el('span.mode-card-new', { text: t('新') })),
     el('span.mode-card-desc', { text: busy ? t('正在处理一个视频，做完再加下一个') : t('拖进视频或点这里选文件，出字幕和笔记') }),
-    el('span.mode-card-fmt', {}, ...VIDEO_FORMATS.split(' · ').map((f, i, a) => el('span.nw', { text: i < a.length - 1 ? `${f} · ` : f }))),
+    el('span.mode-card-fmt', {}, ...VIDEO_FORMATS.split(' · ').flatMap((f, i, a) => [i ? ' ' : null, el('span.nw', { text: i < a.length - 1 ? `${f} ·` : f })]).filter(Boolean)),
   )
   card.addEventListener('click', () => (busy ? ui.toast({ title: t('已经在处理一个视频了'), message: t('等它做完再加下一个'), type: 'warning' }) : pickVideo()))
   card.addEventListener('dragover', (e) => {
