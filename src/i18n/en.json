@@ -1592,14 +1592,14 @@
  "没有可用的场次：这一场用本地识别，翻译和答题这些 AI 功能先关着。买了场次，下一场就能用。": "No sessions available: this one uses local recognition, with AI features such as translation and answers turned off. Buy sessions and the next one can use them.",
  "AI 要买了场次才能用，也可以在设置里换成自带 Key": "AI needs purchased sessions, or you can switch to your own API key in Settings",
  "还没有场次。字幕照常（本地识别，免费），AI 要买场次或换自带 Key。": "No sessions yet. Captions work as usual (local recognition, free); for AI, buy sessions or switch to your own API key.",
- "这台电脑还有 {0} 场试用场次，每场最长 {1} 小时。": "This computer still has {0} trial {0|session|sessions}, up to {1} {1|hour|hours} each.",
  "放一段有人说话的视频，比如一段 YouTube 演讲，看字幕是不是出来了。试听用本地识别，不联网，不扣场次。": "Play a video of someone talking, such as a YouTube talk, and check that captions appear. The test uses local recognition, stays offline and doesn't use up a session.",
  "暂时连不上会员服务器": "Can't reach the membership server for now",
  "字幕照常能用（本地识别）。连上以后，要云识别和 AI 可以在主窗口买场次。": "Captions still work (local recognition). Once connected, you can buy sessions in the main window for cloud recognition and AI.",
  "这台电脑还有 {0} 场试用场次": "This computer still has {0} trial {0|session|sessions}",
  "字幕一直免费，AI 按场买": "Captions are always free; AI is bought by the session",
- "字幕用本地识别，免费、不联网、不用填 Key。要云识别和 AI 答题，1 场 {0} 起；也可以在设置里填你自己的 Key，免费、不限场次。": "Captions use local recognition: free, offline, no key needed. Cloud recognition and AI answers start at {0} per session; or enter your own key in Settings, free with no session limit.",
  "看场次价格": "See session prices",
- "字幕用本地识别，免费、不限次数；要云识别和 AI，点下面的购买场次，或把「用法」换成自带 Key（免费）。": "Captions use local recognition: free and unlimited. For cloud recognition and AI, click Buy sessions below, or switch Usage to your own API key (free).",
- "这台电脑不再用这个授权码。授权码在别的电脑上照常用，以后输码还能再绑回来。": "This computer will stop using this license code. The license code still works on other computers, and you can link it back by entering the code again."
+ "这台电脑不再用这个授权码。授权码在别的电脑上照常用，以后输码还能再绑回来。": "This computer will stop using this license code. The license code still works on other computers, and you can link it back by entering the code again.",
+ "这台电脑还有 {0} 场试用，每场最长 {1} 小时；用完以后字幕照常免费（本地识别，断网也能出字）。": "This computer still has {0} trial {0|session|sessions}, up to {1} {1|hour|hours} each; after that captions stay free (local recognition, works offline).",
+ "字幕一直免费，AI 要买场次或换自带 Key。": "Captions are always free; for AI, buy sessions or switch to your own API key.",
+ "字幕用本地识别，不联网、不用填 Key。要云识别和 AI 答题，1 场 {0} 起；也可以在设置里填你自己的 Key，不限场次。": "Captions use local recognition: offline, no key needed. Cloud recognition and AI answers start at {0} per session; or enter your own key in Settings, with no session limit."
 }

@@ -1592,14 +1592,14 @@
  "没有可用的场次：这一场用本地识别，翻译和答题这些 AI 功能先关着。买了场次，下一场就能用。": "Aucune session disponible : cette session utilise la reconnaissance locale, les fonctions d'IA comme la traduction et les réponses sont désactivées. Achetez des sessions, la prochaine pourra les utiliser.",
  "AI 要买了场次才能用，也可以在设置里换成自带 Key": "L'IA nécessite des sessions achetées, ou passez à votre propre clé API dans les paramètres",
  "还没有场次。字幕照常（本地识别，免费），AI 要买场次或换自带 Key。": "Pas encore de session. Les sous-titres fonctionnent normalement (reconnaissance locale, gratuite) ; pour l'IA, achetez des sessions ou utilisez votre propre clé API.",
- "这台电脑还有 {0} 场试用场次，每场最长 {1} 小时。": "Cet ordinateur dispose encore de {0} {0|session|sessions} d'essai, jusqu'à {1} {1|heure|heures} chacune.",
  "放一段有人说话的视频，比如一段 YouTube 演讲，看字幕是不是出来了。试听用本地识别，不联网，不扣场次。": "Lancez une vidéo où quelqu'un parle, par exemple une conférence sur YouTube, et vérifiez que les sous-titres arrivent. Le test utilise la reconnaissance locale, hors ligne, et ne consomme aucune session.",
  "暂时连不上会员服务器": "Impossible de joindre le serveur d'adhésion pour le moment",
  "字幕照常能用（本地识别）。连上以后，要云识别和 AI 可以在主窗口买场次。": "Les sous-titres fonctionnent toujours (reconnaissance locale). Une fois connecté, vous pourrez acheter des sessions dans la fenêtre principale pour la reconnaissance cloud et l'IA.",
  "这台电脑还有 {0} 场试用场次": "Cet ordinateur dispose encore de {0} {0|session|sessions} d'essai",
  "字幕一直免费，AI 按场买": "Sous-titres toujours gratuits, IA achetée à la session",
- "字幕用本地识别，免费、不联网、不用填 Key。要云识别和 AI 答题，1 场 {0} 起；也可以在设置里填你自己的 Key，免费、不限场次。": "Les sous-titres utilisent la reconnaissance locale : gratuite, hors ligne, sans clé. La reconnaissance cloud et les réponses de l'IA commencent à {0} la session ; vous pouvez aussi saisir votre propre clé dans les paramètres, gratuite et sans limite de sessions.",
  "看场次价格": "Voir le prix des sessions",
- "字幕用本地识别，免费、不限次数；要云识别和 AI，点下面的购买场次，或把「用法」换成自带 Key（免费）。": "Les sous-titres utilisent la reconnaissance locale : gratuite et illimitée. Pour la reconnaissance cloud et l'IA, cliquez sur « Acheter des sessions » ci-dessous ou passez « Utilisation » à votre propre clé API (gratuite).",
- "这台电脑不再用这个授权码。授权码在别的电脑上照常用，以后输码还能再绑回来。": "Cet ordinateur n'utilisera plus ce code de licence. Le code reste utilisable sur d'autres ordinateurs, et vous pouvez le relier à nouveau en le saisissant."
+ "这台电脑不再用这个授权码。授权码在别的电脑上照常用，以后输码还能再绑回来。": "Cet ordinateur n'utilisera plus ce code de licence. Le code reste utilisable sur d'autres ordinateurs, et vous pouvez le relier à nouveau en le saisissant.",
+ "这台电脑还有 {0} 场试用，每场最长 {1} 小时；用完以后字幕照常免费（本地识别，断网也能出字）。": "Cet ordinateur dispose encore de {0} {0|session|sessions} d'essai, jusqu'à {1} {1|heure|heures} chacune ; ensuite les sous-titres restent gratuits (reconnaissance locale, même hors ligne).",
+ "字幕一直免费，AI 要买场次或换自带 Key。": "Les sous-titres sont toujours gratuits ; pour l'IA, achetez des sessions ou utilisez votre propre clé API.",
+ "字幕用本地识别，不联网、不用填 Key。要云识别和 AI 答题，1 场 {0} 起；也可以在设置里填你自己的 Key，不限场次。": "Les sous-titres utilisent la reconnaissance locale : hors ligne, sans clé. La reconnaissance cloud et les réponses de l'IA commencent à {0} la session ; vous pouvez aussi saisir votre propre clé dans les paramètres, sans limite de sessions."
 }

@@ -750,7 +750,7 @@ function buildMember() {
           el('span', { text: none ? ` ${t('场', 0)}` : t(` 场{0}，每场最长 {1} 小时`, gifted ? t('（免费试用）') : '', (info.sessionMs ?? 2 * 3600_000) / 3600_000) }),
         ),
       )
-      if (none) rows.push(el('div.form-hint', { text: t('字幕用本地识别，免费、不限次数；要云识别和 AI，点下面的购买场次，或把「用法」换成自带 Key（免费）。') }))
+      if (none) rows.push(el('div.form-hint', { text: t('字幕一直免费，AI 要买场次或换自带 Key。') }))
       if (info.code)
         rows.push(
           el(

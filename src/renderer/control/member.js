@@ -123,19 +123,20 @@ function openPricing({ pack } = {}) {
     render()
   }
 
-  function column({ name, tags = [], price, unit, sub, action, items, featured, extra }) {
+  function column({ name, tags = [], price, unit, sub, action, items, featured, extra, actionLast }) {
     return el(
       'div.pricing-col',
       { class: featured ? 'is-featured' : '' },
       el('div.pricing-col-head', {}, el('span.pricing-col-name', { text: name }), tags.map((t) => el('span.pricing-tag', { class: t.strong ? 'is-strong' : '', text: t.text })), extra ?? null),
       el('div.pricing-price', {}, el('span.pricing-amount', { text: price }), unit ? el('span.pricing-unit', { text: unit }) : null),
       el('p.pricing-sub', { text: sub }),
-      action,
+      actionLast ? null : action,
       el(
         'ul.pricing-list',
         {},
         items.map((t) => el('li', {}, icon('check', 14), Array.isArray(t) ? el('span', {}, t[0], el('b', { text: t[1] })) : el('span', { text: t }))),
       ),
+      actionLast ? el('div.pricing-col-end', {}, action) : null,
     )
   }
 
@@ -231,6 +232,7 @@ function openPricing({ pack } = {}) {
         el('span', { text: state.settings?.plan === 'own' ? t('正在用 · 去设置') : t('去配置') }),
         icon('arrow-right', 14),
       ),
+      actionLast: true,
       items: [t('本地识别在你电脑上跑，免费、断网也能出字'), t('DeepSeek、通义、Kimi、豆包、智谱、OpenAI 等 10 家'), t('有 ChatGPT Plus 可以直接登录，不另花钱'), t('句子直接发给服务商，不经过我们')],
     })
 
@@ -294,9 +296,13 @@ function openPricing({ pack } = {}) {
           el('span', { text: t('软件开源、永久免费；会员买的是免配置的云识别和 AI。') }),
           el('button.pricing-link', { type: 'button', onClick: () => call('openExternal', 'https://github.com/SchaeferAnjon/meetcaption') }, el('span', { text: t('查看源码') }), icon('arrow-right', 12)),
         ),
-        el('div.pricing-note', {}, icon('shield-check', 14), el('span', { text: t('不想花钱也行：本地识别在你电脑上跑，字幕永远免费，断网也能出字。') })),
+        el(
+          'div.pricing-note',
+          {},
+          icon(giftLeft > 0 ? 'sparkles' : 'shield-check', 14),
+          el('span', { text: giftLeft > 0 ? t(`这台电脑还有 {0} 场试用，每场最长 {1} 小时；用完以后字幕照常免费（本地识别，断网也能出字）。`, giftLeft, sessionHours(info)) : t('不想花钱也行：本地识别在你电脑上跑，字幕永远免费，断网也能出字。') }),
+        ),
       ),
-      ...(giftLeft > 0 ? [el('div.pricing-note', {}, icon('sparkles', 14), el('span', { text: t(`这台电脑还有 {0} 场试用场次，每场最长 {1} 小时。`, giftLeft, sessionHours(info)) }))] : []),
       el('div.pricing-cols', {}, memberCol, own),
       codeRow,
       faq,

@@ -625,7 +625,7 @@ function giftText() {
   // 价格按界面语言挑币种：中文界面人民币，其他美元（收费页里还能切）
   const p1 = (init.memberPacks ?? []).find((p) => p.sessions === 1)
   const price = !p1 ? '' : ['zh', 'zh-Hant'].includes(uiCode()) ? `¥${p1.cny}` : `$${p1.usd}`
-  return [t('字幕一直免费，AI 按场买'), t('字幕用本地识别，免费、不联网、不用填 Key。要云识别和 AI 答题，1 场 {0} 起；也可以在设置里填你自己的 Key，免费、不限场次。', price)]
+  return [t('字幕一直免费，AI 按场买'), t('字幕用本地识别，不联网、不用填 Key。要云识别和 AI 答题，1 场 {0} 起；也可以在设置里填你自己的 Key，不限场次。', price)]
 }
 
 function stepReady() {

@@ -1592,14 +1592,14 @@
  "没有可用的场次：这一场用本地识别，翻译和答题这些 AI 功能先关着。买了场次，下一场就能用。": "Keine Sitzungen verfügbar: Diese Sitzung nutzt die lokale Erkennung, KI-Funktionen wie Übersetzung und Antworten bleiben aus. Kaufe Sitzungen, dann klappt es ab der nächsten.",
  "AI 要买了场次才能用，也可以在设置里换成自带 Key": "KI gibt es nur mit gekauften Sitzungen, oder wechsle in den Einstellungen zu deinem eigenen API-Schlüssel",
  "还没有场次。字幕照常（本地识别，免费），AI 要买场次或换自带 Key。": "Noch keine Sitzungen. Untertitel laufen wie gewohnt (lokale Erkennung, kostenlos); für KI kaufe Sitzungen oder wechsle zu deinem eigenen API-Schlüssel.",
- "这台电脑还有 {0} 场试用场次，每场最长 {1} 小时。": "Dieser Computer hat noch {0} {0|Testsitzung|Testsitzungen}, je bis zu {1} {1|Stunde|Stunden}.",
  "放一段有人说话的视频，比如一段 YouTube 演讲，看字幕是不是出来了。试听用本地识别，不联网，不扣场次。": "Spiel ein Video mit Sprache ab, etwa einen YouTube-Vortrag, und prüfe, ob Untertitel erscheinen. Der Test nutzt die lokale Erkennung, läuft offline und verbraucht keine Sitzung.",
  "暂时连不上会员服务器": "Mitglieder-Server gerade nicht erreichbar",
  "字幕照常能用（本地识别）。连上以后，要云识别和 AI 可以在主窗口买场次。": "Untertitel funktionieren weiter (lokale Erkennung). Sobald die Verbindung steht, kannst du im Hauptfenster Sitzungen für Cloud-Erkennung und KI kaufen.",
  "这台电脑还有 {0} 场试用场次": "Dieser Computer hat noch {0} {0|Testsitzung|Testsitzungen}",
  "字幕一直免费，AI 按场买": "Untertitel sind immer gratis, KI kaufst du pro Sitzung",
- "字幕用本地识别，免费、不联网、不用填 Key。要云识别和 AI 答题，1 场 {0} 起；也可以在设置里填你自己的 Key，免费、不限场次。": "Untertitel nutzen die lokale Erkennung: gratis, offline, ohne Schlüssel. Cloud-Erkennung und KI-Antworten gibt es ab {0} pro Sitzung; oder trag in den Einstellungen deinen eigenen Schlüssel ein, gratis und ohne Sitzungslimit.",
  "看场次价格": "Sitzungspreise ansehen",
- "字幕用本地识别，免费、不限次数；要云识别和 AI，点下面的购买场次，或把「用法」换成自带 Key（免费）。": "Untertitel nutzen die lokale Erkennung: gratis und unbegrenzt. Für Cloud-Erkennung und KI klicke unten auf „Sitzungen kaufen“ oder stelle „Verwendung“ auf deinen eigenen API-Schlüssel (gratis).",
- "这台电脑不再用这个授权码。授权码在别的电脑上照常用，以后输码还能再绑回来。": "Dieser Computer verwendet diesen Lizenzcode nicht mehr. Der Lizenzcode funktioniert weiterhin auf anderen Computern, und du kannst ihn durch erneute Eingabe wieder verknüpfen."
+ "这台电脑不再用这个授权码。授权码在别的电脑上照常用，以后输码还能再绑回来。": "Dieser Computer verwendet diesen Lizenzcode nicht mehr. Der Lizenzcode funktioniert weiterhin auf anderen Computern, und du kannst ihn durch erneute Eingabe wieder verknüpfen.",
+ "这台电脑还有 {0} 场试用，每场最长 {1} 小时；用完以后字幕照常免费（本地识别，断网也能出字）。": "Dieser Computer hat noch {0} {0|Testsitzung|Testsitzungen}, je bis zu {1} {1|Stunde|Stunden}; danach bleiben Untertitel gratis (lokale Erkennung, auch offline).",
+ "字幕一直免费，AI 要买场次或换自带 Key。": "Untertitel sind immer gratis; für KI kaufe Sitzungen oder wechsle zu deinem eigenen API-Schlüssel.",
+ "字幕用本地识别，不联网、不用填 Key。要云识别和 AI 答题，1 场 {0} 起；也可以在设置里填你自己的 Key，不限场次。": "Untertitel nutzen die lokale Erkennung: offline, ohne Schlüssel. Cloud-Erkennung und KI-Antworten gibt es ab {0} pro Sitzung; oder trag in den Einstellungen deinen eigenen Schlüssel ein, ohne Sitzungslimit."
 }

@@ -2171,9 +2171,11 @@ button.nav-section:focus-visible {
   grid-template-columns: 1.15fr 1fr;
   gap: 16px;
   margin-top: 26px;
-  align-items: start;
+  align-items: stretch;
 }
 .pricing-col {
+  display: flex;
+  flex-direction: column;
   padding: 20px;
   border: 1px solid var(--stroke-soft);
   border-radius: var(--r-xl);
@@ -2182,6 +2184,10 @@ button.nav-section:focus-visible {
 .pricing-col.is-featured {
   border: 2px solid var(--accent);
   padding: 19px;
+}
+.pricing-col-end {
+  margin-top: auto;
+  padding-top: 16px;
 }
 .pricing-col-head {
   display: flex;
