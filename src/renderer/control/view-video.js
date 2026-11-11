@@ -385,6 +385,11 @@ async function openVideoSheet(file) {
       el('div.vm-sheet-b', {}, fileRow, fileCallout, kind, lang, proj2, notes, rec, langCallout, balCallout, keyCallout, aiCallout),
       foot,
     )
+    // 出错提示变了的话让它露出来（面板里内容多，提示在下面会被盖住）；没变就不动，免得用户改别的选项时滚来滚去
+    const errKey = [fileErr?.code, langErr?.code, balErr?.code, keyErr?.code, aiErr?.code].filter(Boolean).join()
+    const warn = root.querySelector('.vm-callout')
+    if (warn && errKey !== sh.lastErrKey) requestAnimationFrame(() => warn.scrollIntoView({ block: 'nearest' }))
+    sh.lastErrKey = errKey
   }
 
   async function start() {

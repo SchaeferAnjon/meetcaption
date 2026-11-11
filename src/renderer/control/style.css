@@ -2951,7 +2951,7 @@ button.nav-section:focus-visible {
   color: var(--accent-text);
 }
 .vm-field {
-  margin-top: 16px;
+  margin-top: 12px;
 }
 .vm-label {
   display: flex;
@@ -3064,7 +3064,7 @@ button.nav-section:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 10px;
   cursor: pointer;
 }
 .vm-fine {
@@ -3076,7 +3076,7 @@ button.nav-section:focus-visible {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  margin-top: 12px;
+  margin-top: 10px;
   padding: 10px 12px;
   border-radius: 10px;
   font-size: 12.5px;
