@@ -20,7 +20,7 @@ const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647
 function slide(page, { cam = true, t = 0, anim = 0 } = {}) {
   const s = new Uint8Array(W * H).fill(240)
   for (let line = 0; line < 4; line++) {
-    const y = 6 + line * 7 + (page % 3)
+    const y = 6 + line * 7 + (page % 3) * 2
     const x0 = 6 + ((page * 7 + line * 3) % 10)
     for (let y2 = y; y2 < y + 3; y2++) for (let x = x0; x < x0 + 40 - page; x++) s[y2 * W + x] = 30
   }
@@ -47,7 +47,7 @@ test('黑屏、淡入的开头不算第一张；两张之间最少隔 minGapSec'
   const black = new Uint8Array(W * H)
   const sigs = [black, black, slide(1, { cam: false }), slide(1, { cam: false }), slide(2, { cam: false }), slide(2, { cam: false }), slide(2, { cam: false })]
   assert.deepEqual(findChanges(sigs, { w: W, h: H, stepSec: 3, minGapSec: 1 }).picks, [2, 4])
-  assert.deepEqual(findChanges(sigs, { w: W, h: H, stepSec: 3, minGapSec: 8 }).picks, [2], '4 到 2 只隔 6 秒')
+  assert.deepEqual(findChanges(sigs, { w: W, h: H, stepSec: 3, minGapSec: 8 }).picks, [2, 5], '第 4 个取样点离上一张只隔 6 秒，等到第 5 个')
 })
 
 test('整个画面都在动（真人讲课）：没有翻页可找，隔几分钟截一张', () => {
