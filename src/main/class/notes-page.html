@@ -325,6 +325,11 @@ body.locked{overflow:hidden}
 .sec h3{display:flex;align-items:baseline;gap:8px;font-size:14px;margin:40px 0 12px}
 .sec h3 .at{flex:none;font:500 11px/18px var(--mono);padding:0 6px;border-radius:4px;background:var(--chip);color:var(--text-2)}
 .sec .vw{margin:0 0 16px}
+/* 视频里截的画面：点时间标签或「视频 mm:ss」让主窗口里的视频跳过去（只在主窗口的框架里出现） */
+.seek{display:none}
+.embedded .seek{display:inline-flex;align-items:center;gap:4px}
+.embedded [data-seek]{cursor:pointer}
+.embedded .sec h3 .at[data-seek]:hover,.embedded .line .t[data-seek]:hover{background:var(--accent-soft,var(--chip));color:var(--accent,var(--text))}
 .side-h,.sub-h{font-size:12px;color:var(--text-2);padding:0 8px}
 .sub-h{padding:0;margin:0 0 6px}
 .leg .said{display:block;margin-top:2px;font-size:12px;color:var(--text-2)}
@@ -361,6 +366,7 @@ details[open]>summary::before{transform:rotate(90deg)}
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.2v9.6L12.6 8z" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-enlarge" viewBox="0 0 16 16"><path d="M9.5 2.5h4v4M13.5 2.5L9.2 6.8M6.5 13.5h-4v-4M2.5 13.5l4.3-4.3"/></symbol>
   <symbol id="i-close" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
   <symbol id="i-mark" viewBox="0 0 16 16"><path d="M4.5 2.5h7v11L8 11l-3.5 2.5z"/></symbol>
@@ -627,6 +633,15 @@ details[open]>summary::before{transform:rotate(90deg)}
     if(cls)cls.addEventListener("click",function(){setFull(false)});
     document.addEventListener("keydown",function(e){if(e.key==="Escape"&&full())setFull(false)});
   });
+
+  /* ---- 视频里的笔记：在主窗口的框架里时，点时间标签或截图旁的「视频 mm:ss」，让外面的视频跳到那一刻 ---- */
+  if(parent!==window)document.documentElement.classList.add("embedded");
+  document.addEventListener("click",function(e){
+    var s=e.target.closest&&e.target.closest("[data-seek]");
+    if(!s||parent===window)return;
+    e.preventDefault();e.stopPropagation();
+    try{parent.postMessage({type:"meetcaption-seek",ms:Number(s.dataset.seek)},"*")}catch(x){}
+  },true);
 
 })();
 </script>

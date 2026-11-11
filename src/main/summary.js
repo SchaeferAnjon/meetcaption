@@ -18,6 +18,7 @@ import { t } from './i18n.js'
 // 事件：'progress' { id, phase: 'summary' | 'items' | 'html', text }，'saved' { id, items: boolean }
 
 const MAX_SLIDES = 6
+const MAX_VIDEO_SLIDES = 8 // 视频里自动截的画面很多：模型最多看这么多张图，其余的只给文件名和时间，笔记照样能放在对的位置
 export const NOTES_HTML = '课堂笔记.html'
 
 // 截图 → data URL（主进程会换成先缩小再编码的版本）
@@ -78,8 +79,9 @@ export class Summarizer extends EventEmitter {
   }
 
   // session：这次是给哪次记录做的（会员的会后凭据只给那一场自己用，见 member/client.js aiKey）
-  #ready(session) {
-    const st = this.aiStatus(session.startedAt)
+  // opts.now：视频模式处理中就地做笔记，用手上这一场（或刚结束那一场）的票，不按记录的开始时间认（视频的开始时间在开这一场之前）
+  #ready(session, opts = {}) {
+    const st = this.aiStatus(opts.now ? null : session.startedAt)
     // 会员的原因里已经带了去哪改；没有 Key 可填，不能指到「账号与 AI」
     if (!st.ready) throw new Error(st.provider === 'member' ? st.reason : t(`{0}（设置 → 账号与 AI）`, st.reason))
   }
@@ -103,7 +105,9 @@ export class Summarizer extends EventEmitter {
 
   // 最近 6 张截图：[{ file, at, dataUrl }]，读不到的跳过
   #slides(session) {
-    const list = (Array.isArray(session.slides) ? session.slides : []).filter((x) => x?.file).slice(-MAX_SLIDES)
+    const all = (Array.isArray(session.slides) ? session.slides : []).filter((x) => x?.file)
+    // 视频里自动截的画面可能有几十张：均匀挑出几张给模型看
+    const list = session.video && all.length > MAX_VIDEO_SLIDES ? Array.from({ length: MAX_VIDEO_SLIDES }, (_, i) => all[Math.round((i * (all.length - 1)) / (MAX_VIDEO_SLIDES - 1))]) : all.slice(-MAX_SLIDES)
     const out = []
     let dir = null
     try {
@@ -119,10 +123,15 @@ export class Summarizer extends EventEmitter {
     return out
   }
 
-  /** 生成纪要（课堂会议是课堂笔记）和待办。→ { markdown, items, title, itemsError } */
-  async generate(id, extraAsk) {
+  // 带上用量回调和「按哪个时间认凭据」的 llm 调用
+  #ask(session, opts, o) {
+    return this.llm({ ...o, sessionStartedAt: opts.now ? null : session.startedAt, ...(opts.onUsage ? { onUsage: opts.onUsage } : {}) })
+  }
+
+  /** 生成纪要（课堂会议是课堂笔记）和待办。→ { markdown, items, title, itemsError }。opts：{ now, onUsage } */
+  async generate(id, extraAsk, opts = {}) {
     const session = this.store.load(id)
-    this.#ready(session)
+    this.#ready(session, opts)
     const isClass = session.mode === 'class'
     if (!session.segments.some((x) => x.text)) throw new Error(isClass ? t('这节课没有识别到内容') : t('这场会议没有识别到内容'))
     const ctrl = this.#begin(id)
@@ -139,7 +148,7 @@ export class Summarizer extends EventEmitter {
             pages.push(this.loadImage(x.file))
           } catch {}
         }
-        const [sys, user] = classNotesMessages({ session, project, extraAsk, slides, liveNotes: session.liveNotes ?? null, materials })
+        const [sys, user] = classNotesMessages({ session, project, extraAsk, slides, allSlides: session.video ? session.slides : null, liveNotes: session.liveNotes ?? null, materials })
         system = sys
         const text = user.content + answersNote(session)
         const images = [...slides.map((x) => x.dataUrl), ...pages]
@@ -155,10 +164,9 @@ export class Summarizer extends EventEmitter {
       let cut = null
       try {
         markdown = clean(
-          await this.llm({
+          await this.#ask(session, opts, {
             model: 'smart',
             effort: 'low',
-            sessionStartedAt: session.startedAt,
             signal: ctrl.signal,
             system: system.content,
             messages: [{ role: 'user', content }],
@@ -180,8 +188,8 @@ export class Summarizer extends EventEmitter {
       })
       this.emit('saved', { id, items: false })
       if (cut) throw new Error(t(`{0}。前面写好的部分已经存下`, cut.message))
-      if (!isClass) return { markdown, ...(await this.#extract(id, markdown, ctrl.signal)) }
-      const [r, map] = await Promise.all([this.#extract(id, markdown, ctrl.signal), this.#slideMap(id, markdown, ctrl.signal)])
+      if (!isClass) return { markdown, ...(await this.#extract(id, markdown, ctrl.signal, opts)) }
+      const [r, map] = await Promise.all([this.#extract(id, markdown, ctrl.signal, opts), this.#slideMap(id, markdown, ctrl.signal, opts)])
       return { markdown: shown, ...r, ...this.#writeHtml(id, shown, map) }
     } finally {
       this.#end(id, ctrl)
@@ -228,7 +236,7 @@ export class Summarizer extends EventEmitter {
   }
 
   // 课件对照：老师讲到哪些页、每页对着哪几行讲了什么 → { slideMap, pages, error }；没课件时是空的
-  async #slideMap(id, markdown, signal) {
+  async #slideMap(id, markdown, signal, opts = {}) {
     const session = this.store.load(id)
     if (!session.materials?.length) return { slideMap: [], pages: new Map(), error: null }
     const dir = this.store.dir(id)
@@ -237,7 +245,7 @@ export class Summarizer extends EventEmitter {
     const sections = outlineSections(markdown)
     try {
       const [system, user] = slideMapMessages({ session, markdown, sections, materialsText: text })
-      const raw = await this.llm({ model: 'smart', effort: 'low', json: true, signal, timeoutMs: 180_000, sessionStartedAt: session.startedAt, system: system.content, messages: [user] })
+      const raw = await this.#ask(session, opts, { model: 'smart', effort: 'low', json: true, signal, timeoutMs: 180_000, system: system.content, messages: [user] })
       return { slideMap: parseSlideMap(raw, { pages, sections }), pages, error: null }
     } catch (e) {
       if (signal.aborted) throw e
@@ -258,7 +266,7 @@ export class Summarizer extends EventEmitter {
     return { html: NOTES_HTML, htmlError: error }
   }
 
-  async #extract(id, markdown, signal) {
+  async #extract(id, markdown, signal, opts = {}) {
     this.emit('progress', { id, phase: 'items', text: markdown })
     const session = this.store.load(id)
     const { project, projects } = this.#context(session)
@@ -268,7 +276,7 @@ export class Summarizer extends EventEmitter {
       const [system, user] = isClass
         ? classTodoMessages({ session, summary: markdown, project, liveNotes: session.liveNotes ?? null })
         : todoMessages({ session, summary: markdown, project, projects })
-      const raw = await this.llm({ model: 'smart', effort: 'low', json: true, signal, timeoutMs: 120_000, sessionStartedAt: session.startedAt, system: system.content, messages: [user] })
+      const raw = await this.#ask(session, opts, { model: 'smart', effort: 'low', json: true, signal, timeoutMs: 120_000, system: system.content, messages: [user] })
       // 课堂的作业全部归到这节课的项目；提取时没给日期、纪要里写明了截止日期的，用纪要的日期补上
       parsed = parseTodoItems(raw, { projects: isClass ? [] : projects, fallbackProjectId: project?.id ?? INBOX_ID, startedAt: session.startedAt, summary: markdown })
       if (isClass) for (const x of parsed.items) x.owner ??= 'me'

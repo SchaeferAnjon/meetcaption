@@ -128,8 +128,9 @@ function union(bs) {
  * 一张图的看图器。img：{ file, w, h, label }；points：[{ boxes, text, at, quote }]（没有就是一张能点开放大的图）。
  * 点一条放大到它所有框合起来的范围。
  */
-function viewer(img, points = []) {
+function viewer(img, points = [], seekMs = null) {
   const still = !points.length
+  const seek = seekMs != null ? `<button class="ghost seek" type="button" data-seek="${Math.round(seekMs)}"><svg><use href="#i-play"/></svg>${t('视频 {0}', clock(seekMs))}</button>` : ''
   const boxes = points
     .flatMap((p, i) => p.boxes.map((b) => `<b class="rb" data-i="${i}" data-b="${b.join(',')}" style="${boxStyle(b, img)}"><i class="k">${i + 1}</i></b>`))
     .join('')
@@ -140,7 +141,7 @@ function viewer(img, points = []) {
       return `<li tabindex="0" data-i="${i}" data-t="0:0:${p.boxes.length ? union(p.boxes).join(',') : ''}"><span class="n">${i + 1}</span><span>${render(p.text, { inline: true })}${meta ? `<span class="said">${meta}</span>` : ''}</span></li>`
     })
     .join('')
-  return `<div class="vw${still ? ' still' : ' split rows'}"><div class="ftitle">${esc(img.label)}<span class="sp"></span><button class="ghost close" type="button"><svg><use href="#i-close"/></svg>关闭</button></div><div class="vpbox"><div class="panes"><div class="pane"><div class="vp" role="img" aria-label="${esc(img.label)}">${stage}<i class="mask" hidden></i></div></div></div><div class="wbar"><span class="pnote1">${esc(img.label)}</span><button class="ghost all" type="button" hidden>全图</button><span class="sp"></span>${still ? '' : '<button class="ghost enl" type="button"><svg><use href="#i-enlarge"/></svg>放大</button>'}</div></div>${still ? '' : `<div class="side"><div class="side-h">老师对着这一页讲的</div><ol class="leg body">${lines}</ol></div>`}</div>`
+  return `<div class="vw${still ? ' still' : ' split rows'}"><div class="ftitle">${esc(img.label)}<span class="sp"></span><button class="ghost close" type="button"><svg><use href="#i-close"/></svg>关闭</button></div><div class="vpbox"><div class="panes"><div class="pane"><div class="vp" role="img" aria-label="${esc(img.label)}">${stage}<i class="mask" hidden></i></div></div></div><div class="wbar"><span class="pnote1">${esc(img.label)}</span><button class="ghost all" type="button" hidden>全图</button><span class="sp"></span>${seek}${still ? '' : '<button class="ghost enl" type="button"><svg><use href="#i-enlarge"/></svg>放大</button>'}</div></div>${still ? '' : `<div class="side"><div class="side-h">老师对着这一页讲的</div><ol class="leg body">${lines}</ol></div>`}</div>`
 }
 
 /* ---------- 整页 ---------- */
@@ -192,6 +193,10 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
     return `\n\n${FIG_OPEN}${figs.length - 1}${FIG_CLOSE}\n\n`
   }
   const slides = new Set((session.slides ?? []).map((x) => path.basename(String(x?.file ?? ''))))
+  // 视频里自动截的画面：知道每张是视频的哪一刻，点一下能让视频跳过去；模型没引用的按时间放进所属小节
+  const video = Boolean(session.video)
+  const slideMs = new Map((session.slides ?? []).filter((x) => x?.file).map((x) => [path.basename(String(x.file)), x.at - session.startedAt]))
+  const cited = new Set([...String(markdown).matchAll(SLIDE_IMG)].map((m) => path.basename(decodeURIComponent(m[2]))))
   const withFigs = (text) =>
     text
       .replace(MATERIAL_IMG, (all, alt, id, n) => pageFig(`${id}:${Number(n)}`, alt) ?? '')
@@ -199,7 +204,7 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
         const base = path.basename(decodeURIComponent(name))
         const file = path.join(sessionDir, 'slides', base)
         if (!slides.has(base) || !fs.existsSync(file)) return ''
-        figs.push(viewer({ file, ...jpegSize(fs.readFileSync(file)), label: alt || t('课上截图') }))
+        figs.push(viewer({ file, ...jpegSize(fs.readFileSync(file)), label: alt || t('课上截图') }, [], slideMs.get(base) ?? null))
         return `\n\n${FIG_OPEN}${figs.length - 1}${FIG_CLOSE}\n\n`
       })
   // 大纲那一节按上课的顺序走一遍：每个小节先是老师讲到的课件页（框出讲的那几行、旁边是讲了什么），
@@ -227,7 +232,17 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
       const notes = c.body.join('\n').replace(MATERIAL_IMG, (all, alt, id, n) => (mapped.has(`${id}:${Number(n)}`) ? '' : all))
       const end = starts.slice(i + 1).find((t) => t != null) ?? Infinity
       const said = transcript(session, starts[i] ?? 0, end)
-      const html = [shown.join(''), notes.trim() ? `<div class="notes">${shown.length ? '<div class="sub-h">这一节的要点</div>' : ''}${body([notes])}</div>` : '', said].join('')
+      const end0 = starts.slice(i + 1).find((t) => t != null) ?? Infinity
+      const leftover = video
+        ? [...slideMs]
+            .filter(([name, ms]) => !cited.has(name) && ms >= (starts[i] ?? 0) && ms < end0 && fs.existsSync(path.join(sessionDir, 'slides', name)))
+            .sort((a, b) => a[1] - b[1])
+            .map(([name, ms]) => {
+              figs.push(viewer({ file: path.join(sessionDir, 'slides', name), ...jpegSize(fs.readFileSync(path.join(sessionDir, 'slides', name))), label: t('课上截图') }, [], ms))
+              return figs[figs.length - 1]
+            })
+        : []
+      const html = [shown.join(''), notes.trim() ? `<div class="notes">${shown.length ? '<div class="sub-h">这一节的要点</div>' : ''}${body([notes])}</div>` : '', leftover.join(''), said].join('')
       return { title: c.title, html }
     })
     return s.subs.length ? { s, html: body(s.body), subs } : { s, html: subs[0].html, subs: [] }
@@ -250,7 +265,7 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
     const quiz = classHeadRe(7).test(r.s.title)
     const fix = (h) => (quiz ? foldAnswers(h) : h)
     parts.push(
-      `<section class="sec${quiz ? ' quiz' : ''}" id="${id}"><h2>${render(r.s.title, { inline: true })}</h2>${fix(r.html)}${subs.map((x) => `<h3 id="${x.id}">${heading(x.title)}</h3>${fix(x.html)}`).join('')}</section>`,
+      `<section class="sec${quiz ? ' quiz' : ''}" id="${id}"><h2>${render(r.s.title, { inline: true })}</h2>${fix(r.html)}${subs.map((x) => `<h3 id="${x.id}">${heading(x.title, video)}</h3>${fix(x.html)}`).join('')}</section>`,
     )
   })
 
@@ -280,7 +295,7 @@ function transcript(session, from, to) {
   const rows = segs.map((x) => {
     const sentences = x.sentences?.length ? x.sentences : [{ text: x.text }]
     const lines = sentences.map((y) => `<p class="en">${esc(y.text)}</p>${y.tr ? `<p class="zh">${esc(y.tr)}</p>` : ''}`).join('')
-    return `<div class="line${x.who === 'me' ? ' me' : ''}"><span class="t">${clock(x.startedAt - session.startedAt)}</span><span class="who">${esc(x.speaker)}</span><div>${lines}</div></div>`
+    return `<div class="line${x.who === 'me' ? ' me' : ''}"><span class="t"${session.video ? ` data-seek="${x.startedAt - session.startedAt}"` : ''}>${clock(x.startedAt - session.startedAt)}</span><span class="who">${esc(x.speaker)}</span><div>${lines}</div></div>`
   })
   return `<details class="said-all"><summary>老师原话（${segs.length} 段，${clock(segs[0].startedAt - session.startedAt)} 起）</summary><div class="lines">${rows.join('')}</div></details>`
 }
@@ -319,9 +334,10 @@ function tocNav(toc) {
 }
 
 // 标题里的 [mm:ss] 画成时间标签
-function heading(title) {
+function heading(title, video = false) {
   const m = title.match(/^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*(.*)$/)
-  return m ? `<span class="at">${m[1]}</span>${render(m[2], { inline: true })}` : render(title, { inline: true })
+  const ms = m ? parseAt(m[1]) : null
+  return m ? `<span class="at"${video && ms != null ? ` data-seek="${ms}"` : ''}>${m[1]}</span>${render(m[2], { inline: true })}` : render(title, { inline: true })
 }
 
 // 目录里的字：去掉 Markdown 记号和公式的 $

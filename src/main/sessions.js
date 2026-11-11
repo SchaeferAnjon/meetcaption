@@ -69,6 +69,8 @@ function toRecord(id, projectId, s) {
     count: segs.length,
     answers: Array.isArray(s.answers) ? s.answers.length : 0,
     hasSummary: Boolean(s.summary?.markdown),
+    processing: s.video?.status === 'processing', // 视频还在处理：列表、待办、搜索里先不出现
+    video: Boolean(s.video),
     summary: s.summary?.markdown || '',
     items: Array.isArray(s.summary?.items) ? s.summary.items : [],
     lines: segs.map((x) => ({ at: (Number(x.startedAt) || startedAt) - startedAt, speaker: x.speaker, text: x.text })),
@@ -271,6 +273,29 @@ export class SessionStore {
     return s
   }
 
+  /** 直接删掉（不进废纸篓）：视频处理中途取消、没做完的会议用。 */
+  discard(id) {
+    clearTimeout(this.timers.get(id))
+    this.timers.delete(id)
+    const dir = this.dir(id)
+    fs.rmSync(dir, { recursive: true, force: true })
+    this.#index().delete(id)
+    this.cache.delete(id)
+    if (this.current?.id === id) this.current = null
+  }
+
+  /** 视频处理没做完就退出了应用：下次启动把留下的半成品清掉。 */
+  sweepVideos() {
+    let n = 0
+    for (const [id] of [...this.reindex()]) {
+      try {
+        const file = path.join(this.dir(id), SESSION_FILE)
+        if (JSON.parse(fs.readFileSync(file, 'utf8')).video?.status === 'processing') (this.discard(id), n++)
+      } catch {}
+    }
+    return n
+  }
+
   /** 把一个项目里的会议全部挪到另一个项目（删项目前用），返回挪了几场。 */
   moveAll(fromProjectId, toProjectId) {
     if (this.current && !this.current.endedAt && this.#index().get(this.current.id) === fromProjectId) throw new Error(t('这个项目里正在开会，先停止记录'))
@@ -317,7 +342,7 @@ export class SessionStore {
       try {
         const record = toRecord(id, projectId, JSON.parse(fs.readFileSync(file, 'utf8')))
         this.cache.set(id, { key, record })
-        out.push(record)
+        if (!record.processing) out.push(record)
       } catch {}
     }
     return out.sort((a, b) => b.startedAt - a.startedAt)
@@ -339,6 +364,7 @@ export class SessionStore {
         count: r.count,
         answers: r.answers,
         hasSummary: r.hasSummary,
+        video: r.video || undefined,
         todos: r.items.filter((x) => !x.done).length,
       }))
   }

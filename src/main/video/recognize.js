@@ -76,14 +76,15 @@ export async function quietCut(pcmFile, aroundMs, radiusMs = 20_000, fh = null) 
 }
 
 /** 把 [0, durationMs) 切成约 chunkMs 一块，刀口落在停顿上。→ [{ from, to }] */
-export async function planChunks(pcmFile, durationMs, chunkMs = 240_000) {
-  const n = Math.max(1, Math.round(durationMs / chunkMs))
-  if (n === 1) return [{ from: 0, to: durationMs }]
+export async function planChunks(pcmFile, durationMs, chunkMs = 240_000, fromMs = 0) {
+  const span = durationMs - fromMs
+  const n = Math.max(1, Math.round(span / chunkMs))
+  if (n === 1) return [{ from: fromMs, to: durationMs }]
   const fh = await fs.open(pcmFile, 'r')
   try {
-    const cuts = [0]
+    const cuts = [fromMs]
     for (let i = 1; i < n; i++) {
-      const target = Math.round((durationMs * i) / n)
+      const target = Math.round(fromMs + (span * i) / n)
       const cut = await quietCut(pcmFile, target, Math.min(20_000, chunkMs / 4), fh)
       cuts.push(Math.max(cuts.at(-1) + 5000, Math.min(durationMs - 5000, cut)))
     }
@@ -243,10 +244,10 @@ async function oneConnection({ pcmFile, from, to, key, getKey, url, language, co
 
 /**
  * 云识别整个文件：切块，parallel 路同时认，拼回来按时间排。
- * onProgress(已认到的毫秒，各块加起来)。→ [{ startMs, endMs, text }]
+ * fromMs、toMs：只认这一段（会员按场切的段）。onProgress(已认完的毫秒数，各块加起来，从这一段的开头算)。→ [{ startMs, endMs, text }]
  */
-export async function recognizeCloud({ pcmFile, durationMs, parallel = 3, chunkMs = 240_000, onProgress, signal, ...opts }) {
-  const chunks = await planChunks(pcmFile, durationMs, chunkMs)
+export async function recognizeCloud({ pcmFile, durationMs, fromMs = 0, toMs = durationMs, parallel = 3, chunkMs = 240_000, onProgress, signal, ...opts }) {
+  const chunks = await planChunks(pcmFile, toMs, chunkMs, fromMs)
   const done = new Array(chunks.length).fill(0) // 每块已认到的毫秒数
   const results = new Array(chunks.length)
   let next = 0
