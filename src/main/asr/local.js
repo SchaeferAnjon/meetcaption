@@ -219,6 +219,7 @@ export class LocalStreamASR extends EventEmitter {
       keyPrefix: `${this.ch}-`,
       onEvents: (events, samples) => {
         for (const e of events) this.#emit(e)
+        if (samples != null) this.emit('progress', this.chanStart + samples) // 认到第几个样本（视频模式按它控制送音频的速度）
         if (!this.warned && samples != null && this.total - this.chanStart - samples > LAG_WARN_SAMPLES + this.backlog) {
           this.warned = true
           // 引擎决定怎么提示：用本地识别的推荐换云识别或会员，云识别断线时本地接手的只说一声慢
