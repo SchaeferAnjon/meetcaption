@@ -265,6 +265,7 @@ async function openVideoSheet(file) {
     const langErr = cur?.errors?.find((x) => x.code === 'local-language')
     const balErr = cur?.errors?.find((x) => x.code === 'no-balance')
     const keyErr = cur?.errors?.find((x) => x.code === 'no-cloud-key')
+    const aiErr = cur?.errors?.find((x) => x.code === 'no-ai')
     const blocked = !cur || !cur.ok || cur.errors.length > 0
     const project = projectOf(sh.projectId)
     const kindNote = t(`按项目「{0}」的默认先选好了`, project?.name ?? t('未归类'))
@@ -363,6 +364,12 @@ async function openVideoSheet(file) {
         ])
       : null
 
+    const aiCallout = aiErr
+      ? callout('is-warn', t('AI 服务还没连上'), t(`{0}。翻译和笔记要用 AI。`, aiErr.message), [
+          el('button.btn.btn-sm', { type: 'button', onClick: () => (close(), aiSettings()) }, t('去设置')),
+          el('button.btn.btn-sm', { type: 'button', onClick: () => ((sh.target = ''), (sh.notes = false), refresh(), render()) }, t('只要原文字幕')),
+        ])
+      : null
     const est = cur?.estSec
     const foot = el(
       'div.vm-foot',
@@ -375,7 +382,7 @@ async function openVideoSheet(file) {
     fill(
       root,
       el('div.vm-sheet-h', { text: t('加一个视频') }),
-      el('div.vm-sheet-b', {}, fileRow, fileCallout, kind, lang, proj2, notes, rec, langCallout, balCallout, keyCallout),
+      el('div.vm-sheet-b', {}, fileRow, fileCallout, kind, lang, proj2, notes, rec, langCallout, balCallout, keyCallout, aiCallout),
       foot,
     )
   }

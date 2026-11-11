@@ -62,6 +62,11 @@ export class VideoService {
     Object.assign(out, { sessions: charge.sessions, unit: charge.unit, estSec: Math.round(sum(est)), translate })
     if (q.recognition === 'local' && needsMultilingual(q.language)) out.errors.push({ code: 'local-language', message: t('本地识别只认中文和英文') })
     if (q.recognition === 'cloud' && !cloud) out.errors.push({ code: 'no-cloud-key', message: t('云识别要先填 Soniox 的 Key') })
+    // 自带 Key：翻译和笔记要 AI，没连上就先说清楚（会员的 AI 不够场次由下面的场次检查说）
+    if (plan === 'own' && (translate || q.notes) && this.deps.aiStatus) {
+      const st = this.deps.aiStatus()
+      if (!st.ready) out.errors.push({ code: 'no-ai', message: st.reason || t('AI 服务还没连上') })
+    }
     if (charge.sessions) {
       const e = enough(charge.sessions, balance)
       out.enough = e.ok

@@ -1818,7 +1818,7 @@ function wireIpc() {
         fs.writeFileSync(r.filePath, content)
         file = r.filePath
       }
-      shell.showItemInFolder(file)
+      if (!process.env.MEETCAPTION_NO_EXTERNAL) shell.showItemInFolder(file) // 在访达里选中它，旁边就是视频
       return { ok: true, file, name: path.basename(file), variant }
     } catch (err) {
       return { ok: false, error: err.message }
@@ -2231,6 +2231,7 @@ app.whenReady().then(async () => {
     llm,
     summarizer,
     voiceprint: () => loadVoiceprintScorer(),
+    aiStatus: () => aiStatus(),
     makeWorkers: () => ({ audio: new VideoWorker(), frames: new VideoWorker() }),
     emit: (channel, payload) => (toUi(channel, payload), channel === 'video:done' && (emitSessions({ sessionId: payload.sessionId }), emitProjects(), emitTodos({ sessionId: payload.sessionId }))),
     notify: videoNotify,

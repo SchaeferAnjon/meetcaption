@@ -220,3 +220,18 @@ test('VideoService：问价（场次、够不够、云识别能不能用）、�
   const busy = new VideoService({ ...deps(env), makeWorkers: () => ({}), emit() {}, busy: () => true })
   assert.equal((await busy.start(base)).code, 'busy')
 })
+
+test('VideoService 问价：自带 Key 但 AI 没连上，翻译和笔记先拦住；只要原文字幕就不拦', async () => {
+  const env = setup()
+  const svc = new VideoService({
+    ...deps(env, { steps: { ...steps(), open: async () => fakeMedia(HOUR) } }),
+    aiStatus: () => ({ ready: false, reason: '还没填 DeepSeek 的 Key' }),
+    makeWorkers: () => ({}),
+    emit() {},
+  })
+  const q = await svc.quote(base)
+  assert.equal(q.errors[0].code, 'no-ai')
+  assert.match(q.errors[0].message, /DeepSeek/)
+  assert.deepEqual((await svc.quote({ ...base, translate: false, notes: false })).errors, [])
+  assert.equal((await svc.quote({ ...base, translate: false, notes: true })).errors[0].code, 'no-ai')
+})
