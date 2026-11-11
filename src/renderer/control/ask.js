@@ -24,12 +24,13 @@ function askPanel(host) {
 
   const thread = el('div.ask-thread', { dataset: { part: '对话' } })
   const scroller = el('div.ask-scroll', {}, thread)
+  const notice = el('div.ask-notice', { hidden: true }) // 已经问过以后 AI 用不了：原因放在输入框上面（还没问过时放在对话区里）
   const quoteBox = el('div.ask-quote-slot')
   const chips = el('div.ask-chips.is-small.ask-ready', { hidden: true })
   const input = el('textarea.ask-input', { rows: 1, placeholder: t('问这节课，比如：H(σ) 到底是什么？'), 'aria-label': t('问 AI'), spellcheck: false })
   const send = el('button.ask-send', { type: 'button', 'aria-label': t('发送'), title: t('发送（↵）') }, icon('arrow-up', 15))
   const hint = el('div.ask-hint', {}, el('span', { text: t('↵ 发送 · ⇧↵ 换行') }), el('span.header-spacer'), el('span.ask-hint-what', { text: live ? t('用这节课的字幕、笔记和截图回答') : t('用整节课的字幕、笔记和课件回答') }))
-  const composer = el('div.ask-composer', { dataset: { part: '输入框' } }, quoteBox, chips, el('div.ask-input-row', {}, input, send), hint)
+  const composer = el('div.ask-composer', { dataset: { part: '输入框' } }, notice, quoteBox, chips, el('div.ask-input-row', {}, input, send), hint)
   const root = el('div.ask-body.ask-a', { class: live ? '' : 'is-after' }, scroller, composer)
 
   // 课上是右栏自己在滚；课后详情页整页在滚，输入框贴在页面底部
@@ -236,8 +237,9 @@ function askPanel(host) {
     const last = [...records.values()].at(-1)
     if (last?.rec.status === 'done') showNext(last)
     renderEmpty()
-    renderSend()
-    requestAnimationFrame(scrollEnd)
+    renderState()
+    // 课上：右栏里最新的在底下；课后：整页从头看，不把标签和标题滚走
+    if (live) requestAnimationFrame(scrollEnd)
   }
 
   async function retry(r) {
@@ -350,6 +352,9 @@ function askPanel(host) {
       empty.remove()
       renderEmpty()
     }
+    notice.hidden = ready || !records.size
+    if (!notice.hidden) fill(notice, noAiNode())
+    for (const n of thread.querySelectorAll('.ask-next-row')) n.hidden = !ready
     renderReady()
     renderSend()
   }
@@ -409,19 +414,28 @@ function wireAskTranscript(container, onAsk) {
       const range = sel.getRangeAt(0)
       const line = lineOf(range.startContainer) ?? lineOf(range.commonAncestorContainer)
       if (!line || !container.contains(line)) return
-      const r = range.getBoundingClientRect()
       pop = el('button.ask-sel', { type: 'button', dataset: { part: '选中后问 AI' }, onMousedown: (e) => e.preventDefault(), onClick: () => (hide(), onAsk({ segId: line.dataset.id, sel: text })) }, icon('message-circle-question', 14), t('问 AI'))
       document.body.append(pop)
-      pop.style.left = `${Math.max(8, Math.round(r.left + r.width / 2 - pop.offsetWidth / 2))}px`
-      pop.style.top = `${Math.max(8, Math.round(r.top - pop.offsetHeight - 6))}px`
+      place()
     }, 0)
+  // 选中的词上方：实时记录一直在往下滚（新字幕来了），按动了的位置跟着挪；选的词滚出了视野或选区没了才收起
+  const place = () => {
+    if (!pop) return
+    const sel = window.getSelection()
+    if (!sel?.rangeCount || !String(sel).trim()) return hide()
+    const r = sel.getRangeAt(0).getBoundingClientRect()
+    const box = (container.closest('.pane-body') ?? container).getBoundingClientRect()
+    if (r.bottom < box.top + 4 || r.top > box.bottom - 4) return hide()
+    pop.style.left = `${Math.max(8, Math.round(r.left + r.width / 2 - pop.offsetWidth / 2))}px`
+    pop.style.top = `${Math.max(8, Math.round(r.top - pop.offsetHeight - 6))}px`
+  }
   const onDown = (e) => {
     if (!e.target.closest?.('.ask-sel')) hide()
   }
   container.addEventListener('mouseup', onUp)
   document.addEventListener('mousedown', onDown)
   const scrollParent = container.closest('.pane-body')
-  scrollParent?.addEventListener('scroll', hide)
+  scrollParent?.addEventListener('scroll', place)
   add()
   const mo = new MutationObserver(add)
   mo.observe(container, { childList: true })
@@ -430,7 +444,7 @@ function wireAskTranscript(container, onAsk) {
     hide()
     container.removeEventListener('mouseup', onUp)
     document.removeEventListener('mousedown', onDown)
-    scrollParent?.removeEventListener('scroll', hide)
+    scrollParent?.removeEventListener('scroll', place)
   }
 }
 

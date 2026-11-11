@@ -672,7 +672,6 @@ VIEWS.meeting = {
       }
       fill(panel, askPage)
       askPanelView.refreshStatus()
-      askPanelView.scrollEnd()
     }
 
     /* ---- 术语 ---- */
@@ -762,7 +761,7 @@ VIEWS.meeting = {
       }
       // 正在打字的输入框和正在流式出字的回答别被重画掉
       if (tab === 'summary' && summaryParts) syncSummary()
-      else if (tab !== 'ask') renderPanel()
+      else if (!(tab === 'ask' && askPanelView)) renderPanel()
     }
 
     renderHeader()

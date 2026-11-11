@@ -2662,3 +2662,7 @@ button.nav-section:focus-visible {
 .ask-next-row { margin-top: 2px; }
 
 .tline { position: relative; }
+
+.ask-notice[hidden] { display: none; }
+.ask-notice { margin-bottom: 8px; }
+@container main (max-width: 760px) { .ask-hint-what { display: none; } }
