@@ -1822,5 +1822,8 @@
  "纪要和待办": "Protokoll und Aufgaben",
  "自动截了 {0} 张画面": "{0} Bilder automatisch aufgenommen",
  "{0}的{1}": "{0}: {1}",
- "出纪要和待办；说话的人标成「说话人 1、2、3」，之后能改成真名": "Erstellt Protokoll und Aufgaben; Sprecher heißen „Sprecher 1, 2, 3“ und lassen sich später umbenennen"
+ "出纪要和待办；说话的人标成「说话人 1、2、3」，之后能改成真名": "Erstellt Protokoll und Aufgaben; Sprecher heißen „Sprecher 1, 2, 3“ und lassen sich später umbenennen",
+ "{0} 个小节": "{0} {0|Abschnitt|Abschnitte}",
+ "{0} 张自动截的画面": "{0} {0|Bild|Bilder} automatisch aufgenommen",
+ "老师原话 {0} 句": "Originalton der Lehrkraft, {0} {0|Satz|Sätze}"
 }

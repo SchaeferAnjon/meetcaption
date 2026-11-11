@@ -3165,6 +3165,7 @@ button.nav-section:focus-visible {
   overflow: auto;
 }
 .vm-right > .tab-panel:has(> .notes-frame),
+.vm-right > .tab-panel:has(> .vn),
 .vm-right > .tab-panel:has(> .summary-toolbar) {
   padding: 12px 16px 16px;
 }
@@ -3583,4 +3584,188 @@ button.nav-section:focus-visible {
 }
 .page.video-page.vm-wide .vm-ov {
   display: none;
+}
+
+/* ---------------- 视频课的图文笔记（design/video-mode 方向 A 第 5 屏）：左截图、右要点，每节带时间 ---------------- */
+.vn {
+  container-type: inline-size;
+  padding: 4px 2px 8px;
+  background: var(--bg);
+}
+.vn-head {
+  margin-bottom: 12px;
+}
+.vn-title {
+  margin: 4px 0;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.vn-meta {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.vn-overview {
+  margin: 0 0 12px;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: 1.6;
+}
+.vn-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 6px;
+}
+.vn-toc-l {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+.vn-toc button {
+  padding: 2px 8px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.vn-toc button:hover {
+  color: var(--text);
+}
+.vn-sec {
+  padding: 14px 0 16px;
+  border-top: 1px solid var(--stroke-soft);
+  scroll-margin-top: 4px;
+}
+.vn-sec:first-of-type {
+  margin-top: 10px;
+}
+.vn-sec-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  line-height: 1.35;
+}
+.vn-n {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 11px;
+}
+.vn-sec-t {
+  min-width: 0;
+}
+.vn-body {
+  display: grid;
+  gap: 10px;
+  align-items: start;
+}
+@container (min-width: 440px) {
+  .vn-body.has-fig {
+    grid-template-columns: minmax(0, clamp(160px, 38%, 210px)) minmax(0, 1fr);
+    gap: 14px;
+  }
+}
+.vn-figs {
+  display: grid;
+  gap: 8px;
+}
+.vn-fig {
+  position: relative;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: #0b0b0c;
+  aspect-ratio: 16 / 9;
+  cursor: pointer;
+}
+.vn-fig img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.vn-fig:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.vn-fig-at {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.vn-points {
+  min-width: 0;
+}
+.vn-prose {
+  font-size: var(--fs-md);
+  line-height: 1.6;
+}
+.vn-prose ul,
+.vn-prose ol {
+  margin: 0;
+  padding-left: 18px;
+}
+.vn-prose li {
+  margin-bottom: 3px;
+}
+.vn-prose > :first-child {
+  margin-top: 0;
+}
+.vn-prose > :last-child {
+  margin-bottom: 0;
+}
+.vn-said {
+  margin-top: 6px;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.vn-said summary {
+  cursor: pointer;
+}
+.vn-q {
+  display: grid;
+  gap: 1px;
+  margin: 4px 0;
+  padding: 1px 0 1px 10px;
+  border-left: 2px solid var(--stroke-strong);
+  cursor: pointer;
+}
+.vn-q:hover {
+  border-left-color: var(--accent);
+}
+.vn-q-z {
+  color: var(--text-3);
+}
+.vn-extra {
+  padding: 14px 0 6px;
+  border-top: 1px solid var(--stroke-soft);
+}
+.vn-extra-h {
+  margin: 0 0 8px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.vn-foot {
+  margin-top: 6px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--stroke-soft);
 }

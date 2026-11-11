@@ -421,6 +421,7 @@ VIEWS.meeting = {
     window.addEventListener('message', onFrameMessage)
     ctx.dispose(() => window.removeEventListener('message', onFrameMessage))
 
+    let videoNotes = null // 视频课图文笔记画好的页面：{ key, view }，换了笔记或字幕才重画
     function renderHtml() {
       const job = state.summaries.get(id)
       const making = job?.phase === 'html'
@@ -436,6 +437,17 @@ VIEWS.meeting = {
             ? [t(`课件页插在老师讲到的地方，框出他对着讲的那几行{0}`, s.summary.htmlAt ? t(` · {0} 做的`, fmtClock(s.summary.htmlAt)) : '')]
             : []
       const bar = el('div.summary-toolbar.html-toolbar', {}, el('div.html-note.text-2.text-sm', {}, ...note), redoBtn, browserBtn, pdfBtn)
+      // 视频课：左截图右要点、每节带时间的笔记画在页面里（不用 HTML 文件），按钮放在最后；笔记的小节认不出来时还用下面的框架
+      if (isVideo() && s.summary?.markdown) {
+        const key = `${s.summary.createdAt}:${s.slides?.length ?? 0}:${s.segments?.length ?? 0}:${s.dir}`
+        if (videoNotes?.key !== key) videoNotes = { key, view: videoNotesView(s, vm) }
+        if (videoNotes.view) {
+          bar.classList.add('vn-foot')
+          fill(panel, videoNotes.view.node, bar)
+          htmlBar = bar
+          return
+        }
+      }
       let body = null
       if (has) {
         const src = `${new URL(s.summary.html, sessionBaseUrl(s)).href}?v=${s.summary.htmlAt ?? 0}`
