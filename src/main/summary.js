@@ -257,7 +257,7 @@ export class Summarizer extends EventEmitter {
     const session = this.store.load(id)
     const dir = this.store.dir(id)
     const { project } = this.#context(session)
-    const html = renderNotesHtml({ session, markdown, slideMap, pages, sessionDir: dir, projectName: project?.name ?? '', model: session.summary?.model ?? '' })
+    const html = renderNotesHtml({ session, markdown, slideMap, pages, sessionDir: dir, projectName: project?.name ?? '', model: session.video ? '' : session.summary?.model ?? '' })
     fs.writeFileSync(path.join(dir, NOTES_HTML), html)
     this.store.mutate(id, (s) => {
       s.summary = { ...(s.summary ?? {}), slideMap, html: NOTES_HTML, htmlAt: Date.now() }

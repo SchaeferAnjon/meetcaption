@@ -2730,11 +2730,14 @@ button.nav-section:focus-visible {
 .mode-card-fmt {
   margin-top: auto;
   font-size: var(--fs-xs);
-  color: var(--text-3);
+  color: var(--text-2);
+}
+.mode-card-fmt .nw {
+  white-space: nowrap;
 }
 .mode-card-new {
   margin-left: auto;
-  font-size: 10px;
+  font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   color: light-dark(#0f7d73, #5fd6ca);
 }
@@ -2844,7 +2847,7 @@ button.nav-section:focus-visible {
   flex-wrap: wrap;
   gap: 4px 14px;
   font-size: var(--fs-sm);
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .vm-phases > span {
   display: inline-flex;
@@ -2925,8 +2928,9 @@ button.nav-section:focus-visible {
 .vm-sheet-b {
   flex: 1;
   min-height: 0;
-  padding: 8px 20px 4px;
+  padding: 8px 20px var(--sp-4);
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 .vm-file {
   display: flex;
@@ -2964,7 +2968,7 @@ button.nav-section:focus-visible {
 }
 .vm-hint {
   font-weight: 400;
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .vm-choices {
   display: grid;
@@ -3026,7 +3030,7 @@ button.nav-section:focus-visible {
   border-radius: 5px;
   background: var(--accent-soft);
   color: var(--accent-text);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   line-height: 18px;
 }
@@ -3055,16 +3059,21 @@ button.nav-section:focus-visible {
 .vm-select:hover {
   background: var(--btn-bg-hover);
 }
-.vm-select > span {
+.vm-select > .vm-sel-t {
   flex: 1;
   text-align: left;
   white-space: nowrap;
+}
+.vm-select > .icon-box,
+.vm-select > .ibox {
+  flex: none;
 }
 .vm-check {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 12px;
+  margin-bottom: 4px;
   cursor: pointer;
 }
 .vm-fine {
@@ -3389,13 +3398,16 @@ button.nav-section:focus-visible {
 .vm-frames {
   display: flex;
   gap: 6px;
-  padding-bottom: 4px;
+  margin: -3px;
+  padding: 3px;
   overflow-x: auto;
+  scrollbar-width: thin;
 }
 .vm-fr {
   position: relative;
   flex: none;
-  width: 104px;
+  width: calc((100% - 30px) / 6);
+  min-width: 84px;
   aspect-ratio: 16 / 9;
   padding: 0;
   overflow: hidden;
@@ -3427,8 +3439,10 @@ button.nav-section:focus-visible {
 .vm-now {
   margin-top: 4px;
 }
+.vm-now {
+  min-height: 112px;
+}
 .vm-now-o {
-  min-height: 40px;
   font-size: var(--fs-md);
   line-height: 1.5;
 }
@@ -3436,6 +3450,7 @@ button.nav-section:focus-visible {
   color: var(--text-3);
 }
 .vm-now-z {
+  margin-top: 2px;
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--text-2);
@@ -3471,7 +3486,7 @@ button.nav-section:focus-visible {
   padding-top: 2px;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
-  color: var(--text-3);
+  color: var(--text-2);
 }
 .vm-ln.is-on .vm-ln-t {
   color: var(--accent-text);
@@ -3488,21 +3503,27 @@ button.nav-section:focus-visible {
 }
 .vm-who {
   margin-right: 6px;
-  padding: 0;
+  padding: 0 4px;
   border: 0;
+  border-radius: 4px;
   background: none;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-semibold);
-  color: var(--tint, var(--text-2));
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  /* 项目色在白底上对比不够：往正文色靠一点 */
+  color: color-mix(in srgb, var(--tint, var(--text-2)) 68%, var(--text));
+}
+.vm-who:hover {
+  background: var(--fill-2);
 }
 .vm-who-input {
-  width: 96px;
+  width: 104px;
+  height: 22px;
   margin-right: 6px;
-  padding: 0 4px;
+  padding: 0 6px;
   border: 1px solid var(--accent);
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--field-bg);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
 }
 .vm-follow {
   position: sticky;
@@ -3538,4 +3559,28 @@ button.nav-section:focus-visible {
   .mode-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
+
+/* 中英混排：汉字和拉丁字母之间自动留一点空 */
+.vm-ln-o,
+.vm-ln-z,
+.vm-now-o,
+.vm-now-z,
+.vm-ov > span,
+.vm-callout,
+.vm-choice-d,
+.vm-job-sub,
+.vm-job-title,
+.mode-card-desc {
+  text-autospace: normal;
+}
+.vm-job-title,
+.vm-job-sub {
+  text-spacing-trim: trim-start;
+}
+.home-date {
+  margin-bottom: 6px;
+}
+.page.video-page.vm-wide .vm-ov {
+  display: none;
 }

@@ -1816,5 +1816,11 @@
  "回到视频这一刻": "Back to this moment in the video",
  "回到视频 {0}": "Back to {0} in the video",
  "这个视频要用 {0} 场": "This video needs {0} {0|session|sessions}",
- "这个视频用 {0} 场，还剩 {1} 场": "This video uses {0} {0|session|sessions}, {1} left"
+ "这个视频用 {0} 场，还剩 {1} 场": "This video uses {0} {0|session|sessions}, {1} left",
+ "字幕和译文": "Captions and translation",
+ "图文课堂笔记": "illustrated class notes",
+ "纪要和待办": "minutes and to-dos",
+ "自动截了 {0} 张画面": "{0} frames captured automatically",
+ "{0}的{1}": "{0}: {1}",
+ "出纪要和待办；说话的人标成「说话人 1、2、3」，之后能改成真名": "Makes minutes and to-dos; speakers are labeled \"Speaker 1, 2, 3\" and can be renamed later"
 }

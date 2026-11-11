@@ -179,8 +179,8 @@ export async function runVideo(deps, opts, ctl = {}) {
       steps: [
         { id: 'audio', label: t('读出声音') },
         { id: 'recognize', label: translate ? t('识别和翻译') : t('识别') },
-        meeting && { id: 'speakers', label: t('分说话人') },
         withFrames && { id: 'frames', label: t('截课件画面') },
+        meeting && { id: 'speakers', label: t('分说话人') },
         notes && { id: 'notes', label: meeting ? t('写纪要') : t('写图文笔记') },
       ].filter(Boolean),
       est: estimates({ D: durationMs / 1000, recognition: opts.recognition, translate, meeting, frames: withFrames, notes }),
@@ -398,7 +398,7 @@ export async function runVideo(deps, opts, ctl = {}) {
       Object.assign(x.video, { status: 'done', finishedAt: Date.now(), tookMs: timings.total, timings, notesError: notesError ?? undefined })
       x.video.usage = usage
     })
-    return { sessionId: id, partial: partialReason || null, notesError, translateFailed: translatedFailed, usage, timings, sessions: sessionsUsed.n }
+    return { sessionId: id, durationMs, kind: meeting ? 'meeting' : 'class', translate, notes, slides: slides.length, partial: partialReason || null, notesError, translateFailed: translatedFailed, usage, timings, sessions: sessionsUsed.n }
   } catch (e) {
     // 取消或失败：没做完的会议删掉（识别和字幕都没留）
     if (session) {

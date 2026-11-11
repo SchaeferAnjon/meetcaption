@@ -752,7 +752,7 @@ VIEWS.meeting = {
           isClass() && s.summary?.markdown && { label: t('图文笔记：导出 PDF'), icon: 'file-down', onSelect: () => exportPdf(anchor) },
           isClass() && s.summary?.markdown && { label: t('导出到笔记库…'), icon: 'folder-output', onSelect: () => exportNotes(anchor) },
           'sep',
-          { label: t('打开文件夹'), icon: 'external-link', onSelect: () => call('openFolder', id) },
+          { label: t('打开文件夹'), icon: 'folder', onSelect: () => call('openFolder', id) },
         ].filter(Boolean),
         { align: 'end', minWidth: 260 },
       )

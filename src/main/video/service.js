@@ -101,7 +101,7 @@ export class VideoService {
         { signal: job.ctl.signal },
       )
       this.job = null
-      d.emit('video:done', { sessionId: r.sessionId, name: job.name, partial: r.partial, notesError: r.notesError, translateFailed: r.translateFailed, usage: r.usage, timings: r.timings, sessions: r.sessions })
+      d.emit('video:done', { sessionId: r.sessionId, durationMs: r.durationMs, kind: r.kind, translate: r.translate, notes: r.notes, slides: r.slides, name: job.name, partial: r.partial, notesError: r.notesError, translateFailed: r.translateFailed, usage: r.usage, timings: r.timings, sessions: r.sessions })
       d.emit('video:state', this.snapshot())
       d.notify?.({ title: t('视频处理好了'), body: job.name, sessionId: r.sessionId })
     } catch (e) {

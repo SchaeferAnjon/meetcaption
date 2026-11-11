@@ -48,6 +48,10 @@ function renderSidebar() {
     )
   }
 
+  if (state.video?.done) {
+    nav.append(navItem({ key: 'video-done', lead: icon('circle-check', 16), label: t('视频处理好了'), onClick: () => (go('meeting', { id: state.video.done.sessionId }), dismissVideoJob()) }))
+  }
+
   const openTodos = activeProjects().reduce((n, p) => n + (p.openTodos || 0), 0)
   nav.append(
     navItem({ key: 'home', lead: icon('house', 16), label: t('首页'), onClick: () => go('home', {}, { root: true }) }),

@@ -159,9 +159,10 @@ function wireEvents() {
     // 处理中主进程替这个视频做笔记，笔记进度事件会在这里留下「生成中」的记号：做完了清掉
     state.summaries.delete(d.sessionId)
     emit('summary', { id: d.sessionId, done: true })
-    state.video = { running: false, done: d }
+    state.video = { running: false, done: d, poster: state.video?.poster }
     emit('video')
-    ui.toast({ title: t(`「{0}」处理好了`, d.name), type: 'success', duration: 8000, action: { label: t('打开'), onClick: () => (dismissVideoJob(), go('meeting', { id: d.sessionId })) } })
+    // 在首页时顶上的绿卡就是提示，不再弹第二份
+    if (router.current?.name !== 'home') ui.toast({ title: t(`「{0}」处理好了`, d.name), type: 'success', duration: 8000, action: { label: t('打开'), onClick: () => (dismissVideoJob(), go('meeting', { id: d.sessionId })) } })
   })
   subscribe('video:failed', (f) => {
     if (f.sessionId) state.summaries.delete(f.sessionId)

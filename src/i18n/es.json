@@ -1816,5 +1816,11 @@
  "回到视频这一刻": "Volver a este momento del vídeo",
  "回到视频 {0}": "Volver a {0} del vídeo",
  "这个视频要用 {0} 场": "Este vídeo necesita {0} {0|sesión|sesiones}",
- "这个视频用 {0} 场，还剩 {1} 场": "Este vídeo usa {0} {0|sesión|sesiones}, quedan {1}"
+ "这个视频用 {0} 场，还剩 {1} 场": "Este vídeo usa {0} {0|sesión|sesiones}, quedan {1}",
+ "字幕和译文": "Subtítulos y traducción",
+ "图文课堂笔记": "apuntes de clase con imágenes",
+ "纪要和待办": "acta y tareas",
+ "自动截了 {0} 张画面": "{0} capturas automáticas",
+ "{0}的{1}": "{0}: {1}",
+ "出纪要和待办；说话的人标成「说话人 1、2、3」，之后能改成真名": "Genera acta y tareas; los hablantes se marcan como «Hablante 1, 2, 3» y luego se pueden renombrar"
 }

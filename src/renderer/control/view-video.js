@@ -79,7 +79,7 @@ function videoCard() {
     { type: 'button', class: busy ? 'is-busy' : '', dataset: { mode: 'video' }, 'aria-label': t('视频：拖进视频或点这里选文件') },
     el('span.mode-card-head', {}, ui.iconBox('video', 'teal', { size: 'sm' }), el('span.mode-card-title', { text: t('视频') }), el('span.mode-card-new', { text: t('新') })),
     el('span.mode-card-desc', { text: busy ? t('正在处理一个视频，做完再加下一个') : t('拖进视频或点这里选文件，出字幕和笔记') }),
-    el('span.mode-card-fmt', { text: VIDEO_FORMATS }),
+    el('span.mode-card-fmt', {}, ...VIDEO_FORMATS.split(' · ').map((f, i, a) => el('span.nw', { text: i < a.length - 1 ? `${f} · ` : f }))),
   )
   card.addEventListener('click', () => (busy ? ui.toast({ title: t('已经在处理一个视频了'), message: t('等它做完再加下一个'), type: 'warning' }) : pickVideo()))
   card.addEventListener('dragover', (e) => {
@@ -131,15 +131,17 @@ function videoJobCard() {
   }
   if (v.done) {
     const d = v.done
+    const parts = [d.translate ? t('字幕和译文') : t('字幕'), d.notes ? (d.kind === 'class' ? t('图文课堂笔记') : t('纪要和待办')) : null, d.slides ? t(`自动截了 {0} 张画面`, d.slides) : null].filter(Boolean)
+    const extra = [d.partial, d.translateFailed ? t(`有 {0} 句没翻出来`, d.translateFailed) : '', d.notesError ? t(`笔记没做完：{0}`, d.notesError) : ''].filter(Boolean)
     return el(
       'div.vm-job.is-done',
       { role: 'status', dataset: { vmJob: 'done' } },
       el(
         'div.vm-job-top',
         {},
-        el('div.vm-thumb.is-icon.is-ok', {}, icon('circle-check', 20)),
-        el('div.vm-grow', {}, el('div.vm-job-title.truncate', { text: t(`「{0}」处理好了`, d.name) }), el('div.vm-job-sub', { text: [d.partial, d.translateFailed ? t(`有 {0} 句没翻出来`, d.translateFailed) : '', d.notesError ? t(`笔记没做完：{0}`, d.notesError) : ''].filter(Boolean).join(' · ') || t('字幕和笔记都在里面') })),
-        el('button.btn.btn-primary', { type: 'button', onClick: () => (dismissVideoJob(), go('meeting', { id: d.sessionId })) }, t('打开')),
+        v.poster ? el('div.vm-thumb', {}, el('img', { src: v.poster, alt: '' })) : el('div.vm-thumb.is-icon.is-ok', {}, icon('circle-check', 20)),
+        el('div.vm-grow', {}, el('div.vm-job-title.truncate', { text: t(`「{0}」处理好了`, d.name) }), el('div.vm-job-sub', { text: [d.durationMs ? t(`{0}的{1}`, fmtLen(d.durationMs), parts.join(t('，'))) : parts.join(t('，')), ...extra].join(' · ') })),
+        el('button.btn', { type: 'button', onClick: () => (dismissVideoJob(), go('meeting', { id: d.sessionId })) }, t('打开'), icon('arrow-right', 14)),
         el('button.btn.btn-ghost.btn-icon', { type: 'button', 'aria-label': t('关闭'), onClick: dismissVideoJob }, icon('x', 14)),
       ),
     )
@@ -249,11 +251,12 @@ async function openVideoSheet(file) {
     )
   }
 
-  function usageLine(q) {
+  // selected：没选中的那张卡不出红字（场次不够只在选中的那一张上说）
+  function usageLine(q, selected, cloud) {
     if (!q || q.sessions == null) return null
-    if (q.plan !== 'member') return el('span.vm-choice-x', { text: t('用你自己的 Key，不用场次') })
+    if (q.plan !== 'member') return cloud ? el('span.vm-choice-x', { text: t('用你自己的 Key，不用场次') }) : null
     if (!q.sessions) return el('span.vm-choice-x', { text: t('不用场次') })
-    const bad = q.enough === false
+    const bad = q.enough === false && selected
     return el('span.vm-choice-x', { class: bad ? 'is-bad' : '' }, bad ? t('这个视频要用 {0} 场', q.sessions) : t('这个视频用 {0} 场，还剩 {1} 场', q.sessions, q.balance))
   }
 
@@ -314,15 +317,15 @@ async function openVideoSheet(file) {
         'div.vm-choices',
         { role: 'radiogroup' },
         choice({ on: sh.kind === 'class', onPick: () => ((sh.kind = 'class'), refresh(), render()), title: t('一节课'), icn: 'graduation-cap', desc: t('出图文课堂笔记：画面一变（翻页）就截一张，插在老师讲到的地方，和网课一样') }),
-        choice({ on: sh.kind === 'meeting', onPick: () => ((sh.kind = 'meeting'), refresh(), render()), title: t('一场会'), icn: 'users', desc: t('出纪要和待办；说话的人标成 说话人 1、2、3，之后能改成真名') }),
+        choice({ on: sh.kind === 'meeting', onPick: () => ((sh.kind = 'meeting'), refresh(), render()), title: t('一场会'), icn: 'users', desc: t('出纪要和待办；说话的人标成「说话人 1、2、3」，之后能改成真名') }),
       ),
     )
 
-    const srcBtn = el('button.vm-select', { type: 'button', onClick: (e) => pickLang(e.currentTarget, 'src') }, icon('mic', 15), el('span', { text: t(`视频里说 {0}`, L(sh.language)) }), icon('chevron-down', 14))
-    const tgtBtn = el('button.vm-select', { type: 'button', onClick: (e) => pickLang(e.currentTarget, 'tgt') }, el('span', { text: sh.target ? t(`翻成 {0}`, L(sh.target)) : t('不翻译') }), icon('chevron-down', 14))
+    const srcBtn = el('button.vm-select', { type: 'button', onClick: (e) => pickLang(e.currentTarget, 'src') }, icon('mic', 15), el('span.vm-sel-t', { text: t(`视频里说 {0}`, L(sh.language)) }), icon('chevron-down', 14))
+    const tgtBtn = el('button.vm-select', { type: 'button', onClick: (e) => pickLang(e.currentTarget, 'tgt') }, el('span.vm-sel-t', { text: sh.target ? t(`翻成 {0}`, L(sh.target)) : t('不翻译') }), icon('chevron-down', 14))
     const lang = el('div.vm-field', {}, el('div.vm-label', {}, t('语言')), el('div.vm-pair', {}, srcBtn, icon('arrow-right', 15), tgtBtn))
 
-    const projBtn = el('button.vm-select', { type: 'button', onClick: (e) => projectMenu(e.currentTarget, { current: sh.projectId, title: t('放进哪个项目'), onPick: (id) => ((sh.projectId = id), render()) }) }, projectBox(project, 'sm'), el('span', { text: project?.name ?? t('未归类') }), icon('chevron-down', 14))
+    const projBtn = el('button.vm-select', { type: 'button', onClick: (e) => projectMenu(e.currentTarget, { current: sh.projectId, title: t('放进哪个项目'), onPick: (id) => ((sh.projectId = id), render()) }) }, projectBox(project, 'sm'), el('span.vm-sel-t', { text: project?.name ?? t('未归类') }), icon('chevron-down', 14))
     const proj2 = el('div.vm-field', {}, el('div.vm-label', {}, t('放进项目')), projBtn)
 
     const notes = el(
@@ -340,8 +343,8 @@ async function openVideoSheet(file) {
       el(
         'div.vm-choices',
         { role: 'radiogroup' },
-        choice({ on: sh.recognition === 'cloud', onPick: () => ((sh.recognition = 'cloud'), (sh.touchedRecognition = true), render()), title: member ? t('会员云识别') : t('云识别'), icn: 'cloud', tag: t('推荐'), desc: t('更准，支持更多语言'), extra: usageLine(q.cloud) }),
-        choice({ on: sh.recognition === 'local', onPick: () => ((sh.recognition = 'local'), (sh.touchedRecognition = true), render()), title: t('本地识别'), icn: 'laptop', desc: t('免费，不联网，只认中文和英文'), extra: usageLine(q.local) }),
+        choice({ on: sh.recognition === 'cloud', onPick: () => ((sh.recognition = 'cloud'), (sh.touchedRecognition = true), render()), title: member ? t('会员云识别') : t('云识别'), icn: 'cloud', tag: t('推荐'), desc: t('更准，支持更多语言'), extra: usageLine(q.cloud, sh.recognition === 'cloud', true) }),
+        choice({ on: sh.recognition === 'local', onPick: () => ((sh.recognition = 'local'), (sh.touchedRecognition = true), render()), title: t('本地识别'), icn: 'laptop', desc: t('免费，不联网，只认中文和英文'), extra: usageLine(q.local, sh.recognition === 'local', false) }),
       ),
       member ? el('div.vm-fine', { text: t('按视频时长算：2 小时以内 1 场，2 到 4 小时 2 场，以此类推。本地识别只出原文字幕时不用场次。') }) : null,
     )
@@ -450,6 +453,7 @@ function videoView(ctx, s0, opts = {}) {
   const slides = () => [...(s.slides ?? [])].filter((x) => x.file).map((x) => ({ ...x, ms: x.at - s.startedAt })).sort((a, b) => a.ms - b.ms)
   const listeners = new Set() // (ms, idx) → void
   let subsOn = store(SUBS_KEY) !== '0'
+  let wide = false // 看笔记时视频缩小，画面字幕让位给下面的「正在说」
 
   /* 播放器 */
   const video = el('video.vm-video', { preload: 'metadata', playsinline: true })
@@ -487,7 +491,7 @@ function videoView(ctx, s0, opts = {}) {
     time.textContent = `${fmtOffset(ms)} / ${fmtOffset(d)}`
     const i = lineAt(lines, ms)
     const cur = i >= 0 && ms <= lines[i].end + 800 ? lines[i] : null
-    if (subsOn && cur) {
+    if (subsOn && cur && !wide) {
       ovOrig.textContent = cur.seg.text
       ovTr.textContent = (cur.seg.sentences ?? []).map((y) => y.tr).filter(Boolean).join(' ')
       ov.hidden = false
@@ -725,8 +729,10 @@ function videoView(ctx, s0, opts = {}) {
     renderTranscript,
     decorate,
     setWide(on) {
+      wide = on
       nowBox.hidden = !on
-      if (on) sync()
+      subsBtn.hidden = on || !hasPicture
+      sync()
     },
     update(next) {
       s = next
