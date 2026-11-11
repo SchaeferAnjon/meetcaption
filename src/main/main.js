@@ -962,6 +962,8 @@ function themeInfo() {
 async function startEngine({ projectId, mode, classSource } = {}) {
   // 录声纹、声音测试和开会共用麦克风采集：同时开会互相把对方的采集窗口关掉
   if (enrolling) return { ok: false, error: t('正在录制声纹，录完再开始记录'), code: 'busy' }
+  // 视频在处理时它占着会员的场次和识别进程：等它做完（或取消）再开始记录
+  if (videoService?.running) return { ok: false, error: t('正在处理视频，等它做完再开始记录'), code: 'busy' }
   stopListen()
   if (audioTest) return { ok: false, error: t('正在测试声音，测完再开始记录'), code: 'busy' }
   try {
@@ -2320,6 +2322,15 @@ app.on('activate', () => focusApp())
 app.on('before-quit', async (e) => {
   if (quitting) return
   chatgptAuth?.cancelLogin()
+  // 视频还在处理：取消它（没做完的会议删掉，会员这一场结束），最多等 5 秒
+  if (videoService?.running) {
+    e.preventDefault()
+    quitting = true
+    videoService.cancel()
+    for (let i = 0; i < 50 && videoService.running; i++) await new Promise((r) => setTimeout(r, 100))
+    app.quit()
+    return
+  }
   const busy = engine && engine.state !== 'idle'
   if (busy || engine?.notesFlush) {
     e.preventDefault()
