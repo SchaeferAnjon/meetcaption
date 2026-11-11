@@ -374,7 +374,7 @@ async function openVideoSheet(file) {
     const foot = el(
       'div.vm-foot',
       {},
-      el('div.vm-foot-note', {}, blocked ? t('先解决上面的问题才能开始。') : [el('div', { text: t(`大约 {0} 分钟处理完，比视频本身快得多。`, Math.max(1, Math.round((est ?? 60) / 60))) }), el('div', { text: t('可以关掉窗口，好了会发通知。') })]),
+      el('div.vm-foot-note', {}, blocked ? t('先解决上面的问题才能开始。') : [el('div', { text: (est ?? 60) < (probe?.durationMs ?? 0) / 2000 ? t(`大约 {0} 分钟处理完，比视频本身快得多。`, Math.max(1, Math.round((est ?? 60) / 60))) : t(`大约 {0} 分钟处理完。`, Math.max(1, Math.round((est ?? 60) / 60))) }), el('div', { text: t('可以关掉窗口，好了会发通知。') })]),
       el('button.btn', { type: 'button', onClick: close }, t('取消')),
       el('button.btn.btn-primary', { type: 'button', disabled: blocked || sh.starting, onClick: start }, t('开始处理'), icon('arrow-right', 15)),
     )

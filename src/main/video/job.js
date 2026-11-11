@@ -24,7 +24,8 @@ import { t } from '../i18n.js'
 export function estimates({ D, recognition, translate, meeting, frames, notes }) {
   return {
     audio: 2 + D / 150,
-    recognize: recognition === 'cloud' ? 5 + D / 3 : 3 + D / 20 + (translate ? 3 + D / 70 : 0),
+    // 云：Soniox 实时接口一路约 1.1 倍速，4 分钟一块、最多 3 路同时认；本地约 20 倍速
+    recognize: recognition === 'cloud' ? 5 + D / (1.1 * Math.min(3, Math.max(1, D / 240))) + (translate ? 3 + D / 70 : 0) : 3 + D / 20 + (translate ? 3 + D / 70 : 0),
     speakers: meeting ? 2 + D / 60 : 0,
     frames: frames ? 2 + D / 45 : 0,
     notes: notes ? 45 + D / 100 : 0,
