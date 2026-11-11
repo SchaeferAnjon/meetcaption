@@ -4,4 +4,5 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('videoBridge', {
   onJob: (cb) => ipcRenderer.on('video:job', (_e, job) => cb(job)),
   reply: (id, result) => ipcRenderer.send('video:reply', id, result),
+  event: (id, payload) => ipcRenderer.send('video:event', id, payload), // 活做到一半的消息（截到一张画面、做到哪了）
 })

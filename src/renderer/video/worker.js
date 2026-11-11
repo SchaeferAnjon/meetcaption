@@ -98,6 +98,75 @@ const jobs = {
   },
 }
 
+// ---------------- 截画面 ----------------
+// 一节课的视频：先每隔几秒跳到那个时间点取一张亮度小图（160 × 90），整段取完交给 changes.js 找出翻页的时间点，
+// 再跳回这些时间点截大图（一节课几十张）。找翻页的办法见 changes.js。
+
+const SIG_W = 160
+const SIG_H = 90
+
+function lumaOf(ctx) {
+  const d = ctx.getImageData(0, 0, SIG_W, SIG_H).data
+  const out = new Uint8Array(SIG_W * SIG_H)
+  for (let i = 0; i < out.length; i++) out[i] = Math.round(0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2])
+  return out
+}
+
+function seekTo(v, t) {
+  return new Promise((resolve, reject) => {
+    const done = () => (v.removeEventListener('seeked', done), v.removeEventListener('error', fail), resolve())
+    const fail = () => (v.removeEventListener('seeked', done), v.removeEventListener('error', fail), reject(new Error('video seek failed')))
+    v.addEventListener('seeked', done)
+    v.addEventListener('error', fail)
+    v.currentTime = t
+  })
+}
+
+jobs['frames.scan'] = async (j) => {
+  const v = document.createElement('video')
+  v.muted = true
+  v.preload = 'auto'
+  v.src = j.url
+  await new Promise((resolve, reject) => {
+    v.addEventListener('loadeddata', resolve, { once: true })
+    v.addEventListener('error', () => reject(new Error(v.error?.message || 'video load failed')), { once: true })
+  })
+  if (!v.videoWidth) return { error: 'no-picture' }
+  const dur = (j.durationMs || v.duration * 1000) / 1000
+  const step = Math.max(j.stepSec || 3, dur / 2500)
+  const small = document.createElement('canvas')
+  small.width = SIG_W
+  small.height = SIG_H
+  const sctx = small.getContext('2d', { willReadFrequently: true })
+  const big = document.createElement('canvas')
+  const scale = Math.min(1, (j.maxWidth || 1280) / v.videoWidth)
+  big.width = Math.round(v.videoWidth * scale)
+  big.height = Math.round(v.videoHeight * scale)
+  const bctx = big.getContext('2d')
+  const sigs = []
+  const last = Math.max(0, dur - 0.05)
+  for (let t = 0; t < dur; t += step) {
+    await seekTo(v, Math.min(t, last))
+    sctx.drawImage(v, 0, 0, SIG_W, SIG_H)
+    sigs.push(lumaOf(sctx))
+    if (sigs.length % 20 === 0) window.videoBridge.event(j.id, { type: 'progress', atMs: Math.round(t * 1000), of: 0.9 })
+  }
+  const { picks, masked } = window.videoChanges.findChanges(sigs, { w: SIG_W, h: SIG_H, stepSec: step, minGapSec: j.minGapSec || 8 })
+  const chosen = picks.slice(0, j.max || 150)
+  let count = 0
+  for (const k of chosen) {
+    const t = Math.min(k * step, last)
+    await seekTo(v, t)
+    bctx.drawImage(v, 0, 0, big.width, big.height)
+    const blob = await new Promise((r) => big.toBlob(r, 'image/jpeg', 0.82))
+    window.videoBridge.event(j.id, { type: 'frame', atMs: Math.round(k * step * 1000), jpeg: new Uint8Array(await blob.arrayBuffer()) })
+    count++
+  }
+  v.removeAttribute('src')
+  v.load()
+  return { count, samples: sigs.length, masked }
+}
+
 window.videoJobs = jobs
 
 window.videoBridge.onJob(async (job) => {

@@ -9,12 +9,16 @@ const PAGE = path.join(HERE, '..', '..', 'renderer', 'video', 'worker.html')
 const PRELOAD = path.join(HERE, '..', '..', 'preload', 'video.cjs')
 
 let seq = 0
-const waiting = new Map() // job id → { resolve, win }
+const waiting = new Map() // job id → { resolve, win, onEvent }
 let wired = false
 
 function wire() {
   if (wired) return
   wired = true
+  ipcMain.on('video:event', (e, id, payload) => {
+    const w = waiting.get(id)
+    if (w && e.sender === w.win.webContents) w.onEvent?.(payload)
+  })
   ipcMain.on('video:reply', (e, id, result) => {
     const w = waiting.get(id)
     if (!w || e.sender !== w.win.webContents) return
@@ -45,13 +49,14 @@ export class VideoWorker {
     return this.ready
   }
 
-  async call(op, args = {}) {
+  /** onEvent(payload)：活做到一半发来的消息。 */
+  async call(op, args = {}, { onEvent } = {}) {
     await this.#start()
     const win = this.win
     if (!win || win.isDestroyed()) return { error: 'worker-closed' }
     const id = ++seq
     return new Promise((resolve) => {
-      waiting.set(id, { resolve, win })
+      waiting.set(id, { resolve, win, onEvent })
       win.webContents.send('video:job', { ...args, id, op })
     })
   }
