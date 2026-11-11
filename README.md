@@ -66,11 +66,11 @@ The app on a Mac, with a synthetic voice playing a sample meeting, interview and
 
 | | How to start | Cost |
 |---|---|---|
-| **Free session** | Download and open, nothing to fill in | 1 session of up to 1 hour, cloud recognition and AI included |
+| **Local recognition** | Download and open, nothing to fill in; captions in Chinese and English, offline | **Free forever**, no key needed |
 | **Your own key** | Paste a key from DeepSeek, Qwen, Kimi, Doubao, Zhipu or OpenAI, or sign in with ChatGPT Plus ([setup guide](https://meetcaption.us-cloud.uk/?lang=en#page=guide), 5 minutes) | **Free forever, no session limit**; you pay your provider |
-| **Membership** | No keys; buy sessions in the app or on the [website](https://meetcaption.us-cloud.uk/?lang=en#page=pricing) | From $1.99 per session |
+| **Membership** | No keys; buy sessions in the app or on the [website](https://meetcaption.us-cloud.uk/?lang=en#page=pricing) | From $1.99 per session; one session is the cheapest way to try cloud recognition and AI |
 
-Captions with local recognition are free in every case, no key needed.
+Captions with local recognition are free in every case, no key needed. Translation and AI answers need your own key or a session.
 
 <details>
 <summary>Session packs</summary>
@@ -136,7 +136,7 @@ Local recognition (free, offline) understands Chinese, English and a mix of both
 - With membership cloud recognition, audio goes from your computer straight to Soniox; our server only hands out a one-time key.
 - Sentences to translate or answer go to the AI service you choose: straight to your provider with your own key, or through our server with membership, not stored.
 - Your voiceprint, recordings, notes and keys stay on your computer.
-- Anonymous usage statistics, only if you agree: once a day the app tells our server a random ID, the version, the operating system and chip, membership or your own key, and the interface language. No meeting content, keys, names or email. Without your consent nothing is sent; switch it on or off any time in **Settings**, page **General**, **Anonymous usage statistics**.
+- No usage statistics: the app does not report that you use it. It only contacts our server for membership (counting and buying sessions); with your own key it does not.
 
 ## Build from source
 
