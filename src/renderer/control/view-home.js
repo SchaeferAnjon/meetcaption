@@ -12,7 +12,7 @@ VIEWS.home = {
     const todoList = el('div.list', { role: 'listbox', 'aria-label': t('快到期的待办') })
     const recentTitle = sectionTitle(t('最近 3 天'))
     const todoTitle = sectionTitle(t('快到期的待办'))
-    const page = el('div.page.home', {}, hero, vmJob, guide, el('section.home-section', {}, recentTitle, recentList), el('section.home-section', {}, todoTitle, todoList))
+    const page = el('div.page.home', {}, hero, guide, el('section.home-section', {}, recentTitle, recentList), el('section.home-section', {}, todoTitle, todoList))
     ctx.body.append(el('div.pane-body', {}, page))
 
     const recentNav = navList(recentList)
@@ -25,7 +25,7 @@ VIEWS.home = {
     function renderHero() {
       ui.clear(hero)
       const now = Date.now()
-      hero.append(el('div.home-date', {}, el('span.title-2xl', { text: `${fmtMonthDay(now)} ${WEEK[new Date(now).getDay()]}` })))
+      hero.append(el('div.home-date', {}, el('span.title-2xl', { text: `${fmtMonthDay(now)} ${WEEK[new Date(now).getDay()]}` })), vmJob)
       const st = state.engine.state
       if (st === 'running' || st === 'stopping') {
         const live = state.live

@@ -96,9 +96,9 @@ export async function translateAll({ texts, llm, target, source = 'en', context 
       onUsage: (u) => {
         usage.in += Number(u?.prompt_tokens ?? u?.input_tokens ?? 0)
         usage.out += Number(u?.completion_tokens ?? u?.output_tokens ?? 0)
+        usage.calls++
       },
     })
-    usage.calls++
     return parseBatch(raw, idx.length)
   }
   // 一批没回对（个数不对、空译文、超时）先再试一次，还不行就对半拆开；单句最多试三次

@@ -254,8 +254,14 @@ export async function runVideo(deps, opts, ctl = {}) {
     const parts = segmentsFor(durationMs, charge.sessions, charge.unit)
     const utterances = []
     const all = { segments: [], sentences: [] }
-    const usage = { in: 0, out: 0, calls: 0 }
-    const meter = (o) => deps.llm({ ...o, onUsage: (u) => (usage.in += Number(u?.prompt_tokens ?? 0), (usage.out += Number(u?.completion_tokens ?? 0)), o.onUsage?.(u)) })
+    // AI 用量，翻译和笔记分开记：{ translate: { in, out, calls }, notes: { in, out, calls }, in, out, calls }
+    const usage = { in: 0, out: 0, calls: 0, translate: { in: 0, out: 0, calls: 0 }, notes: { in: 0, out: 0, calls: 0 } }
+    const count = (kind) => (u) => {
+      const i = Number(u?.prompt_tokens ?? u?.input_tokens ?? 0)
+      const o = Number(u?.completion_tokens ?? u?.output_tokens ?? 0)
+      for (const x of [usage[kind], usage]) (x.in += i), (x.out += o), x.calls++
+    }
+    const meter = (o) => deps.llm({ ...o, onUsage: count('translate') })
     let reached = durationMs
     let partialReason = ''
     progress.start('recognize')
@@ -376,7 +382,7 @@ export async function runVideo(deps, opts, ctl = {}) {
       progress.start('notes')
       t0 = Date.now()
       try {
-        const r = await deps.summarizer.generate(id, '', { now: true, onUsage: (u) => (usage.in += Number(u?.prompt_tokens ?? 0), (usage.out += Number(u?.completion_tokens ?? 0)) , usage.calls++) })
+        const r = await deps.summarizer.generate(id, '', { now: true, onUsage: count('notes') })
         if (r.itemsError || r.htmlError) notesError = [r.itemsError, r.htmlError].filter(Boolean).join('；')
       } catch (e) {
         if (e.name === 'AbortError' || signal?.aborted) throw e
