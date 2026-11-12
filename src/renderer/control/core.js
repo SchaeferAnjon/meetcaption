@@ -632,14 +632,14 @@ function startErrorActions(error = '') {
   return []
 }
 
-/** 课堂里截取当前屏幕（网课课件）。→ { file, at } | { error } */
+/** 截取当前屏幕（网课课件、会上共享的屏幕）存进这场会。→ { file, at } | { error } */
 async function captureSlide() {
   const r = await call('captureSlide')
   if (failed(r) || r?.error) {
     ui.toast({ title: t('没能截取画面'), message: r?.error, type: 'error' })
     return null
   }
-  ui.toast({ title: t('已截取画面'), message: t('存进这节课的文件夹，课堂笔记会用上'), type: 'success' })
+  ui.toast({ title: t('已截取画面'), message: liveMode() === 'class' ? t('存进这节课的文件夹，课堂笔记会用上') : t('存进这场会议的文件夹，会议详情的「截图」里能看'), type: 'success' })
   return r
 }
 

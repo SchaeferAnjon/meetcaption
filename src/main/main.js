@@ -307,6 +307,8 @@ function assistOn(s = settings.get()) {
 
 // 上课记录中（截取画面的快捷键只在这时注册）
 const classRunning = () => engine?.state === 'running' && engine.mode === 'class'
+// 截取画面：会议、面试、课堂记录时都能用
+const slideRunning = () => engine?.state === 'running'
 
 /* ---------------- 字幕悬浮窗 ---------------- */
 
@@ -581,7 +583,7 @@ function hotkeyStatus() {
     record: { accel: s.hotkeyRecord, error: recordHotkeyError },
     ask: { accel: assistOn(s) ? s.assist.hotkeyAsk : '', error: askHotkeyError },
     // 截取画面：只在上课记录时注册；active 表示现在注册上了
-    slide: { accel: s.class.hotkeySlide, error: slideHotkeyError, active: classRunning() && Boolean(s.class.hotkeySlide) && !slideHotkeyError },
+    slide: { accel: s.class.hotkeySlide, error: slideHotkeyError, active: slideRunning() && Boolean(s.class.hotkeySlide) && !slideHotkeyError },
   }
 }
 
@@ -599,7 +601,7 @@ function registerHotkeys() {
   hotkeyError = reg('hotkeyToggle', s.hotkeyToggle, toggleOverlay)
   recordHotkeyError = reg('hotkeyRecord', s.hotkeyRecord, () => toggleRecording())
   askHotkeyError = assistOn(s) ? reg('assist.hotkeyAsk', s.assist.hotkeyAsk, () => askLast()) : null
-  slideHotkeyError = classRunning() ? reg('class.hotkeySlide', s.class.hotkeySlide, () => slideFromHotkey()) : null
+  slideHotkeyError = slideRunning() ? reg('class.hotkeySlide', s.class.hotkeySlide, () => slideFromHotkey()) : null
   if (moved.length) {
     // 默认组合被别的程序占了：换成的备选存回设置（设置一变会再注册一遍、发状态），提示一次
     settings.update(Object.assign({}, ...moved.map((m) => patchFor(m.key, m.to))))
@@ -689,7 +691,7 @@ function updateTrayMenu() {
       { type: 'separator' },
       { ...menuItemWithKey(overlayWanted ? t('隐藏字幕') : t('显示字幕'), s.hotkeyToggle), click: toggleOverlay },
       ...(assistOn(s) ? [{ ...menuItemWithKey(t('回答刚才的问题'), s.assist.hotkeyAsk), click: () => askLast() }] : []),
-      ...(classRunning() ? [{ ...menuItemWithKey(t('截取画面'), s.class.hotkeySlide), click: () => slideFromHotkey() }] : []),
+      ...(slideRunning() ? [{ ...menuItemWithKey(t('截取画面'), s.class.hotkeySlide), click: () => slideFromHotkey() }] : []),
       { label: assistOn(s) ? t('调整字幕和答题框位置') : t('调整字幕位置'), click: () => setEditMode(true) },
       { type: 'separator' },
       { label: t('打开主窗口'), click: showControl },
@@ -1159,11 +1161,11 @@ function changeMaterials(id, fn) {
 }
 
 /**
- * 截当前屏幕（鼠标所在的显示器，网课课件）存进会议文件夹 slides/<时间>.jpg，记进 session.slides。
+ * 截当前屏幕（鼠标所在的显示器：网课课件、会上共享的屏幕）存进会议文件夹 slides/<时间>.jpg，记进 session.slides。
  * 截的时候我们自己的窗口（主窗口、设置、字幕窗、答题框）临时开内容保护，不进截图，截完恢复。→ { file, at, url } | { error, code }
  */
 async function captureSlide() {
-  if (engine.state !== 'running' || !engine.session) return { error: t('还没开始记录，开始上课记录后才能截取画面'), code: 'not-running' }
+  if (engine.state !== 'running' || !engine.session) return { error: t('还没开始记录，开始记录后才能截取画面'), code: 'not-running' }
   const hide = settings.get().hideFromScreenShare
   const wins = [
     ...[controlWin, settingsWin, onboardingWin].map((w) => [w, false]),
@@ -2014,8 +2016,8 @@ function wireEngine() {
     }
     if (st.state === 'running' || st.state === 'idle') {
       refreshOverlay()
-      // 面试时答题快捷键强制开、上课时多一个截取画面的快捷键：开始和结束时重新注册
-      if (st.mode !== 'meeting') registerHotkeys()
+      // 记录时多一个截取画面的快捷键，面试时答题快捷键强制开：开始和结束时重新注册
+      registerHotkeys()
     }
     toOverlay('overlay:config', overlayConfig())
     if (st.state === 'running') {

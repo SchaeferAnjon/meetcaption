@@ -178,12 +178,6 @@ button {
   background: rgba(255, 255, 255, 0.14);
 }
 
-/* 「全部译文」展开着：和标签同一个紫，看得出现在是展开状态 */
-.ghost.all[aria-pressed='true'] {
-  background: rgba(113, 118, 255, 0.24);
-  color: #d6d8ff;
-}
-
 .ghost:disabled {
   opacity: 0.4;
   background: transparent;
@@ -246,7 +240,7 @@ button {
   opacity: 1;
 }
 
-/* 提问：只放一行用户语言的「问：…」，原文和彩色对照指上去才浮出来 */
+/* 提问：「问：」加真正问的那一句原文（按意群着色），译文回来以后下面一行彩色译文；前面的铺垫指上去才浮出来 */
 .q {
   display: flex;
   align-items: center;
@@ -268,6 +262,17 @@ button {
 
 .q-head {
   color: var(--text-3);
+}
+
+.q-tr {
+  margin-top: 1px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.q-tr[hidden] {
+  display: none;
 }
 
 .tag {
@@ -631,31 +636,12 @@ body.dragging * {
 }
 
 /*
- * 回答正文：白字整段连排，每句开头一个紫色短标签（和要点同色），竖着扫标签就是整段的提纲。
- * 整句译文平时不显示，指上去浮出来（.pop，盖在下面的字上、不挤开别的字），点一下钉住；意群颜色只在浮出的译文和它对着的那句英文（细色条）上。
+ * 回答正文：译文回来以前白字整段连排，每句开头一个紫色短标签（和要点同色）。
+ * 译文回来以后（.body.pairs）和主窗口里的 AI 回答一样：一句原文按意群着色，下面一句同色的译文；标签收起。
+ * 意群的着色方式跟主窗口同一个设置（body 上的 .bi-text / .bi-bar / .bi-mono，规则在 ../shared/bilingual.css）。
  */
 .en {
   white-space: pre-wrap;
-}
-
-.s {
-  border-radius: 4px;
-  padding: 1px 0;
-  -webkit-box-decoration-break: clone;
-  box-decoration-break: clone;
-  transition: background-color 0.15s;
-}
-
-.s.has-tr:hover,
-.s.pin {
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: -3px 0 0 rgba(255, 255, 255, 0.08), 3px 0 0 rgba(255, 255, 255, 0.08);
-}
-
-.card.old:not(.open) .s,
-.card.old:not(.open) .s:hover {
-  background: none;
-  box-shadow: none;
 }
 
 .hint {
@@ -678,30 +664,39 @@ body.dragging * {
 
 .zh {
   display: none;
+}
+
+.body.pairs .s {
+  display: block;
+}
+
+.body.pairs .s + .s {
+  margin-top: 6px;
+}
+
+.body.pairs .hint {
+  display: none;
+}
+
+.body.pairs .zh {
+  display: block;
+  margin-top: 1px;
   font-size: 0.9em;
   line-height: 1.5;
+  color: var(--text-2);
 }
 
-/* 意群颜色：英文用底部细色条（白字照样好念），中文用字色，同一块两边同色 */
-.bi-c {
-  --bi: var(--chunk-1);
+/* 收着的旧卡片：只露两行，原文和译文都连成一段 */
+.card.old:not(.open) .body.pairs .s,
+.card.old:not(.open) .body.pairs .zh {
+  display: inline;
 }
 
-.bi-c[data-c='1'] {
-  --bi: var(--chunk-2);
+.card.old:not(.open) .body.pairs .zh {
+  margin-left: 0.4em;
 }
 
-.bi-c[data-c='2'] {
-  --bi: var(--chunk-3);
-}
-
-.bi-c[data-c='3'] {
-  --bi: var(--chunk-4);
-}
-
-.s.has-tr:hover .en .bi-c,
-.s.pin .en .bi-c,
-.body.all .en .bi-c,
+/* 浮出的提问全文里：原文用细色条、译文用字色（不跟设置走，浮层里两种都要看得清） */
 .bars .bi-c {
   background-image: linear-gradient(var(--bi), var(--bi));
   background-repeat: no-repeat;
@@ -712,29 +707,6 @@ body.dragging * {
 
 .cols .bi-c {
   color: var(--bi);
-}
-
-/* 全部译文：临时把每句的整句译文都摆出来，一句英文一句中文 */
-.body.all .s {
-  display: block;
-  padding: 0;
-}
-
-.body.all .s + .s {
-  margin-top: 6px;
-}
-
-.body.all .hint {
-  display: none;
-}
-
-.body.all .zh {
-  display: block;
-}
-
-.body.all .s.has-tr:hover {
-  background: none;
-  box-shadow: none;
 }
 
 .pop {

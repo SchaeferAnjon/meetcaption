@@ -110,11 +110,7 @@ function syncStuck() {
 }
 const cardSize = new ResizeObserver(syncStuck) // 译文回来、展开收回都会改卡片高度
 
-const expanded = new Set() // 点了「全部译文」的卡片
-let pinned = null // 点一下钉住的那一句 { id, i }
-let hover = null // 现在浮着的译文对着谁 { anchor, nodes }
-
-const clearPin = () => list.querySelectorAll('.s.pin').forEach((n) => n.classList.remove('pin'))
+let hover = null // 现在浮着的提问全文对着谁 { anchor, nodes }
 
 function createCard(id) {
   const root = el('article', 'card')
@@ -122,7 +118,8 @@ function createCard(id) {
   const tag = el('span', 'tag')
   const qZh = el('span', 'q-zh')
   const qHead = el('span', 'q-head', t('问：'))
-  const qText = el('span')
+  const qText = el('span', 'q-src')
+  const qTr = el('div', 'q-tr cols')
   qZh.append(qHead, qText)
   q.append(tag, qZh)
   const gist = el('div', 'gist')
@@ -131,17 +128,15 @@ function createCard(id) {
   const error = el('div', 'note error')
   const meta = el('div', 'meta')
   const timing = el('span', 'timing')
-  const all = el('button', 'ghost all', t('全部译文'))
   const regen = el('button', 'ghost regen', t('重新回答'))
   const copy = el('button', 'ghost copy', t('复制'))
-  all.type = regen.type = copy.type = 'button'
-  all.hidden = true
+  regen.type = copy.type = 'button'
   const acts = el('span', 'acts')
-  acts.append(all, regen, copy)
+  acts.append(regen, copy)
   meta.append(timing, acts)
-  root.append(q, gist, body, warn, error, meta)
+  root.append(q, qTr, gist, body, warn, error, meta)
   cardSize.observe(root)
-  const c = { root, tag, q, qZh, qText, gist, body, warn, error, meta, timing, all, regen, copy, units: [] }
+  const c = { root, tag, q, qZh, qText, qTr, gist, body, warn, error, meta, timing, regen, copy, units: [] }
   regen.addEventListener('click', () => {
     if (!id.startsWith('sample-')) api.regenerate(id)
   })
@@ -153,33 +148,24 @@ function createCard(id) {
     copy.textContent = t('已复制')
     setTimeout(() => (copy.textContent = t('复制')), 1200)
   })
-  all.addEventListener('click', () => {
-    if (expanded.has(id)) expanded.delete(id)
-    else expanded.add(id)
-    pinned = null
-    clearPin()
-    hidePop()
-    syncBody(c, id)
-  })
-  // 旧卡片默认只露两行，点一下展开（点展开后正文里的句子是钉住用的，不收回）
+  // 旧卡片默认只露两行，点一下展开、再点收起（选中文字复制时不算）
   root.addEventListener('click', (e) => {
-    if (e.target.closest('button') || !root.classList.contains('old')) return
-    if (opened.has(id) && e.target.closest('.s.has-tr')) return
+    if (e.target.closest('button') || !root.classList.contains('old') || String(getSelection()).trim()) return
     if (opened.has(id)) opened.delete(id)
     else opened.add(id)
     root.classList.toggle('open', opened.has(id))
     hidePop()
   })
-  // 提问行：指上去看原文全文和彩色对照
+  // 提问行只放真正问的那一句：前面还有铺垫，或者一行放不下时，指上去看提问全文
   qZh.addEventListener('mouseenter', () => {
     const a = answers.get(id) ?? SAMPLE.find((s) => s.id === id)
-    if (a && (a.trans?.question?.length || qZh.scrollWidth > qZh.clientWidth)) showPop(qZh, questionPop(a))
+    if (a && ((a.trans?.question?.length ?? 0) > 1 || qZh.scrollWidth > qZh.clientWidth)) showPop(qZh, questionPop(a))
   })
-  qZh.addEventListener('mouseleave', backToPinned)
+  qZh.addEventListener('mouseleave', hidePop)
   return c
 }
 
-/* ---------------- 浮出的整句译文：盖在下面的字上，不占版面 ---------------- */
+/* ---------------- 浮出的提问全文：盖在下面的字上，不占版面 ---------------- */
 
 const pop = document.getElementById('pop')
 
@@ -211,23 +197,8 @@ function placePop() {
   pop.style.top = `${Math.max(view.top - box.top, top)}px`
 }
 
-// 移开以后：有钉住的就回到钉住的那句，没有就收起
-function backToPinned() {
-  const node = pinned && cards.get(pinned.id)?.body.querySelector(`.s[data-i="${pinned.i}"]`)
-  if (node) showPop(node, sentencePop(cards.get(pinned.id), pinned.i))
-  else hidePop()
-}
-
 const bi = () => window.bilingual
 const colorsOn = () => bi().prefs(config).colors
-
-function sentencePop(c, i) {
-  const sen = c.units[i]?.sen
-  const r = bi().render(sen, { colors: colorsOn(), terms: false })
-  const zh = el('span', 'cols')
-  zh.append(r.zh ?? sen.tr)
-  return [el('span', 'pop-k', t('整句译文')), zh]
-}
 
 function questionPop(a) {
   const qs = a.trans?.question ?? []
@@ -248,16 +219,10 @@ function questionPop(a) {
   return nodes
 }
 
-// 最后一句才是真正问的；译文回来之前先显示它，回来以后换成中文，一行高度不变
+// 最后一句才是真正问的：原文一行，译文回来以后在下面再一行，和主窗口里的对照一样
 const lastSentence = (q) => String(q ?? '').split(/(?<=[.?!。？！])\s*/).filter((x) => x.trim()).at(-1) ?? ''
 
-// 指上去、点一下钉住都只在答完、没展开「全部译文」、不是收着的旧卡片时有用
-function canPeek(c, id) {
-  const a = answers.get(id) ?? SAMPLE.find((s) => s.id === id)
-  return Boolean(a?.done) && !expanded.has(id) && (!c.root.classList.contains('old') || opened.has(id))
-}
-
-// 正文：一句一个单元，标签在句首；有译文的句子能指上去看整句
+// 正文：一句一个单元。译文回来以前标签在句首、整段连排；回来以后和主窗口一样，一句原文（按意群着色）下面一句译文
 function buildBody(c, a) {
   const { body } = split(a.text)
   c.units = window.answerUnits.build(body, a.hints, a.trans)
@@ -272,18 +237,9 @@ function buildBody(c, a) {
       const r = bi().render(u.sen, { colors: colorsOn(), terms: false })
       en.append(r.en)
       s.classList.add('has-tr')
-      const zh = el('span', 'zh cols')
+      const zh = el('span', 'zh')
       zh.append(r.zh)
       s.append(en, zh)
-      s.addEventListener('mouseenter', () => canPeek(c, a.id) && showPop(s, sentencePop(c, i)))
-      s.addEventListener('mouseleave', backToPinned)
-      s.addEventListener('click', () => {
-        if (!canPeek(c, a.id) || String(getSelection()).trim()) return
-        pinned = pinned?.id === a.id && pinned.i === i ? null : { id: a.id, i }
-        clearPin()
-        if (pinned) s.classList.add('pin')
-        showPop(s, sentencePop(c, i))
-      })
     } else {
       en.textContent = u.text
       s.append(en)
@@ -292,14 +248,21 @@ function buildBody(c, a) {
   })
   if (!a.done) nodes.push(el('span', 'caret'))
   c.body.replaceChildren(...nodes)
-  if (pinned?.id === a.id) c.body.querySelector(`.s[data-i="${pinned.i}"]`)?.classList.add('pin')
+  c.body.classList.toggle('pairs', c.units.some((u) => u.sen?.tr))
 }
 
-// 「全部译文」按钮和展开状态：没有译文的回答不显示按钮
-function syncBody(c, id) {
-  const on = expanded.has(id)
-  c.body.classList.toggle('all', on)
-  c.all.setAttribute('aria-pressed', String(on))
+// 提问：最后一句原文（按意群着色），译文回来以后下面一行彩色译文
+function buildQuestion(c, a) {
+  const last = a.trans?.question?.at(-1)
+  if (last?.tr) {
+    const r = bi().render(last, { colors: colorsOn(), terms: false })
+    c.qText.replaceChildren(r.en)
+    c.qTr.replaceChildren(r.zh ?? last.tr)
+  } else {
+    c.qText.textContent = last?.text || lastSentence(a.question)
+    c.qTr.replaceChildren()
+  }
+  c.qTr.hidden = !last?.tr
 }
 
 function fillCard(c, a, latest) {
@@ -311,18 +274,12 @@ function fillCard(c, a, latest) {
   c.root.classList.toggle('live', !a.done)
   c.tag.textContent = REASON[a.reason] ?? t('提问')
   c.gist.textContent = gist
-  const last = tr?.question?.at(-1)
-  c.qText.textContent = last?.tr || last?.text || lastSentence(a.question)
-  c.q.classList.toggle('has-tr', Boolean(last?.tr))
-  const key = JSON.stringify([a.text, a.hints, tr?.body, a.done])
+  const key = JSON.stringify([a.text, a.hints, tr?.body, tr?.question, a.done, config.display])
   if (key !== c.shownKey) {
     c.shownKey = key
     buildBody(c, a)
-    // 译文回来以后浮着的那句要换成新的节点，钉住的也一样
-    if (hover && !hover.anchor.isConnected) backToPinned()
+    buildQuestion(c, a)
   }
-  c.all.hidden = !tr?.body?.some((x) => x.tr)
-  syncBody(c, a.id)
   c.warn.textContent = a.warning ?? ''
   c.error.textContent = a.error ?? ''
   c.timing.textContent = timingText(a)
@@ -406,8 +363,6 @@ api.onUpdate((a) => {
 api.onClear(() => {
   answers.clear()
   opened.clear()
-  expanded.clear()
-  pinned = null
   hidePop()
   render()
 })
@@ -420,6 +375,8 @@ api.onConfig((c) => {
   root.setProperty('--font-size', `${config.fontSize}px`)
   root.setProperty('--bg', `rgba(12, 14, 20, ${config.bgOpacity})`)
   document.body.classList.toggle('editing', Boolean(config.editMode))
+  // 意群颜色跟主窗口同一个设置：文字着色、底部细色条，或者关掉
+  for (const k of ['bi-text', 'bi-bar', 'bi-mono']) document.body.classList.toggle(k, k === bi().prefs(config).className)
   // 面试模式：答题框更显眼（强调色描边、最新一条字更大），主进程在 answer:config 里带 mode
   document.body.classList.toggle('prominent', config.mode === 'interview' || Boolean(config.prominent))
   if (config.editMode) setIgnore(false)

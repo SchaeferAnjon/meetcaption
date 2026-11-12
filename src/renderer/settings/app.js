@@ -528,7 +528,7 @@ function buildHotkeys() {
       P.row(t('显示 / 隐藏'), P.hotkeyRecorder('hotkeyToggle', { def: 'CommandOrControl+Alt+S', label: t('显示 / 隐藏字幕') }), t('字幕窗和答题框一起显示或隐藏。')),
       P.row(t('开始 / 停止记录'), P.hotkeyRecorder('hotkeyRecord', { def: 'CommandOrControl+Alt+R', label: t('开始 / 停止记录') }), t('不用切回主窗口：没在记录就在当前项目里开始，正在记录就停止。')),
       P.row(t('回答刚才的问题'), P.hotkeyRecorder('assist.hotkeyAsk', { def: 'CommandOrControl+Alt+A', label: t('回答刚才的问题') }), askHint),
-      P.row(t('截取画面'), P.hotkeyRecorder('class.hotkeySlide', { def: 'CommandOrControl+Alt+P', label: t('截取画面') }), t('上课记录时把当前屏幕（网课课件）存进这节课，只在上课时生效。')),
+      P.row(t('截取画面'), P.hotkeyRecorder('class.hotkeySlide', { def: 'CommandOrControl+Alt+P', label: t('截取画面') }), t('记录时把当前屏幕（会上共享的内容、网课课件）存进这场会议，开会和上课都能用。')),
     ),
     P.section(
       t('主窗口里'),
@@ -655,7 +655,7 @@ function buildPermissions() {
     // 屏幕录制在这次打开设置以后才给的，要重启才生效：这时才出「重启」
     const wasOff = perms.screen !== 'granted'
     const restart = el('button.btn.btn-sm', { type: 'button', onClick: () => P.call('relaunch') }, icon('refresh-cw', 13), el('span', { text: t('重启生效') }))
-    const screen = permRow(t('屏幕录制'), 'screen', t('AI 答题时带上屏幕截图、课堂上截取画面。在系统设置里打开以后，要重启会议字幕才生效。'), { extra: restart, renderExtra: (st) => (restart.hidden = !(wasOff && st === 'granted')) })
+    const screen = permRow(t('屏幕录制'), 'screen', t('AI 答题时带上屏幕截图、记录时截取画面。在系统设置里打开以后，要重启会议字幕才生效。'), { extra: restart, renderExtra: (st) => (restart.hidden = !(wasOff && st === 'granted')) })
     rows.push(screen)
     extra.push(
       P.row(

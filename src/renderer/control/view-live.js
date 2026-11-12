@@ -184,7 +184,7 @@ VIEWS.live = {
       toggleBtn.hidden = !on
       editBtn.hidden = !on && !ov.editMode
       moreBtn.hidden = !on
-      captureBtn.hidden = !on || !isClass()
+      captureBtn.hidden = !on
       const slideKey = s.class?.hotkeySlide
       fill(captureBtn, icon('camera', 14), t('截取画面'), slideKey ? kbd(slideKey, { size: 'sm' }) : null)
       fill(toggleBtn, icon(ov.visible ? 'eye-off' : 'eye', 14), ov.visible ? t('隐藏字幕') : t('显示字幕'), state.hotkey.accel ? kbd(state.hotkey.accel, { size: 'sm' }) : null)

@@ -1,11 +1,11 @@
 'use strict'
-// 会议详情：标题（可改）、所属项目（可移动）、时间和时长；标签页：纪要、实时笔记（开会时 AI 整理过才有）、待办、字幕记录、AI 答题、术语。
+// 会议详情：标题（可改）、所属项目（可移动）、时间和时长；标签页：纪要、实时笔记（开会时 AI 整理过才有）、待办、字幕记录、AI 答题、截图（开会时截过画面才有）、术语。
 // 课堂的标签页换成：课堂笔记、图文笔记（生成过课堂笔记才有）、实时笔记（上课时 AI 整理过才有）、字幕记录、截图、术语、作业（课上用快捷键问过 AI 时再多一个 AI 答题）、问 AI（下课后能看课上问过的、接着问），课堂笔记能导出到笔记库。
 
-const MEETING_TABS = ['summary', 'notes', 'todos', 'transcript', 'answers', 'terms']
+const MEETING_TABS = ['summary', 'notes', 'todos', 'transcript', 'answers', 'slides', 'terms'] // 截图：开会时截过画面才有
 const CLASS_TABS = ['summary', 'html', 'notes', 'transcript', 'slides', 'terms', 'todos', 'answers', 'ask']
 const TAB_LABELS = {
-  meeting: { summary: t('纪要'), notes: t('实时笔记'), todos: t('待办'), transcript: t('字幕记录'), answers: t('AI 答题'), terms: t('术语') },
+  meeting: { summary: t('纪要'), notes: t('实时笔记'), todos: t('待办'), transcript: t('字幕记录'), answers: t('AI 答题'), terms: t('术语'), slides: t('截图') },
   class: { summary: t('课堂笔记'), html: t('图文笔记'), notes: t('实时笔记'), todos: t('作业'), transcript: t('字幕记录'), answers: t('AI 答题'), terms: t('术语'), slides: t('截图'), ask: t('问 AI') },
 }
 
@@ -36,7 +36,7 @@ VIEWS.meeting = {
     const tabList = () =>
       isVideo()
         ? VIDEO_TABS().filter((k) => (k !== 'html' || s.summary?.markdown) && (k !== 'terms' || glossary(s).length))
-        : (isClass() ? CLASS_TABS.filter((k) => (k !== 'answers' || s.answers?.length) && (k !== 'ask' || (!isLive() && s.segments.some((x) => x.text)))) : MEETING_TABS).filter((k) => (k !== 'notes' || hasLiveNotes()) && (k !== 'html' || s.summary?.markdown))
+        : (isClass() ? CLASS_TABS.filter((k) => (k !== 'answers' || s.answers?.length) && (k !== 'ask' || (!isLive() && s.segments.some((x) => x.text)))) : MEETING_TABS.filter((k) => k !== 'slides' || s.slides?.length)).filter((k) => (k !== 'notes' || hasLiveNotes()) && (k !== 'html' || s.summary?.markdown))
     const panel = el('div.tab-panel', { role: 'tabpanel' })
     const head = el('section.meeting-head', {}, titleInput, el('div.meeting-meta-row', {}, projectBtn, modeTag, meta))
     const page = el('div.page.meeting-page', {}, head, liveNote, tabs, panel)
@@ -592,7 +592,7 @@ VIEWS.meeting = {
       )
     }
 
-    /* ---- 截图（课堂） ---- */
+    /* ---- 截图 ---- */
 
     function renderSlides() {
       const list = [...(s.slides ?? [])].sort((a, b) => slideTime(a, s.startedAt) - slideTime(b, s.startedAt))
@@ -618,7 +618,7 @@ VIEWS.meeting = {
         )
       }
       panel.append(
-        el('div.panel-toolbar', {}, el('span.text-2.text-sm', { text: t(`{0} 张截图，按上课时间排。点一下放大。`, list.length) }), el('span.header-spacer'), el('button.btn.btn-sm', { type: 'button', onClick: () => call('openFolder', id) }, icon('folder', 14), t('打开文件夹'))),
+        el('div.panel-toolbar', {}, el('span.text-2.text-sm', { text: isClass() ? t(`{0} 张截图，按上课时间排。点一下放大。`, list.length) : t(`{0} 张截图，按开会时间排。点一下放大。`, list.length) }), el('span.header-spacer'), el('button.btn.btn-sm', { type: 'button', onClick: () => call('openFolder', id) }, icon('folder', 14), t('打开文件夹'))),
         grid,
       )
     }
