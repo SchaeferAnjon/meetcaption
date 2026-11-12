@@ -1734,7 +1734,6 @@
  "SRT 字幕": "Sous-titres SRT",
  "SRT 字幕：只要原文": "Sous-titres SRT : original uniquement",
  "SRT 字幕：只要译文": "Sous-titres SRT : traduction uniquement",
- "笔记": "Notes",
  "图文笔记：用浏览器打开": "Notes illustrées : ouvrir dans le navigateur",
  "图文笔记：导出 PDF": "Notes illustrées : exporter en PDF",
  "{0} 小时 {1} 分": "{0} h {1} min",
@@ -1879,5 +1878,9 @@
  "有问题就问，结合这场面试回答": "Posez vos questions ; la réponse s'appuie sur cet entretien",
  "会开完了也能接着问：AI 用整场会的字幕、实时笔记和截图来答，时间点一下就打开「字幕记录」里那一句。": "Vous pouvez continuer à poser des questions après la réunion : l'IA répond à partir des sous-titres, notes en direct et captures de toute la réunion. Cliquez sur une heure pour ouvrir cette ligne dans la transcription.",
  "面试结束了也能接着问：AI 用整场面试的字幕、实时笔记和截图来答，时间点一下就打开「字幕记录」里那一句。": "Vous pouvez continuer à poser des questions après l'entretien : l'IA répond à partir des sous-titres, notes en direct et captures de tout l'entretien. Cliquez sur une heure pour ouvrir cette ligne dans la transcription.",
- "在记录页和记录详情里：打开「问 AI」，光标放进输入框。": "Sur la page d'enregistrement et dans le détail : ouvre « Demander à l'IA » et place le curseur dans le champ de saisie."
+ "在记录页和记录详情里：打开「问 AI」，光标放进输入框。": "Sur la page d'enregistrement et dans le détail : ouvre « Demander à l'IA » et place le curseur dans le champ de saisie.",
+ "对方问完马上回答；关掉后点「让 AI 回答」或按快捷键才答": "Répond dès que la question est posée. Désactivé, ne répond que si vous cliquez sur Laisser l'IA répondre ou utilisez le raccourci",
+ "面试时自动回答": "Réponse automatique en entretien",
+ "面试官问完就自动回答": "Répondre automatiquement quand le recruteur a fini sa question",
+ "和开会分开设。开会、面试途中在 AI 回答栏顶上也能直接开关。": "Réglé séparément des réunions. Pendant une réunion ou un entretien, vous pouvez aussi l'activer en haut du panneau des réponses IA."
 }

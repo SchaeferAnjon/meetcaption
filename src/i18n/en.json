@@ -1734,7 +1734,6 @@
  "SRT 字幕": "SRT captions",
  "SRT 字幕：只要原文": "SRT captions: original only",
  "SRT 字幕：只要译文": "SRT captions: translation only",
- "笔记": "Notes",
  "图文笔记：用浏览器打开": "Illustrated notes: open in browser",
  "图文笔记：导出 PDF": "Illustrated notes: export PDF",
  "{0} 小时 {1} 分": "{0} hr {1} min",
@@ -1879,5 +1878,9 @@
  "有问题就问，结合这场面试回答": "Ask anything; answers draw on this interview",
  "会开完了也能接着问：AI 用整场会的字幕、实时笔记和截图来答，时间点一下就打开「字幕记录」里那一句。": "You can keep asking after the meeting: the AI answers from the whole meeting’s captions, live notes and screenshots. Click a time to open that line in the caption transcript.",
  "面试结束了也能接着问：AI 用整场面试的字幕、实时笔记和截图来答，时间点一下就打开「字幕记录」里那一句。": "You can keep asking after the interview: the AI answers from the whole interview’s captions, live notes and screenshots. Click a time to open that line in the caption transcript.",
- "在记录页和记录详情里：打开「问 AI」，光标放进输入框。": "On the recording page and in recording details: opens Ask AI and puts the cursor in the input box."
+ "在记录页和记录详情里：打开「问 AI」，光标放进输入框。": "On the recording page and in recording details: opens Ask AI and puts the cursor in the input box.",
+ "对方问完马上回答；关掉后点「让 AI 回答」或按快捷键才答": "Answers as soon as they finish asking. When off, answers only when you click Let AI answer or press the shortcut",
+ "面试时自动回答": "Auto answer in interviews",
+ "面试官问完就自动回答": "Answer automatically when the interviewer finishes a question",
+ "和开会分开设。开会、面试途中在 AI 回答栏顶上也能直接开关。": "Set separately from meetings. During a meeting or interview you can also switch it at the top of the AI answers panel."
 }

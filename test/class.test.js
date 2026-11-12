@@ -6,7 +6,7 @@ import path from 'node:path'
 import { LiveNotes, applyNotes, countWords, parseNotes } from '../src/main/class/liveNotes.js'
 import { classNotesMessages, classTodoMessages, notesDigest, notesMessages } from '../src/main/class/prompts.js'
 import { exportNotesTo, notesFileName, saveSlide } from '../src/main/class/files.js'
-import { modeSettings, resolveMode, speakerLabel } from '../src/main/modes.js'
+import { autoKey, modeSettings, resolveMode, speakerLabel } from '../src/main/modes.js'
 import { applyPatch, DEFAULTS, merge } from '../src/main/defaults.js'
 import { LlmError } from '../src/main/llm/errors.js'
 import { ProjectStore } from '../src/main/projects.js'
@@ -36,6 +36,10 @@ test('modeSettings: interview forces auto answers, class turns auto off, meeting
   assert.equal(i.assist.enabled, true)
   assert.equal(i.assist.auto, true)
   assert.equal(i.assist.profile, 'cv')
+  // 面试的自动回答有自己的开关：关了就不自动答，开会的开关不影响它
+  assert.equal(modeSettings(applyPatch(s, { assist: { autoInterview: false } }), 'interview').assist.auto, false)
+  assert.equal(modeSettings(applyPatch(s, { assist: { auto: true, autoInterview: false } }), 'meeting').assist.auto, true)
+  assert.deepEqual(['meeting', 'interview', 'class'].map(autoKey), ['auto', 'autoInterview', null])
   const c = modeSettings(applyPatch(s, { assist: { enabled: true, auto: true } }), 'class')
   assert.equal(c.assist.enabled, true)
   assert.equal(c.assist.auto, false)

@@ -65,7 +65,20 @@ VIEWS.live = {
     const answerCount = el('span.count.num')
     // 会开完了顶上那条就收起来，「让 AI 回答」挪到这里（会后按快捷键也能答刚才那场会的问题）
     const askAfter = el('button.btn.btn-sm.btn-ghost', { type: 'button', hidden: true, onClick: () => ask(askAfter) }, icon('sparkles', 14), t('让 AI 回答'))
-    const answersBody = el('div.pane-body.answer-scroll', {}, answerNote, answerEmpty, answerList)
+    // 自动回答开关：开会和面试各记各的（assist.auto / assist.autoInterview），开会途中拨了马上生效；课堂不自动回答，不显示
+    const autoKeyOf = () => (mode() === 'interview' ? 'autoInterview' : 'auto')
+    const autoOn = () => state.settings?.assist?.[autoKeyOf()] !== false
+    const autoToggle = ui.toggle({
+      size: 'sm',
+      label: t('自动回答'),
+      description: t('对方问完马上回答；关掉后点「让 AI 回答」或按快捷键才答'),
+      onChange: async (on, input) => {
+        const r = await call('updateSettings', { assist: { [autoKeyOf()]: on } })
+        if (failed(r)) input.checked = !on
+      },
+    })
+    const autoRow = el('div.answer-auto', {}, autoToggle)
+    const answersBody = el('div.pane-body.answer-scroll', {}, autoRow, answerNote, answerEmpty, answerList)
 
     // 右栏：实时笔记
     const every = () => state.settings?.class?.notesEveryMin ?? 2
@@ -343,9 +356,15 @@ VIEWS.live = {
         empty.hidden = nodes.size + slideNodes.size > 0
         return
       }
-      const n = lineNode(seg, null, segOpts())
-      if (old) old.replaceWith(n)
-      else list.append(n)
+      let n = lineNode(seg, null, segOpts())
+      // 还在出字的那一行每来几个字更新一次：留着原来的节点只换里面的字，不然鼠标停在上面时悬停底色和「问」按钮每次都重新淡入，看着像在闪
+      if (old) {
+        old.className = n.className
+        Object.assign(old.dataset, n.dataset)
+        const btn = old.querySelector(':scope > .ask-line-btn')
+        old.replaceChildren(...n.childNodes, ...(btn ? [btn] : []))
+        n = old
+      } else list.append(n)
       nodes.set(seg.id, n)
       attachQBox(seg.id)
       while (nodes.size > 600) {
@@ -382,6 +401,8 @@ VIEWS.live = {
 
     function renderAnswerEmpty() {
       const s = state.settings ?? {}
+      autoRow.hidden = isClass()
+      autoToggle.input.checked = autoOn()
       const llm = state.llm
       ui.clear(answerEmpty)
       answerEmpty.hidden = cards.size > 0
@@ -391,7 +412,7 @@ VIEWS.live = {
         )
         return
       }
-      const auto = mode() === 'interview' || (mode() !== 'class' && s.assist?.auto)
+      const auto = !isClass() && autoOn()
       const text = isClass()
         ? t('上课时不自动回答。老师点名提问时按快捷键或点「让 AI 回答」，AI 就回答刚才的问题。')
         : auto

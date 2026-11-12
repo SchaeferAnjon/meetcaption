@@ -1734,7 +1734,6 @@
  "SRT 字幕": "SRT-Untertitel",
  "SRT 字幕：只要原文": "SRT-Untertitel: nur Original",
  "SRT 字幕：只要译文": "SRT-Untertitel: nur Übersetzung",
- "笔记": "Notizen",
  "图文笔记：用浏览器打开": "Illustrierte Notizen: im Browser öffnen",
  "图文笔记：导出 PDF": "Illustrierte Notizen: als PDF exportieren",
  "{0} 小时 {1} 分": "{0} Std. {1} Min.",
@@ -1879,5 +1878,9 @@
  "有问题就问，结合这场面试回答": "Frag einfach; die Antwort stützt sich auf dieses Gespräch",
  "会开完了也能接着问：AI 用整场会的字幕、实时笔记和截图来答，时间点一下就打开「字幕记录」里那一句。": "Du kannst auch nach dem Meeting weiterfragen: Die KI antwortet anhand der Untertitel, Live-Notizen und Screenshots des ganzen Meetings. Klick auf eine Zeit, um diese Zeile im Untertiteltranskript zu öffnen.",
  "面试结束了也能接着问：AI 用整场面试的字幕、实时笔记和截图来答，时间点一下就打开「字幕记录」里那一句。": "Du kannst auch nach dem Gespräch weiterfragen: Die KI antwortet anhand der Untertitel, Live-Notizen und Screenshots des ganzen Gesprächs. Klick auf eine Zeit, um diese Zeile im Untertiteltranskript zu öffnen.",
- "在记录页和记录详情里：打开「问 AI」，光标放进输入框。": "Auf der Aufnahmeseite und in den Aufnahmedetails: öffnet „KI fragen“ und setzt den Cursor ins Eingabefeld."
+ "在记录页和记录详情里：打开「问 AI」，光标放进输入框。": "Auf der Aufnahmeseite und in den Aufnahmedetails: öffnet „KI fragen“ und setzt den Cursor ins Eingabefeld.",
+ "对方问完马上回答；关掉后点「让 AI 回答」或按快捷键才答": "Antwortet, sobald die Frage gestellt ist. Wenn aus, nur nach Klick auf KI antworten lassen oder per Tastenkürzel",
+ "面试时自动回答": "Automatisch antworten im Vorstellungsgespräch",
+ "面试官问完就自动回答": "Automatisch antworten, wenn die interviewende Person ihre Frage gestellt hat",
+ "和开会分开设。开会、面试途中在 AI 回答栏顶上也能直接开关。": "Getrennt von Meetings einstellbar. Während eines Meetings oder Gesprächs auch direkt oben im KI-Antworten-Bereich umschaltbar."
 }

@@ -395,6 +395,7 @@ function buildAssist() {
     'div',
     {},
     P.row(t('自动回答'), toggleLine('assist.auto', t('对方问完就自动回答')), t('关掉后，只在按快捷键时回答。')),
+    P.row(t('面试时自动回答'), toggleLine('assist.autoInterview', t('面试官问完就自动回答')), t('和开会分开设。开会、面试途中在 AI 回答栏顶上也能直接开关。')),
     P.row(t('屏幕截图'), [toggleLine('assist.withScreen', t('回答时附上当前屏幕截图')), screenWarn], t('讲 PPT 或共享屏幕时对方问「这一块怎么做的」，AI 能看到你屏幕上的内容。截图只发给 AI 服务，不保存。')),
     P.row(
       t('回答语言'),

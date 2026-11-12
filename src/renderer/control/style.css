@@ -815,6 +815,22 @@ button.nav-section:focus-visible {
   padding: 10px;
 }
 
+/* 自动回答开关：贴在 AI 回答栏最上面 */
+.answer-auto {
+  margin: 0 2px 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--fill-1);
+}
+
+.answer-auto[hidden] {
+  display: none;
+}
+
+.answer-auto .toggle-field {
+  gap: 10px;
+}
+
 .answer-empty .callout {
   margin: 2px 0;
 }

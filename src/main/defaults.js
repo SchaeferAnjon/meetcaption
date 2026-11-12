@@ -60,7 +60,8 @@ export const DEFAULTS = {
   voiceprint: { threshold: 0.5 }, // 声纹本体存 userData/voiceprint.json
   assist: {
     enabled: true,
-    auto: true,
+    auto: true, // 开会时对方问完自动回答（实时页 AI 回答栏上的开关）
+    autoInterview: true, // 面试时自动回答，和开会分开记
     withScreen: true,
     profile: '', // 「我的资料」：简历、项目介绍等，答题时带上
     answerLang: 'auto', // auto（跟提问语言）| en | zh

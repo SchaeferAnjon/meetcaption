@@ -17,12 +17,15 @@ export function resolveMode({ mode, classSource } = {}, project = null, settings
   return { mode: m, classSource: pick ?? 'mic' }
 }
 
-/** 模式叠到设置上：面试强制开答题、自动回答；课堂关自动回答（开着答题的话快捷键照样能答）。 */
+/** 模式叠到设置上：面试强制开答题，自动回答看面试自己的开关（默认开）；课堂关自动回答（开着答题的话快捷键照样能答）。 */
 export function modeSettings(s, mode) {
-  if (mode === 'interview') return { ...s, assist: { ...s.assist, enabled: true, auto: true } }
+  if (mode === 'interview') return { ...s, assist: { ...s.assist, enabled: true, auto: s.assist?.autoInterview !== false } }
   if (mode === 'class') return { ...s, assist: { ...s.assist, auto: false } }
   return s
 }
+
+/** 实时页上「自动回答」开关存在哪个设置里：开会和面试分开记，课堂没有自动回答。 */
+export const autoKey = (mode) => (mode === 'interview' ? 'autoInterview' : mode === 'class' ? null : 'auto')
 
 /** 界面和存档里的说话人称呼：课堂上对方叫「老师」。 */
 export function speakerLabel(who, mode) {
