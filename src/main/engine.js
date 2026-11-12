@@ -850,8 +850,22 @@ export class MeetingEngine extends EventEmitter {
         return
       }
       if (this.vp) this.#scorePartial(seg, m)
+      // 还在说的这段和对方刚说的话重合：多半是外放漏进麦克风的，先不上屏（不然同一句会有「对方」「我」两行），定稿再判
+      if (this.#hideEcho(seg, m)) return
     }
     this.#update(seg, final)
+  }
+
+  // 麦克风还没定稿的段看着像串音就藏起来：已经上过屏的发一个空文本让界面拿掉。声纹认出是我的照常显示。→ 藏了没有
+  #hideEcho(seg, m) {
+    const mine = seg.vp != null && seg.vp >= this.#threshold()
+    if (mine || !this.#crosstalk(seg)) {
+      m.echo = false
+      return false
+    }
+    if (!m.echo && m.shown) this.emit('segment', { ...seg, text: '', sentences: [], final: false })
+    m.echo = true
+    return true
   }
 
   #update(seg, final) {
@@ -866,6 +880,7 @@ export class MeetingEngine extends EventEmitter {
       if (ask === 'ask') this.#holdEnhance()
     }
     this.#resplit(seg)
+    if (!final) this.#m(seg).shown = true
     if (final) {
       this.#settleSpeed(seg)
       this.#persist(seg)
@@ -971,7 +986,7 @@ export class MeetingEngine extends EventEmitter {
     const gen = this.gen
     this.#track(
       this.#score(span).then((score) => {
-        if (score == null || gen !== this.gen || seg.final || m.awaiting || m.settled) return
+        if (score == null || gen !== this.gen || seg.final || m.awaiting || m.settled || m.echo) return
         seg.vp = score
         const who = score >= this.#threshold() || this.#systemActive() || this.#crosstalk(seg) ? 'me' : 'other'
         if (who === seg.who) return
@@ -1024,11 +1039,12 @@ export class MeetingEngine extends EventEmitter {
     else this.#settleUnlike(seg)
   }
 
-  // 对方那一路有新字了：还在等的麦克风段再比一次
+  // 对方那一路有新字了：还在等的麦克风段再比一次；还在说、已经上屏的麦克风段重合了也藏起来
   #recheckDeferred() {
     for (const seg of this.live.values()) {
       const m = this.meta.get(seg.id)
       if (m?.deferred && !m.settled && this.#crosstalk(seg)) this.#drop(seg)
+      else if (m && seg.source === 'mic' && this.micCheck && !seg.final && !m.awaiting && seg.text) this.#hideEcho(seg, m)
     }
   }
 

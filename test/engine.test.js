@@ -228,6 +228,32 @@ test('engine: without a voiceprint, a mic copy of the other side is still droppe
   assert.equal(ctx.asks.length, 1)
 })
 
+// 外放漏进麦克风、还没定稿时：不出「我」的那一行（截图里 They are often 对方、我各一行）
+test('engine: while the other side is talking, a mic partial that copies them is not shown as a second line', async (t) => {
+  const ctx = await start(await setup({ withVoiceprint: false }), t)
+  const [sys, mic] = ctx.providers
+  const micSegs = () => ctx.segs.filter((s) => s.id === 'mic:m')
+  sys.emit('partial', { key: 's', text: 'They are often' })
+  mic.emit('partial', { key: 'm', text: 'They are often' })
+  await tick()
+  assert.equal(micSegs().length, 0)
+  // 麦克风先出字、对方那一路后到：上过屏的那行被拿掉
+  mic.emit('partial', { key: 'e', text: 'confused with the kaf' })
+  await tick()
+  assert.equal(ctx.segs.filter((s) => s.id === 'mic:e').at(-1).text, 'confused with the kaf')
+  sys.emit('partial', { key: 's', text: 'They are often confused with the kaf letter' })
+  await tick()
+  assert.equal(ctx.segs.filter((s) => s.id === 'mic:e').at(-1).text, '')
+  // 我自己插一句，和对方说的对不上：照常显示
+  mic.emit('partial', { key: 'me', text: 'Should I zoom in on line five' })
+  await tick()
+  assert.equal(ctx.segs.filter((s) => s.id === 'mic:me').at(-1).text, 'Should I zoom in on line five')
+  sys.emit('final', { key: 's', text: 'They are often confused with the kaf letter.' })
+  mic.emit('final', { key: 'm', text: 'They are often confused with the kaf letter.' })
+  await tick()
+  assert.equal(micSegs().at(-1).dropped, 'crosstalk')
+})
+
 test('engine: online class without a voiceprint drops the teacher copied into the mic', async (t) => {
   const ctx = await setup({ withVoiceprint: false })
   await ctx.engine.start({ mode: 'class', classSource: 'system' })
