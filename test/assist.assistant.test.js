@@ -86,15 +86,28 @@ test('assistant: screenshot runs alongside and is attached as an image', async (
   assert.match(calls[0].system, /附图是我现在的屏幕/)
 })
 
-test('answer prompt: names the scene by mode, never asks back, and only leans on the screenshot when the question is about it', () => {
+test('answer prompt: names the scene by mode, interview never asks back, and only leans on the screenshot when the question is about it', () => {
   assert.match(answerSystem({ mode: 'interview' }), /面试官刚问了我/)
   assert.match(answerSystem({ mode: 'meeting' }), /会上有人刚问了我/)
-  assert.match(answerSystem({}), /不反问/)
+  assert.match(answerSystem({ mode: 'interview' }), /不反问/)
+  assert.match(answerSystem({ mode: 'class' }), /不反问/)
+  assert.doesNotMatch(answerSystem({ mode: 'interview' }), /会上问我做没做过/)
   assert.doesNotMatch(answerSystem({ withScreen: false }), /附图/)
   const sys = answerSystem({ withScreen: true })
   assert.match(sys, /问题明显在说屏幕上的东西/)
   assert.match(sys, /截图只当背景参考/)
   assert.match(answerMessages({ question: 'Q', withScreen: true, mode: 'interview' }).system, /面试官/)
+})
+
+// 会上问「你查了吗」时不能替我说查过；拿不准时可以问一个确认问题，不编方案
+test('answer prompt: meeting answers never claim work for me and may ask one clarifying question', () => {
+  const sys = answerSystem({ mode: 'meeting', answerLang: 'en', noteLang: 'zh' })
+  assert.match(sys, /绝不替我说「做过」/)
+  assert.match(sys, /要点和标签里也不替我定/)
+  assert.match(sys, /具体的确认问题/)
+  assert.match(sys, /1 到 3 句/)
+  assert.doesNotMatch(sys, /不反问/)
+  assert.doesNotMatch(answerSystem({ mode: 'meeting', answerLang: 'zh', noteLang: 'zh', hints: false }), /标签/)
 })
 
 test('assistant: screenshot failure still answers and leaves a warning', async () => {
