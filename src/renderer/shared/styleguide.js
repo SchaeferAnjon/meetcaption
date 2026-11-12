@@ -557,7 +557,7 @@
           staticToast('error', 'circle-alert', '识别连不上', '豆包返回 401，检查 Access Token。'),
           staticToast('loading', null, '正在生成纪要…')),
         el('div.sg-box', {},
-          el('div.callout.callout-accent', {}, icon('fingerprint-pattern'), el('div.callout-body', {}, el('div.callout-title', { text: '还没录声纹' }), el('div.callout-desc', { text: '录 12 秒，就能分清你和对方。' })), el('button.btn.btn-sm.btn-primary', { type: 'button' }, '去录')),
+          el('div.callout.callout-accent', {}, icon('fingerprint-pattern'), el('div.callout-body', {}, el('div.callout-title', { text: '还没录声纹' }), el('div.callout-desc', { text: '录 30 秒，就能分清你和对方。' })), el('button.btn.btn-sm.btn-primary', { type: 'button' }, '去录')),
           el('div.callout.callout-warn', {}, icon('triangle-alert'), el('div.callout-body', {}, el('div.callout-title', { text: '需要屏幕录制权限' }), el('div.callout-desc', { text: 'AI 答题要看屏幕截图，在系统设置里允许「会议字幕」。' })), el('button.btn.btn-sm', { type: 'button' }, '打开系统设置')),
           el('div.callout.callout-error', {}, icon('circle-alert'), el('div.callout-body', {}, el('div.callout-title', { text: '答题失败' }), el('div.callout-desc', { text: 'ChatGPT 额度用完了，稍后再试。' })))))));
 

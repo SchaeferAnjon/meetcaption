@@ -355,7 +355,7 @@ function buildVoiceprint() {
   const micOff = P.callout('warn', 'mic-off', t('麦克风没打开'), t('「麦克风」里没打开「同时记录我说的话」，开会时用不上声纹。'), el('button.btn.btn-sm', { type: 'button', onClick: () => go('mic') }, t('去打开')))
   P.showWhen(micOff, (s) => !s.captureMic)
   return [
-    P.section(t('我的声纹'), t('录 12 秒你的声音，软件就能分清哪句是你说的、哪句是对方说的。开外放时串进麦克风的对方声音也能滤掉。声纹只存在这台电脑上。'), micOff, P.voiceprintRecorder()),
+    P.section(t('我的声纹'), t('录 30 秒你的声音，软件就能分清哪句是你说的、哪句是对方说的。开外放时串进麦克风的对方声音也能滤掉。声纹只存在这台电脑上。'), micOff, P.voiceprintRecorder()),
     P.section(
       t('高级'),
       null,
@@ -691,7 +691,7 @@ async function refreshPerms() {
 function buildMic() {
   micSelect = P.selectField('micDeviceId', [{ value: '', label: t('系统默认') }], { width: 280, label: t('麦克风') })
   navigator.mediaDevices?.addEventListener?.('devicechange', refreshMics)
-  const vpHint = P.callout('accent', 'fingerprint-pattern', t('还没录声纹'), t('录 12 秒，就能分清你和对方，外放时串进来的声音也能滤掉。'), el('button.btn.btn-sm.btn-primary', { type: 'button', onClick: () => go('voiceprint') }, t('去录声纹')))
+  const vpHint = P.callout('accent', 'fingerprint-pattern', t('还没录声纹'), t('录 30 秒，就能分清你和对方，外放时串进来的声音也能滤掉。'), el('button.btn.btn-sm.btn-primary', { type: 'button', onClick: () => go('voiceprint') }, t('去录声纹')))
   const renderVpHint = () => (vpHint.hidden = !(P.get('captureMic') && P.voiceprint() && !P.voiceprint().enrolled && !P.voiceprint().unsupported))
   P.watch(renderVpHint)
   P.onVoiceprint(renderVpHint)

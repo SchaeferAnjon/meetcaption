@@ -210,6 +210,28 @@ test('engine: in a remote meeting my mic lines with a middling voiceprint score 
   assert.ok(!ctx.asks.some((a) => /HTML file/.test(a.question)))
 })
 
+// 声纹录得和开会的麦克风对不上：远程开会时我的话打分一直 0.37，散会提示重录；打分正常时不提示
+test('engine: after a remote meeting where my lines mostly score under the threshold, a voiceprint notice suggests recording again', async (t) => {
+  for (const amp of [0.12, 0.5]) {
+    const ctx = await setup()
+    const notices = []
+    ctx.engine.on('notice', (n) => notices.push(n))
+    await ctx.engine.start()
+    const [sys, mic] = ctx.providers
+    sys.emit('final', { key: 's', text: 'Okay, let us look at line five together.' })
+    for (let i = 0; i < 10; i++) {
+      ctx.engine.feed('mic', tone(1500, amp))
+      mic.emit('final', { key: `m${i}`, text: `I checked part ${i} of the masks this morning.`, span: { start: i * 1500, end: (i + 1) * 1500 } })
+    }
+    await tick(80)
+    await ctx.engine.stop()
+    const vpNotice = notices.find((n) => n.code === 'voiceprint')
+    if (amp === 0.12) assert.match(vpNotice?.text ?? '', /0\.37/)
+    else assert.equal(vpNotice, undefined)
+    assert.ok(ctx.segs.filter((x) => x.id.startsWith('mic:') && x.final).every((x) => x.who === 'me'))
+  }
+})
+
 test('engine: without a voiceprint every mic segment is me; nothing is asked when the AI is not ready', async (t) => {
   const ctx = await start(await setup({ withVoiceprint: false, llmReady: false }), t)
   const [sys, mic] = ctx.providers

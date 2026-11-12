@@ -141,7 +141,7 @@ function stepWelcome() {
     [isMac ? 'mic' : 'mic', isMac ? t('授权两项') : t('授权一项'), isMac ? t('麦克风点「允许」；电脑声音把兔子图标拖进系统设置。') : t('麦克风点「允许」就行，电脑声音不用授权。')],
     ['languages', t('定语言'), t('对方说什么、翻成什么，60 种语言里选，选了马上看到效果。')],
     ['play', t('试听一次'), t('放段视频，看字幕真的出来了。')],
-    ['fingerprint-pattern', t('录声纹'), t('读 12 秒，分清你和对方；可以跳过。')],
+    ['fingerprint-pattern', t('录声纹'), t('读 30 秒，分清你和对方；可以跳过。')],
   ]
   return [
     demoBlock(),
@@ -596,13 +596,13 @@ let recorder = null
 function stepVoice() {
   if (S.mic !== 'granted')
     return [
-      el('h1.ob-h1', { text: t('录 12 秒你的声音') }),
+      el('h1.ob-h1', { text: t('录 30 秒你的声音') }),
       el('p.ob-sub', { text: t('软件就能分清哪句是你说的、哪句是对方说的；开外放时串进麦克风的对方声音也能滤掉。声纹只存在这台电脑上。') }),
       el('div.ob-callout', {}, icon('mic-off', 15), el('span', { text: t('麦克风还没允许，录不了声纹。可以先跳过，以后在 设置 → 声纹 里录。') }), el('button.btn.btn-sm', { type: 'button', onClick: () => go('perm') }, t('回到授权'))),
     ]
   recorder ??= P.voiceprintRecorder({ status: 'enrolled', allowDelete: false })
   return [
-    el('h1.ob-h1', { text: t('录 12 秒你的声音') }),
+    el('h1.ob-h1', { text: t('录 30 秒你的声音') }),
     el('p.ob-sub', { text: t('软件就能分清哪句是你说的、哪句是对方说的；开外放时串进麦克风的对方声音也能滤掉。声纹只存在这台电脑上。') }),
     el('div.ob-vp', { dataset: { part: '录声纹' } }, recorder),
   ]

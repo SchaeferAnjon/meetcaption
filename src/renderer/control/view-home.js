@@ -127,7 +127,7 @@ VIEWS.home = {
           run: aiSettings,
         })
       if (!ob.voiceprint && s.captureMic !== false)
-        steps.push({ title: t('还没录声纹'), desc: t('录 12 秒，软件就能分清哪句是你说的，外放时串进麦克风的对方声音也能滤掉。'), label: t('去录声纹'), run: () => openSettings('voiceprint') })
+        steps.push({ title: t('还没录声纹'), desc: t('录 30 秒，软件就能分清哪句是你说的，外放时串进麦克风的对方声音也能滤掉。'), label: t('去录声纹'), run: () => openSettings('voiceprint') })
       if (steps.length) {
         const first = steps[0]
         guide.append(

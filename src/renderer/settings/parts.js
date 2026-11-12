@@ -637,7 +637,8 @@
 
   /* ---------------- 声纹录制 ---------------- */
 
-  const VP_SECONDS = 12
+  // 读满 30 秒：录得短（以前 12 秒，有效语音常常只有 10 秒出头）开会时打分偏低，认不出自己
+  const VP_SECONDS = 30
   let vp = null // { enrolled, seconds, createdAt } | { unsupported }
   let vpRec = null // 录制中：{ phase, startedAt, secondsLeft, level, gotEvent, eventSeconds }
   let vpTimer = 0
@@ -729,6 +730,8 @@
   const VP_SCRIPT = [
     { lang: 'zh-CN', text: t('我现在在录声纹。今天想简单介绍一下我最近做的项目，还有接下来几周的计划。') },
     { lang: 'en', text: 'Hi, this is a short voice sample. I usually talk about my research, the experiments I am running, and the project I am building.' },
+    { lang: 'zh-CN', text: t('开会的时候我一般先讲上周做完了什么，再说遇到的问题，最后商量下一步怎么安排。') },
+    { lang: 'en', text: 'Last week I cleaned up the data, ran a few more tests, and wrote down the results. Next, I want to compare the two versions and decide which one we keep.' },
   ]
 
   function vpStatusNode() {

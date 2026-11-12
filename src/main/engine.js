@@ -34,6 +34,7 @@ const PENDING = Symbol('pending')
 // 远程开会（对方从电脑声音进来）时，麦克风里的人几乎都是我：声纹分数要低到这个以下才算屋里的别人。
 // 实测 M1 上声纹注册和开会时的麦克风不一样，我自己的话打分 0.17 到 0.53（中位数 0.37），按 0.5 判有七成被当成了对方，AI 就去答我自己说的话。
 const REMOTE_OTHER_MAX = 0.2
+const VP_CHECK_MIN = 10 // 远程开会时至少有这么多句打过分的「我」，才看声纹还认不认得我
 const DEFER_MS = 1500 // 麦克风段不像我、对方那一路又还在出字：等对方字幕跟上再判串音
 const SCORE_STEP_MS = 1500 // 说话过程中每多 1.5 秒重新打一次分，到 8 秒为止
 const SCORE_MAX = 6 * 16000 // 打分最多用 6 秒音频（取中间）：音频越长算得越久
@@ -427,6 +428,7 @@ export class MeetingEngine extends EventEmitter {
     this.screenAsked.clear()
     this.lastMicWho = null
     this.systemHeard = false // 这一场电脑声音里出过字：远程开会
+    this.myScores = [] // 远程开会时判成我的麦克风段的声纹分数：散会后看声纹还认不认得我
     this.vp = null
     this.micCheck = false
     this.micRing = null
@@ -1062,6 +1064,7 @@ export class MeetingEngine extends EventEmitter {
     seg.who = who
     seg.speaker = this.#label(who)
     if (how === 'voiceprint') this.lastMicWho = { who, at: Date.now() }
+    if (who === 'me' && seg.vp != null && this.systemHeard && this.mode !== 'class') this.myScores.push(seg.vp)
     debug('mic', who, how, seg.vp, JSON.stringify(seg.text))
     this.emit('trace', { type: 'who', id: seg.id, text: seg.text, who, score: seg.vp ?? null, how })
     this.#update(seg, true)
@@ -1098,6 +1101,16 @@ export class MeetingEngine extends EventEmitter {
       if (x.source === 'system' && x.text && (this.meta.get(x.id)?.updatedAt ?? x.startedAt) >= since) texts.push(x.orig ?? x.text)
     }
     return isCrosstalk(seg.text, texts)
+  }
+
+  // 远程开会时麦克风里几乎都是我：我的话打分大多够不上门槛，说明声纹和现在的麦克风对不上，面对面开会、上课时会认不出我，提示重录
+  #checkVoiceprint() {
+    const v = [...this.myScores].sort((a, b) => a - b)
+    this.myScores = []
+    if (v.length < VP_CHECK_MIN) return
+    const median = v[v.length >> 1]
+    if (median >= this.#threshold()) return
+    this.notice('warn', t('这场会里你说的话，声纹打分大多只有 {0}（要到 {1} 才认得出是你）。远程开会不受影响，面对面开会和上课时可能把你的话当成别人的。用开会的麦克风重录一次声纹就好。', median.toFixed(2), this.#threshold().toFixed(2)), 'voiceprint')
   }
 
   // 远程开会（开会、面试，电脑声音里有人说话）时声纹分数不算太低的麦克风段就是我；课堂按原来的判法
@@ -1909,6 +1922,7 @@ export class MeetingEngine extends EventEmitter {
       this.#clearProv()
       this.store.saveNow(session)
       this.#traceSpeed()
+      this.#checkVoiceprint()
     }
     this.#setState('idle', { lastSessionId: session?.id ?? null })
     // 停止后把最后一段内容整理进实时笔记（不挡着停止，写回文件由 #onNotes 做；退出应用前主进程等它）

@@ -187,7 +187,7 @@ function sidebarFooter() {
       ok: ob.voiceprint,
       warn: micOn && !ob.voiceprint,
       label: t('声纹'),
-      tip: ob.voiceprint ? { title: t('声纹已录好'), text: t('麦克风里的话能分清是你还是对方') } : micOn ? { title: t('还没录声纹'), text: t('点这里去录，12 秒就好') } : { title: t('没开麦克风'), text: t('只记录电脑里的声音，用不到声纹') },
+      tip: ob.voiceprint ? { title: t('声纹已录好'), text: t('麦克风里的话能分清是你还是对方') } : micOn ? { title: t('还没录声纹'), text: t('点这里去录，30 秒就好') } : { title: t('没开麦克风'), text: t('只记录电脑里的声音，用不到声纹') },
       onClick: () => openSettings('voiceprint'),
     }),
     statusChip({

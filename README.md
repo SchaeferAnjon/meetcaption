@@ -31,7 +31,7 @@ Open Zoom, Teams, Tencent Meeting or an online class. The audio from your comput
 - **AI answers**: when someone asks you a question, a reply you can read out appears in the corner.
 - **Class notes**: live notes every two minutes, slides captured, illustrated notes after class.
 - **Minutes and to-dos**: one click after the meeting; *next Friday* becomes a real date.
-- **Knows who is speaking**: a 12-second voiceprint tells you apart from the other side.
+- **Knows who is speaking**: a 30-second voiceprint tells you apart from the other side.
 - **Hidden when you share**: screen shares, recordings and screenshots show no captions and no answer card.
 - **60 languages** for recognition and translation; the app itself comes in 9 languages.
 - **Plain files**: every meeting is saved as Markdown in the 会议字幕 folder (the app's Chinese name) inside your Documents folder (you can change it in **Settings**), one folder per project.

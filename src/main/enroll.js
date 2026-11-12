@@ -6,7 +6,7 @@ import { t } from './i18n.js'
 // 录完去静音、算向量、存档。capture 是 RendererCapture（或自测用的 WavCapture）。
 // onProgress({ phase: 'recording'|'processing'|'done'|'error', level, secondsLeft, seconds, error })
 
-export async function recordVoiceprint({ capture, store, seconds = 12, micDeviceId = '', onProgress = () => {} }) {
+export async function recordVoiceprint({ capture, store, seconds = 30, micDeviceId = '', onProgress = () => {} }) {
   const secs = Math.min(30, Math.max(6, Math.round(Number(seconds) || 12)))
   const rate = 16000
   const chunks = []
