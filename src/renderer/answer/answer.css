@@ -243,7 +243,7 @@ button {
 /* 提问：「问：」加真正问的那一句原文（按意群着色），译文回来以后下面一行彩色译文；前面的铺垫指上去才浮出来 */
 .q {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   min-width: 0;
   font-size: 12.5px;
   line-height: 1.45;
@@ -253,9 +253,10 @@ button {
 .q-zh {
   flex: 1;
   min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   font-size: 13px;
   color: rgba(255, 255, 255, 0.78);
 }

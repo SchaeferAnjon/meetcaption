@@ -159,7 +159,7 @@ function createCard(id) {
   // 提问行只放真正问的那一句：前面还有铺垫，或者一行放不下时，指上去看提问全文
   qZh.addEventListener('mouseenter', () => {
     const a = answers.get(id) ?? SAMPLE.find((s) => s.id === id)
-    if (a && ((a.trans?.question?.length ?? 0) > 1 || qZh.scrollWidth > qZh.clientWidth)) showPop(qZh, questionPop(a))
+    if (a && ((a.trans?.question?.length ?? 0) > 1 || qZh.scrollHeight > qZh.clientHeight + 1)) showPop(qZh, questionPop(a))
   })
   qZh.addEventListener('mouseleave', hidePop)
   return c
