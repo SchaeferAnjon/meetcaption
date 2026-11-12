@@ -2,9 +2,11 @@ import { clock, noDashes } from '../prompts.js'
 import { t } from '../i18n.js'
 import { promptLang } from '../languages.js'
 import { tokenize } from '../speaker.js'
+import { speakerLabel } from '../modes.js'
 
-// 课上问 AI：组 prompt 和解析回答（不引 electron，单测直接用）。
-// 取材：这节课的字幕（整节课，太长时只留和问题最相关的几段加最近一段和引用那句的前后）、实时笔记、课件里最相关的几页、课上截图（最多附两张）。
+// 问 AI（课堂、会议、面试都能问）：组 prompt 和解析回答（不引 electron，单测直接用）。
+// 取材：这一场的字幕（整场，太长时只留和问题最相关的几段加最近一段和引用那句的前后）、实时笔记、课件里最相关的几页、截图（最多附两张）。
+// prompt 里的说法按模式换：课堂说「这节课 / 老师」，会议说「这场会 / 对方」，面试说「这场面试 / 面试官」。
 // 回答按行写：覆盖、要点、几条、依据（引用资料里的编号）、接着问。解析边流边出，没写完的行先不露出来。
 
 export const ASK_LIMITS = {
@@ -63,18 +65,92 @@ function termTokens(question, terms) {
 
 const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim()
 
+// 各模式在 prompt 里的说法。it：这一场；whole：整场；src：内容从哪来（「先看资料里老师是怎么讲的」）；say：讲 / 说；
+// in：在场时（「课上的字幕」）；aside：只是顺带提到（「老师只在举别的例子时顺带说了」）；gap：没听懂时要补的那一步。
+const WORDS = {
+  class: {
+    it: '这节课',
+    whole: '整节课',
+    src: '老师',
+    say: '讲',
+    in: '课上',
+    aside: '举别的例子',
+    seen: '字幕、笔记或课件',
+    cite: '#12 #15 笔记2 截图1 课件p14',
+    role: '随身助教',
+    doing: (live) => (live ? '上课' : '复习一节已经下课的课'),
+    ask: '我没听懂的地方会来问你',
+    who: '',
+    gap: '没听懂常常是缺一步：把老师没说出口的那一步补上（符号代表什么、式子从哪来、为什么这样做）',
+    running: (m) => `这节课已经开讲 ${m} 分钟，还在继续。`,
+    ended: (m) => `这节课已经下课，全长 ${m} 分钟。`,
+    context: '课程背景',
+    notes: '课堂笔记',
+    deck: '老师的课件',
+    emphasis: '老师强调',
+    homework: '作业',
+  },
+  meeting: {
+    it: '这场会',
+    whole: '整场会',
+    src: '会上',
+    say: '说',
+    in: '会上',
+    aside: '说别的事',
+    seen: '字幕、笔记或截图',
+    cite: '#12 #15 笔记2 截图1',
+    role: '会议助手',
+    doing: (live) => (live ? '开会' : '回顾一场已经开完的会'),
+    ask: '我想确认或没听懂的地方会来问你',
+    who: '字幕里「对方」是会上的其他人，「我」是我。',
+    gap: '没听懂常常是缺了背景：把对方没说出口的那一步补上（这个词指什么、为什么这样定、和前面说的有什么关系）',
+    running: (m) => `这场会已经开了 ${m} 分钟，还在继续。`,
+    ended: (m) => `这场会已经开完，全长 ${m} 分钟。`,
+    context: '会议背景',
+    notes: '会议笔记',
+    deck: '会上的资料',
+    emphasis: '结论',
+    homework: '待办',
+  },
+  interview: {
+    it: '这场面试',
+    whole: '整场面试',
+    src: '面试里',
+    say: '说',
+    in: '面试时',
+    aside: '聊别的事',
+    seen: '字幕、笔记或截图',
+    cite: '#12 #15 笔记2 截图1',
+    role: '面试助手',
+    doing: (live) => (live ? '面试' : '回顾一场已经结束的面试'),
+    ask: '我想确认或没听懂的地方会来问你',
+    who: '字幕里「对方」是面试官，「我」是我。',
+    gap: '没听懂常常是缺了背景：把面试官没说出口的那一层补上（这个问题想考什么、这个词指什么、为什么这样问）',
+    running: (m) => `这场面试已经进行了 ${m} 分钟，还在继续。`,
+    ended: (m) => `这场面试已经结束，全长 ${m} 分钟。`,
+    context: '面试背景',
+    notes: '面试笔记',
+    deck: '面试的资料',
+    emphasis: '面试官在意',
+    homework: '面试后要做',
+  },
+}
+
+/** 模式在 prompt 里的说法；没记模式的老记录按会议算。 */
+export const askWords = (mode) => WORDS[mode] ?? WORDS.meeting
+
 /**
  * 课上的字幕 → 编了号的几行文字。segments：[{ id, startedAt, text, speaker?, sentences? }]，按时间排好。
  * base：课的开始时间；clockTime(ms)：一行前面写的时间（实时是钟点，课后是课里第几分钟）。
  * 整节课放得下就全放；放不下：最近的一段 + 引用那句的前后 + 和问题最相关的几段（带前后各一句），中间省略的地方写「……」。
  * → { text, refs: Map<编号, 字幕 id>, ats: Map<字幕 id, 时间>, shown, total }
  */
-export function transcriptForAsk(segments, { query = '', terms = [], quoteId = null, clockTime, budget = ASK_LIMITS.transcriptTokens } = {}) {
+export function transcriptForAsk(segments, { query = '', terms = [], quoteId = null, clockTime, budget = ASK_LIMITS.transcriptTokens, mode = 'class' } = {}) {
   const rows = segments
     .filter((s) => s?.text?.trim())
     .map((s) => {
       const line = oneLine(s.text)
-      return { id: s.id, who: s.speaker || (s.who === 'me' ? '我' : '老师'), at: s.startedAt, line: line.length > ASK_LIMITS.lineChars ? `${line.slice(0, ASK_LIMITS.lineChars)}…` : line, tr: (s.sentences ?? []).map((x) => x.tr).filter(Boolean).join(' ') }
+      return { id: s.id, who: s.speaker || speakerLabel(s.who === 'me' ? 'me' : 'other', mode), at: s.startedAt, line: line.length > ASK_LIMITS.lineChars ? `${line.slice(0, ASK_LIMITS.lineChars)}…` : line, tr: (s.sentences ?? []).map((x) => x.tr).filter(Boolean).join(' ') }
     })
   const cost = rows.map((r) => estTokens(r.line) + 8)
   const total = cost.reduce((a, b) => a + b, 0)
@@ -139,9 +215,10 @@ export function transcriptForAsk(segments, { query = '', terms = [], quoteId = n
   return { text: out.join('\n'), refs, ats, shown: order.length, total: rows.length }
 }
 
-/** 实时笔记 → 编了号的文字（笔记 N）。放不下时先少给每节的要点，再只给标题。 */
-export function notesForAsk(notes, max = ASK_LIMITS.notesChars) {
+/** 实时笔记 → 编了号的文字（笔记 N）。放不下时先少给每节的要点，再只给标题。强调和作业按模式叫（会议是结论和待办）。 */
+export function notesForAsk(notes, max = ASK_LIMITS.notesChars, mode = 'class') {
   if (!notes || typeof notes !== 'object') return ''
+  const w = askWords(mode)
   const sections = notes.sections ?? []
   const build = (perSection) => {
     const lines = sections.map((s, i) => {
@@ -150,8 +227,8 @@ export function notesForAsk(notes, max = ASK_LIMITS.notesChars) {
       const body = [...pts, ...fm].join('；')
       return `笔记${i + 1}${s.start ? `（${s.start}）` : ''} ${oneLine(s.title)}${body ? `：${body}` : ''}`
     })
-    for (const e of notes.emphasis ?? []) if (e?.text) lines.push(`老师强调：${oneLine(e.text)}`)
-    for (const h of notes.homework ?? []) if (h?.text) lines.push(`作业：${oneLine(h.text)}`)
+    for (const e of notes.emphasis ?? []) if (e?.text) lines.push(`${w.emphasis}：${oneLine(e.text)}`)
+    for (const h of notes.homework ?? []) if (h?.text) lines.push(`${w.homework}：${oneLine(h.text)}`)
     return lines.join('\n')
   }
   for (const n of [30, 5, 3, 0]) {
@@ -210,51 +287,54 @@ export function slidesForAsk(slides, { quoteAt = null, clockTime, limit = ASK_LI
   return { list, attach: attach.map((x) => ({ ...x, no: index(x) })) }
 }
 
-const TAIL = [
+// 「覆盖」的三个词（讲过、提了一句、没讲到）各模式都一样，parseAsk 认的就是这三个
+const TAIL = (w) => [
   '回答按下面的行写，一行一件事，不用 Markdown 标题、粗体和表格：',
-  '第 1 行：「覆盖：」后面写 讲过、提了一句、没讲到 三选一。讲过：这节课（字幕、笔记或课件）讲到了问题问的内容；提了一句：老师只在举别的例子时顺带说了一个词或一句话、完全没有解释，这时在后面加上提到它的那句的编号，写成「覆盖：提了一句 #12」；没讲到：资料里完全没有。老师用几句话解释过的就是「讲过」，拿不准时写「讲过」。',
+  `第 1 行：「覆盖：」后面写 讲过、提了一句、没讲到 三选一。讲过：${w.it}（${w.seen}）讲到了问题问的内容；提了一句：${w.src}只在${w.aside}时顺带说了一个词或一句话、完全没有解释，这时在后面加上提到它的那句的编号，写成「覆盖：提了一句 #12」；没讲到：资料里完全没有。${w.src}用几句话解释过的就是「讲过」，拿不准时写「讲过」。`,
   '第 2 行：「要点：」后面一句话直接回答问题，不超过 30 个字。',
   '第 3 行起：2 到 4 行，每行以「- 」开头，只讲一件事；公式用 $…$ 写在句子里，重要的公式单独占一行、用 $$…$$ 包住（每个公式只占一行，不换行）。',
-  '倒数第 2 行：「依据：」后面列出你用到的资料，用资料里的编号，空格隔开，例如「依据：#12 #15 笔记2 截图1 课件p14」；只列真正用到的，字幕编号最多 4 个（挑最能说明问题的），没有就写「依据：无」。',
+  `倒数第 2 行：「依据：」后面列出你用到的资料，用资料里的编号，空格隔开，例如「依据：${w.cite}」；只列真正用到的，字幕编号最多 4 个（挑最能说明问题的），没有就写「依据：无」。`,
   '最后一行：「接着问：」后面给我一到两个顺着这个回答最可能想接着问的问题，每个不超过 20 个字，用「｜」隔开，只写普通文字：不要公式、$ 符号、下标和花括号，变量直接写字母。',
 ]
 
-export function askSystem({ lang = 'zh', live = true } = {}) {
+export function askSystem({ lang = 'zh', live = true, mode = 'class' } = {}) {
   const L = promptLang(lang)
+  const w = askWords(mode)
   return [
-    `你是我的随身助教。我正在${live ? '上课' : '复习一节已经下课的课'}，老师讲的内容在下面「这节课的资料」里。我没听懂的地方会来问你，每次问一个问题。`,
+    `你是我的${w.role}。我正在${w.doing(live)}，${w.src}${w.say}的内容在下面「${w.it}的资料」里。${w.who}${w.ask}，每次问一个问题。`,
     '回答的原则：',
-    `- 先看资料里老师是怎么讲的，术语、符号和老师的说法保持一致。回答用${L}写；老师用的英文术语（或其他语言的术语）第一次出现时放在译名后面的括号里，比如「耦合（coupling）」。`,
-    '- 短，一眼能扫完：一句要点，再 2 到 4 条，每条只讲一件事、不超过 50 个字（英文 30 个词），公式不算字数；一件事说不完就拆成两条或砍掉次要的。全部加起来不超过 200 个字。不复述问题，不客套，不写「根据资料」「这节课提到」这类铺垫，不附逐句翻译。',
-    `- 没听懂常常是缺一步：把老师没说出口的那一步补上（符号代表什么、式子从哪来、为什么这样做），用${L}说人话。`,
-    '- 资料里没有的内容按通用知识补充，不要装作老师讲过；也不要编资料里没有的数字、名字和公式。老师只提了一句或没讲到时，照实填「覆盖」，回答里不用重复解释这件事（界面会写）。',
+    `- 先看资料里${w.src}是怎么${w.say}的，术语、符号和${w.src}的说法保持一致。回答用${L}写；${w.src}用的英文术语（或其他语言的术语）第一次出现时放在译名后面的括号里，比如「耦合（coupling）」。`,
+    `- 短，一眼能扫完：一句要点，再 2 到 4 条，每条只讲一件事、不超过 50 个字（英文 30 个词），公式不算字数；一件事说不完就拆成两条或砍掉次要的。全部加起来不超过 200 个字。不复述问题，不客套，不写「根据资料」「${w.it}提到」这类铺垫，不附逐句翻译。`,
+    `- ${w.gap}，用${L}说人话。`,
+    `- 资料里没有的内容按通用知识补充，不要装作${w.src}${w.say}过；也不要编资料里没有的数字、名字和公式。${w.src}只提了一句或没${w.say}到时，照实填「覆盖」，回答里不用重复解释这件事（界面会写）。`,
     '- 问题和引用的字幕是语音识别出来的，可能有错字，按最可能的意思理解；和「术语」里的词发音相近的，就是那个术语。',
     '- 回答里不要写编号（#12 这类）和时间，也不要提「资料」；编号只写在「依据」那一行。',
     '- 不用破折号。',
     '',
-    ...TAIL,
+    ...TAIL(w),
   ].join('\n')
 }
 
 /**
  * 组一次提问的请求。
- * session：{ startedAt, endedAt, title, mode }；live：课还在上；now：现在的时间；
+ * session：{ startedAt, endedAt, title, mode }（mode 定 prompt 里怎么说：这节课、这场会、这场面试）；live：课还在上 / 会还在开；now：现在的时间；
  * transcript / notes / pages / slides：取好的材料（见上面几个函数）；question：这次的问题；quote：{ segId, text, sel }；
  * history：之前几问 [{ q, quote, gist, points }]；keywords：术语（项目里设的和笔记里的）；context：课程背景。
  * → { system, messages, refs }：refs 是回答里的编号对应的东西。
  */
-export function askMessages({ session, live, now = Date.now(), lang = 'zh', context = '', keywords = [], transcript, notes = '', pages = { text: '', picked: [] }, slides = { list: '', attach: [] }, question, quote = null, quoteLine = null, history = [] }) {
+export function askMessages({ session, mode = session.mode ?? 'class', live, now = Date.now(), lang = 'zh', context = '', keywords = [], transcript, notes = '', pages = { text: '', picked: [] }, slides = { list: '', attach: [] }, question, quote = null, quoteLine = null, history = [] }) {
   const parts = []
+  const w = askWords(mode)
   const mins = Math.max(0, Math.round(((live ? now : (session.endedAt ?? now)) - session.startedAt) / 60000))
-  parts.push(live ? `这节课已经开讲 ${mins} 分钟，还在继续。` : `这节课已经下课，全长 ${mins} 分钟。`)
-  if (context?.trim()) parts.push(`课程背景：${context.trim().slice(0, 600)}`)
+  parts.push(live ? w.running(mins) : w.ended(mins))
+  if (context?.trim()) parts.push(`${w.context}：${context.trim().slice(0, 600)}`)
   if (keywords.length) parts.push(`术语：${keywords.slice(0, 60).join('、')}`)
   const mat = []
-  if (notes) mat.push(`课堂笔记（AI 边听边整理的，覆盖整节课，编号「笔记N」）：\n${notes}`)
-  if (pages.text) mat.push(`老师的课件里和这个问题最相关的几页（编号「课件pN」）：\n${pages.text}`)
-  if (slides.list) mat.push(`课上截的屏幕画面：${slides.list}${slides.attach.length ? '。标着「附图」的附在这条消息后面，按截图编号从小到大' : ''}`)
-  mat.push(`课上的字幕（编号 #N，[时间] 说话人：原话；「……」是省略的部分）：\n${transcript.text || '（还没有识别出字幕）'}`)
-  parts.push(`这节课的资料：\n\n${mat.join('\n\n')}`)
+  if (notes) mat.push(`${w.notes}（AI 边听边整理的，覆盖${w.whole}，编号「笔记N」）：\n${notes}`)
+  if (pages.text) mat.push(`${w.deck}里和这个问题最相关的几页（编号「课件pN」）：\n${pages.text}`)
+  if (slides.list) mat.push(`${w.in}截的屏幕画面：${slides.list}${slides.attach.length ? '。标着「附图」的附在这条消息后面，按截图编号从小到大' : ''}`)
+  mat.push(`${w.in}的字幕（编号 #N，[时间] 说话人：原话；「……」是省略的部分）：\n${transcript.text || '（还没有识别出字幕）'}`)
+  parts.push(`${w.it}的资料：\n\n${mat.join('\n\n')}`)
   if (quote) {
     const no = quoteLine?.no
     const sel = quote.sel && quote.sel !== quote.text ? `；我选中的是「${oneLine(quote.sel)}」` : ''
@@ -277,7 +357,7 @@ export function askMessages({ session, live, now = Date.now(), lang = 'zh', cont
     slides: new Map(slides.attach.map((x) => [x.no, x])),
     pages: pages.picked,
   }
-  return { system: askSystem({ lang, live }), messages, refs }
+  return { system: askSystem({ lang, live, mode }), messages, refs }
 }
 
 function historyText(h) {

@@ -1,6 +1,6 @@
 'use strict'
 // 会议进行中：顶部项目、计时、停止；下面一条音量和字幕窗控制；左边实时记录。
-// 右栏：实时笔记（课堂是大纲、强调、作业；会议是议题、结论、待办；面试是问过的问题和要点）、AI 回答（和悬浮答题框同步，最新在上）和课堂的「问 AI」（自己问，见 ask.js）。
+// 右栏：实时笔记（课堂是大纲、强调、作业；会议是议题、结论、待办；面试是问过的问题和要点）、AI 回答（和悬浮答题框同步，最新在上）和「问 AI」（自己问，三种模式都有，见 ask.js）。
 // 面试先看 AI 回答，会议和课堂先看实时笔记。
 // 开会时收到的字幕、回答、笔记、截图存在 state.live 里，切到别的视图再回来还在。
 
@@ -75,11 +75,12 @@ VIEWS.live = {
     const notesBody = el('div.pane-body.notes-scroll', {}, notesLine, notes.root)
     ctx.dispose(notes.destroy)
 
-    // 右栏：问 AI（只有课堂）。问答由主进程流式发来，存在 state.live.asks 里，切到别的页再回来还在
+    // 右栏：问 AI（课堂、会议、面试都有）。问答由主进程流式发来，存在 state.live.asks 里，切到别的页再回来还在
     const live = () => state.live
     const askAt = (id) => live()?.segs.get(id) ?? null
     const askPanelView = askPanel({
       mode: 'live',
+      kind: mode,
       sessionId: () => live()?.sessionId ?? null,
       base: () => live()?.startedAt ?? 0,
       seg: askAt,
@@ -96,7 +97,7 @@ VIEWS.live = {
     ctx.dispose(askPanelView.destroy)
     const askBody = askPanelView.root
 
-    // 右栏的头：「实时笔记 | AI 回答 | 问 AI」；答题关着时没有 AI 回答，问 AI 只有课堂有
+    // 右栏的头：「实时笔记 | AI 回答 | 问 AI」；答题关着时没有 AI 回答
     const firstTab = () => (mode() === 'interview' ? 'answers' : 'notes')
     let sideTab = firstTab()
     const tabNotes = el('button.side-tab', { type: 'button', role: 'tab', onClick: () => setSide('notes') }, icon('notebook-pen', 14), t('实时笔记'))
@@ -134,9 +135,8 @@ VIEWS.live = {
 
     function renderSide() {
       const assistOn = state.settings?.assist?.enabled !== false
-      const tab = sideTab === 'answers' && !assistOn ? 'notes' : sideTab === 'ask' && !isClass() ? 'notes' : sideTab
+      const tab = sideTab === 'answers' && !assistOn ? 'notes' : sideTab
       tabAnswers.hidden = !assistOn
-      tabAsk.hidden = !isClass()
       tabNotes.setAttribute('aria-selected', String(tab === 'notes'))
       tabAnswers.setAttribute('aria-selected', String(tab === 'answers'))
       tabAsk.setAttribute('aria-selected', String(tab === 'ask'))
@@ -305,7 +305,6 @@ VIEWS.live = {
     // 字幕里选几个词、或者移到一句上点「问」：引用进输入框，切到「问 AI」
     ctx.dispose(
       wireAskTranscript(list, (q) => {
-        if (!isClass()) return
         setSide('ask')
         askPanelView.quote(q)
       }),
@@ -508,7 +507,7 @@ VIEWS.live = {
       const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100))
       ;(source === 'mic' ? meterMe : meterOther).style.setProperty('--value', `${pct}%`)
     })
-    return { focus: () => scroller.focus({ preventScroll: true }), ask, capture, openAsk: () => isClass() && setSide('ask') }
+    return { focus: () => scroller.focus({ preventScroll: true }), ask, capture, openAsk: () => state.live && setSide('ask') }
   },
 }
 

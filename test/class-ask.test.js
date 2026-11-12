@@ -9,7 +9,8 @@ import { ProjectStore } from '../src/main/projects.js'
 import { SessionStore } from '../src/main/sessions.js'
 import { Summarizer } from '../src/main/summary.js'
 
-// 课上问 AI：取材（长课只给相关的几段）、prompt、回答的解析、存进这节课、课堂笔记末尾的「课上问过的」、课上和课后走哪条 AI 通道。
+// 问 AI：取材（长课只给相关的几段）、prompt、回答的解析、存进这节课、课堂笔记末尾的「课上问过的」、课上和课后走哪条 AI 通道。
+// 会议和面试也能问：prompt 说「这场会 / 对方」「这场面试 / 面试官」，纪要末尾不接问过的。
 
 const START = new Date(2026, 10, 11, 10, 0, 0).getTime()
 const mmss = (ms) => `${String(Math.floor((ms - START) / 60000)).padStart(2, '0')}:00`
@@ -211,13 +212,14 @@ test('withAsked: adds one line per question at the end, replaces the old part, l
 
 /* ---------------- 控制器：假的 store、假的 AI ---------------- */
 
-function setup({ ended = true, markdown = null, slides = [], materials = [] } = {}) {
+function setup({ ended = true, markdown = null, slides = [], materials = [], mode = 'class' } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-ask-'))
   const ps = new ProjectStore({ root: () => root }).load()
   const store = new SessionStore({ projects: ps })
-  const s = store.create({ mode: 'class', classSource: 'mic', slides, liveNotes: { sections: [{ title: '自旋模型', start: '12:00', points: ['σ 取 ±1'], formulas: ['H=-\\sum J'] }], terms: [{ term: 'Ising Hamiltonian', zh: 'Ising 哈密顿量', explain: 'x' }] } })
+  const s = store.create({ mode, classSource: mode === 'class' ? 'mic' : null, slides, liveNotes: { sections: [{ title: '自旋模型', start: '12:00', points: ['σ 取 ±1'], formulas: ['H=-\\sum J'] }], terms: [{ term: 'Ising Hamiltonian', zh: 'Ising 哈密顿量', explain: 'x' }] } })
   s.startedAt = START
-  s.segments.push(...longClass().slice(0, 50))
+  // 会议和面试的字幕不带说话人名字，prompt 里按模式叫（对方 / 我）
+  s.segments.push(...longClass().slice(0, 50).map((x, i) => (mode === 'class' ? x : { ...x, speaker: undefined, who: i === 3 ? 'me' : 'other' })))
   if (ended) s.endedAt = START + 3_000_000
   if (markdown) s.summary = { markdown }
   if (materials.length) s.materials = materials
@@ -343,7 +345,7 @@ test('ClassAsk live: uses the running session (no start time, so it is the runni
   fs.rmSync(t.root, { recursive: true, force: true })
 })
 
-test('ClassAsk: when AI is not available it says why and does not call the model; one question at a time; empty and non-class are refused', async () => {
+test('ClassAsk: when AI is not available it says why and does not call the model; one question at a time; empty is refused', async () => {
   const t = ask({ aiStatus: () => ({ ready: false, reason: '今天会后整理的 AI 额度用完了：明天再试，或者开始一场记录' }) })
   const r = await t.a.ask({ sessionId: t.id, question: '问一下' })
   assert.deepEqual(r, { ok: false, error: '今天会后整理的 AI 额度用完了：明天再试，或者开始一场记录', code: 'no-ai' })
@@ -358,11 +360,6 @@ test('ClassAsk: when AI is not available it says why and does not call the model
   assert.match(second.error, /还在回答/)
   fs.rmSync(b.root, { recursive: true, force: true })
 
-  const m = setup()
-  const meeting = m.store.create({ mode: 'meeting' })
-  const c = new ClassAsk({ store: m.store, llm: async () => '', aiStatus: () => ({ ready: true }) })
-  assert.equal((await c.ask({ sessionId: meeting.id, question: 'x' })).ok, false)
-  fs.rmSync(m.root, { recursive: true, force: true })
 })
 
 test('ClassAsk stop: keeps what was already written, marks it stopped, and the next question can start', async () => {
@@ -472,4 +469,108 @@ test('Summarizer.generate keeps the questions asked in class at the end of the c
   assert.ok(again.includes('违反约束最少'))
   assert.equal(calls.length, before)
   fs.rmSync(root, { recursive: true, force: true })
+})
+
+/* ---------------- 会议和面试 ---------------- */
+
+test('askMessages in a meeting: says this meeting and the other side, never this class or the teacher', () => {
+  const segs = longClass().slice(40, 45).map((x, i) => ({ ...x, speaker: undefined, who: i === 2 ? 'me' : 'other' }))
+  const transcript = transcriptForAsk(segs, { query: 'Ising', clockTime: mmss, mode: 'meeting' })
+  assert.match(transcript.text, /^#1 \[40:00\] 对方：Today/)
+  assert.match(transcript.text, /#3 \[42:00\] 我：/)
+  const notes = notesForAsk({ sections: [{ title: '排期', points: ['下周上线'] }], emphasis: [{ text: '先做 A 方案' }], homework: [{ text: '我发邮件' }] }, undefined, 'meeting')
+  assert.match(notes, /结论：先做 A 方案/)
+  assert.match(notes, /待办：我发邮件/)
+  for (const live of [true, false]) {
+    const m = askMessages({ session: { startedAt: START, endedAt: START + 3_600_000, mode: 'meeting' }, live, now: START + 600_000, context: '季度规划', transcript, notes, question: '定下来的是哪个方案？' })
+    const all = `${m.system}\n${m.messages.at(-1).content}`
+    assert.ok(!/这节课|老师|课上|下课|课程背景|课堂笔记/.test(all), all.match(/.{0,20}(这节课|老师|课上|下课|课程背景|课堂笔记).{0,20}/)?.[0])
+    assert.match(m.system, /会议助手/)
+    assert.match(m.system, /「这场会的资料」/)
+    assert.match(m.system, /「对方」是会上的其他人/)
+    assert.match(m.system, /不要装作会上说过/)
+    assert.match(m.system, /覆盖：」后面写 讲过、提了一句、没讲到 三选一/, '覆盖的三个词不变，parseAsk 认得')
+    assert.match(m.messages.at(-1).content, live ? /这场会已经开了 10 分钟，还在继续/ : /这场会已经开完，全长 60 分钟/)
+    assert.match(m.messages.at(-1).content, /会议背景：季度规划/)
+    assert.match(m.messages.at(-1).content, /会议笔记（AI 边听边整理的，覆盖整场会/)
+    assert.match(m.messages.at(-1).content, /会上的字幕（编号 #N/)
+    assert.match(m.messages.at(-1).content, /这场会的资料：/)
+  }
+})
+
+test('askMessages in an interview: says this interview and the interviewer', () => {
+  const transcript = transcriptForAsk(longClass().slice(0, 3).map((x) => ({ ...x, speaker: undefined, who: 'other' })), { clockTime: mmss, mode: 'interview' })
+  const notes = notesForAsk({ sections: [{ title: '自我介绍' }], emphasis: [{ text: '追问了并发' }], homework: [{ text: '下周二终面' }] }, undefined, 'interview')
+  assert.match(notes, /面试官在意：追问了并发/)
+  assert.match(notes, /面试后要做：下周二终面/)
+  const m = askMessages({ session: { startedAt: START, endedAt: START + 1_800_000 }, mode: 'interview', live: false, context: '后端岗', transcript, notes, question: '面试官想听什么？' })
+  const all = `${m.system}\n${m.messages.at(-1).content}`
+  assert.ok(!/这节课|老师|课上|下课|这场会/.test(all))
+  assert.match(m.system, /面试助手/)
+  assert.match(m.system, /「对方」是面试官/)
+  assert.match(m.system, /面试官没说出口/)
+  assert.match(m.messages.at(-1).content, /这场面试已经结束，全长 30 分钟/)
+  assert.match(m.messages.at(-1).content, /面试背景：后端岗/)
+  assert.match(m.messages.at(-1).content, /面试笔记/)
+  assert.match(m.messages.at(-1).content, /面试时的字幕/)
+  assert.match(m.messages.at(-1).content, /#1 \[00:00\] 对方：/)
+})
+
+test('askMessages: the class prompt keeps its words when the mode is given as class', () => {
+  const transcript = transcriptForAsk(longClass().slice(0, 2), { clockTime: mmss })
+  const a = askMessages({ session: { startedAt: START, endedAt: START + 60_000 }, live: false, transcript, question: 'q' })
+  const b = askMessages({ session: { startedAt: START, endedAt: START + 60_000, mode: 'class' }, live: false, transcript, question: 'q' })
+  assert.equal(a.system, b.system)
+  assert.match(a.system, /^你是我的随身助教。我正在复习一节已经下课的课，老师讲的内容在下面「这节课的资料」里。我没听懂的地方会来问你/)
+  assert.match(a.system, /依据：#12 #15 笔记2 截图1 课件p14/)
+  assert.match(a.messages.at(-1).content, /这节课已经下课/)
+})
+
+for (const mode of ['meeting', 'interview']) {
+  test(`ClassAsk in a ${mode}: answers after it ended, saves into session.asks, and leaves the minutes alone`, async () => {
+    const t = ask({ setup: { mode, markdown: '## 要点\n内容\n' } })
+    const fin = t.done()
+    const r = await t.a.ask({ sessionId: t.id, question: '刚才说的 Ising 是什么？', quote: { segId: 'g41' } })
+    assert.equal(r.ok, true)
+    const u = await fin
+    assert.equal(u.status, 'done')
+    assert.equal(u.after, true)
+    assert.equal(t.calls[0].sessionStartedAt, START, '结束后走会后整理的凭据')
+    const last = t.calls[0].messages.at(-1).content
+    assert.match(t.calls[0].system, mode === 'meeting' ? /这场会的资料/ : /这场面试的资料/)
+    assert.ok(!/这节课|老师/.test(`${t.calls[0].system}\n${last}`))
+    assert.match(last, /#\d+ \[\d\d:00\] 对方：And then we write it as the Ising Hamiltonian/)
+    assert.match(last, /#\d+ \[\d\d:00\] 我：/)
+    assert.match(last, /我引用了这一句字幕/)
+    const s = t.store.load(t.id)
+    assert.equal(s.asks.length, 1)
+    assert.equal(s.summary.markdown, '## 要点\n内容\n', '纪要末尾不接问过的')
+    fs.rmSync(t.root, { recursive: true, force: true })
+  })
+}
+
+test('ClassAsk live in a meeting: uses the running session and says the meeting is still going', async () => {
+  const t = setup({ mode: 'meeting', ended: false })
+  const session = t.store.load(t.id)
+  const calls = []
+  const a = new ClassAsk({ store: t.store, llm: async (o) => (calls.push(o), answerText), aiStatus: () => ({ ready: true }), source: (id) => (id === t.id ? { session, segments: session.segments } : null) })
+  const fin = new Promise((resolve) => a.on('update', (u) => u.status !== 'streaming' && resolve(u)))
+  assert.equal((await a.ask({ sessionId: t.id, question: '到现在定下了哪些事？' })).ok, true)
+  const u = await fin
+  assert.equal(u.after, false)
+  assert.equal(calls[0].sessionStartedAt, undefined)
+  assert.match(calls[0].system, /我正在开会/)
+  assert.match(calls[0].messages.at(-1).content, /这场会已经开了 \d+ 分钟，还在继续/)
+  fs.rmSync(t.root, { recursive: true, force: true })
+})
+
+test('ClassAsk: an old session without a mode is asked as a meeting', async () => {
+  const t = setup({ mode: null })
+  const calls = []
+  const a = new ClassAsk({ store: t.store, llm: async (o) => (calls.push(o), answerText), aiStatus: () => ({ ready: true }) })
+  const fin = new Promise((resolve) => a.on('update', (u) => u.status !== 'streaming' && resolve(u)))
+  assert.equal((await a.ask({ sessionId: t.id, question: 'x' })).ok, true)
+  await fin
+  assert.match(calls[0].system, /这场会的资料/)
+  fs.rmSync(t.root, { recursive: true, force: true })
 })

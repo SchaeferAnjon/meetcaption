@@ -1951,7 +1951,7 @@ function wireIpc() {
   ipcMain.handle('assist:askLast', () => askLast())
   ipcMain.handle('assist:askSegment', (_e, segId) => askSegment(segId))
   ipcMain.handle('assist:regenerate', (_e, id) => assistant.regenerate(id))
-  // 问 AI（课堂右栏和课后详情页）：答案通过 ask:update 一点点来
+  // 问 AI（课堂、会议、面试的实时页右栏和结束后的详情页）：答案通过 ask:update 一点点来
   ipcMain.handle('ask:start', (_e, o) => classAsk.ask({ sessionId: String(o?.sessionId ?? ''), question: o?.question, quote: o?.quote ?? null, replaceId: o?.replaceId ?? null }).catch((e) => ({ ok: false, error: e.message })))
   ipcMain.handle('ask:stop', (_e, sessionId) => classAsk.stop(String(sessionId ?? '')))
   ipcMain.handle('ask:status', (_e, sessionId) => {
@@ -2218,7 +2218,7 @@ app.whenReady().then(async () => {
     store,
     llm,
     aiStatus: (at) => aiStatus(effective(settings.get(), at), at),
-    // 这节课正在记录：用引擎手里的字幕和笔记
+    // 这一场正在记录：用引擎手里的字幕和笔记
     source: (id) => (engine.state !== 'idle' && engine.session?.id === id ? { session: engine.session, segments: engine.snapshot().segments } : null),
     projectOf: (s) => projects.get(s.projectId),
     loadImage: slideDataUrl,

@@ -7,10 +7,10 @@ import { materialPages } from './materials.js'
 import { askMessages, coverOf, notesForAsk, pagesForAsk, parseAsk, slidesForAsk, transcriptForAsk, withAsked } from './askPrompt.js'
 import { t, uiLang } from '../i18n.js'
 
-// 课上问 AI：一问一答，流式出字，问答存进这节课的 session.asks（课上和下课后都能问、都能看）。
-// 课还在上：用正在记录的那场的字幕、笔记，AI 走这场的会员票（和翻译、答题一样，不另外开场次）。
-// 下课以后：用存下来的整节课加课件，AI 走和课堂笔记一样的凭据（24 小时内算在这一场上，之后是每天的会后整理额度；自带 Key 不受影响）。
-// source(sessionId) → { session, segments } | null：这节课正在记录时由引擎给；llm 和 aiStatus 是主进程里同一份（会员通道在里面）。
+// 问 AI：一问一答，流式出字，问答存进这一场的 session.asks（进行中和结束后都能问、都能看）。课堂、会议、面试都能问，prompt 按模式说「这节课 / 这场会 / 这场面试」。
+// 还在进行：用正在记录的那场的字幕、笔记，AI 走这场的会员票（和翻译、答题一样，不另外开场次）。
+// 结束以后：用存下来的整场（课堂还有课件），AI 走和会后整理一样的凭据（24 小时内算在这一场上，之后是每天的会后整理额度；自带 Key 不受影响）。
+// source(sessionId) → { session, segments } | null：这一场正在记录时由引擎给；llm 和 aiStatus 是主进程里同一份（会员通道在里面）。
 
 const MAX_Q = 600
 const HISTORY_KEEP = 200
@@ -49,14 +49,14 @@ export class ClassAsk extends EventEmitter {
     this.jobs = new Map() // 会议 id → { id, ctrl }
   }
 
-  /** 这节课现在能不能问：→ { ready, reason, provider }。 */
+  /** 这一场现在能不能问：→ { ready, reason, provider }。 */
   status(sessionId) {
     const live = this.source(sessionId)
     const session = live?.session ?? this.store.load(sessionId)
     return this.aiStatus(live ? null : session.startedAt)
   }
 
-  /** 停掉这节课正在回答的那一问。 */
+  /** 停掉这一场正在回答的那一问。 */
   stop(sessionId) {
     this.jobs.get(sessionId)?.ctrl.abort(new Error('stopped'))
   }
@@ -71,7 +71,8 @@ export class ClassAsk extends EventEmitter {
     if (this.jobs.has(sessionId)) return { ok: false, error: t('上一个问题还在回答，等它答完或者先停止') }
     const live = this.source(sessionId)
     const session = live?.session ?? this.store.load(sessionId)
-    if (session.mode !== 'class') return { ok: false, error: t('只有课堂记录能问 AI') }
+    // 没记模式的老记录是会议
+    const mode = session.mode === 'class' || session.mode === 'interview' ? session.mode : 'meeting'
     const at = live ? null : session.startedAt
     const st = this.aiStatus(at)
     if (!st.ready) return { ok: false, error: st.reason, code: 'no-ai' }
@@ -90,7 +91,7 @@ export class ClassAsk extends EventEmitter {
       ...segments.flatMap((s) => (s.sentences ?? []).flatMap((x) => x.terms ?? [])),
     ].filter((x) => x?.term)
     const query = [q, quoted?.text, quoted?.sel].filter(Boolean).join(' ')
-    const transcript = transcriptForAsk(segments, { query, terms, quoteId: quoted?.segId ?? null, clockTime })
+    const transcript = transcriptForAsk(segments, { query, terms, quoteId: quoted?.segId ?? null, clockTime, mode })
     const pageList = materialPages(session, dir)
     const pages = pagesForAsk(pageList, { query, terms, multi: new Set(pageList.map((p) => p.mat)).size > 1 })
     const slides = slidesForAsk(session.slides, { quoteAt: seg?.startedAt ?? null, clockTime })
@@ -99,12 +100,13 @@ export class ClassAsk extends EventEmitter {
     const quoteLine = quoted ? { no: [...transcript.refs].find(([, id]) => id === quoted.segId)?.[0] ?? null } : null
     const prompt = askMessages({
       session,
+      mode,
       live: Boolean(live) || !session.endedAt,
       lang: uiLang(),
       context: project?.context ?? '',
       keywords: [...new Set([...keywordList({ keywords: project?.keywords ?? '' }), ...terms.map((x) => x.term)])],
       transcript,
-      notes: notesForAsk(notes),
+      notes: notesForAsk(notes, undefined, mode),
       pages,
       slides,
       question: q,
@@ -129,11 +131,11 @@ export class ClassAsk extends EventEmitter {
     const rec = { id, q, askedAt: Date.now(), after: !live && Boolean(session.endedAt), ...(quoted ? { quote: quoted } : {}) }
     const emit = (extra) => this.emit('update', { sessionId, ...rec, ...extra })
     emit({ status: 'streaming', gist: '', points: [] })
-    this.#run({ sessionId, session, live, at, rec, prompt, ctrl, emit, replaceId, usedImages: images.length, prompted: { transcript: transcript.shown, of: transcript.total } })
+    this.#run({ sessionId, at, rec, prompt, ctrl, emit, replaceId, mode, usedImages: images.length, prompted: { transcript: transcript.shown, of: transcript.total } })
     return { ok: true, id }
   }
 
-  async #run({ sessionId, session, live, at, rec, prompt, ctrl, emit, replaceId, usedImages, prompted }) {
+  async #run({ sessionId, at, rec, prompt, ctrl, emit, replaceId, mode, usedImages, prompted }) {
     let raw = ''
     let usage = null
     let last = 0
@@ -184,7 +186,7 @@ export class ClassAsk extends EventEmitter {
       try {
         this.#save(sessionId, out, replaceId)
       } catch (e) {
-        out.error = t(`没能存进这节课：{0}`, e.message)
+        out.error = mode === 'class' ? t(`没能存进这节课：{0}`, e.message) : t(`没能存进这场记录：{0}`, e.message)
       }
     } else if (replaceId) {
       try {
@@ -194,14 +196,15 @@ export class ClassAsk extends EventEmitter {
     this.emit('update', { sessionId, ...out, ms: Date.now() - t0, images: usedImages, prompted })
   }
 
-  // 存进这节课的 asks；课堂笔记已经生成的话，末尾「课上问过的」跟着换成新的
+  // 存进这一场的 asks；课堂笔记已经生成的话，末尾「课上问过的」跟着换成新的。
+  // 会议纪要和面试总结不接：纪要常要转给别人，自己问 AI 的过程不该混进去
   #save(sessionId, rec, replaceId) {
     this.store.mutate(sessionId, (s) => {
       const list = (s.asks ?? []).filter((r) => r.id !== replaceId && r.id !== rec?.id)
       if (rec) list.push(pick(rec))
       list.sort((a, b) => a.askedAt - b.askedAt)
       s.asks = list.slice(-HISTORY_KEEP)
-      if (s.summary?.markdown) s.summary.markdown = withAsked(s.summary.markdown, s.asks, s.startedAt)
+      if (s.mode === 'class' && s.summary?.markdown) s.summary.markdown = withAsked(s.summary.markdown, s.asks, s.startedAt)
     })
     this.onSaved(sessionId)
   }

@@ -1,11 +1,11 @@
 'use strict'
-// 会议详情：标题（可改）、所属项目（可移动）、时间和时长；标签页：纪要、实时笔记（开会时 AI 整理过才有）、待办、字幕记录、AI 答题、截图（开会时截过画面才有）、术语。
+// 会议详情：标题（可改）、所属项目（可移动）、时间和时长；标签页：纪要、实时笔记（开会时 AI 整理过才有）、待办、字幕记录、AI 答题、截图（开会时截过画面才有）、术语、问 AI（会开完、有字幕时：看会上问过的、接着问）。
 // 课堂的标签页换成：课堂笔记、图文笔记（生成过课堂笔记才有）、实时笔记（上课时 AI 整理过才有）、字幕记录、截图、术语、作业（课上用快捷键问过 AI 时再多一个 AI 答题）、问 AI（下课后能看课上问过的、接着问），课堂笔记能导出到笔记库。
 
-const MEETING_TABS = ['summary', 'notes', 'todos', 'transcript', 'answers', 'slides', 'terms'] // 截图：开会时截过画面才有
+const MEETING_TABS = ['summary', 'notes', 'todos', 'transcript', 'answers', 'slides', 'terms', 'ask'] // 截图：开会时截过画面才有
 const CLASS_TABS = ['summary', 'html', 'notes', 'transcript', 'slides', 'terms', 'todos', 'answers', 'ask']
 const TAB_LABELS = {
-  meeting: { summary: t('纪要'), notes: t('实时笔记'), todos: t('待办'), transcript: t('字幕记录'), answers: t('AI 答题'), terms: t('术语'), slides: t('截图') },
+  meeting: { summary: t('纪要'), notes: t('实时笔记'), todos: t('待办'), transcript: t('字幕记录'), answers: t('AI 答题'), terms: t('术语'), slides: t('截图'), ask: t('问 AI') },
   class: { summary: t('课堂笔记'), html: t('图文笔记'), notes: t('实时笔记'), todos: t('作业'), transcript: t('字幕记录'), answers: t('AI 答题'), terms: t('术语'), slides: t('截图'), ask: t('问 AI') },
 }
 
@@ -33,10 +33,12 @@ VIEWS.meeting = {
     const isVideo = () => Boolean(s?.video)
     // 视频：字幕、（图文笔记）、笔记或纪要、待办或作业、术语；截图在视频下面一排，不单列一页
     const VIDEO_TABS = () => (isClass() ? ['transcript', 'html', 'summary', 'terms', 'todos'] : ['transcript', 'summary', 'todos', 'terms'])
+    // 问 AI：不在进行中、有字幕时才有（进行中的在实时页右栏问）
+    const canAsk = () => !isLive() && s.segments.some((x) => x.text)
     const tabList = () =>
       isVideo()
         ? VIDEO_TABS().filter((k) => (k !== 'html' || s.summary?.markdown) && (k !== 'terms' || glossary(s).length))
-        : (isClass() ? CLASS_TABS.filter((k) => (k !== 'answers' || s.answers?.length) && (k !== 'ask' || (!isLive() && s.segments.some((x) => x.text)))) : MEETING_TABS.filter((k) => k !== 'slides' || s.slides?.length)).filter((k) => (k !== 'notes' || hasLiveNotes()) && (k !== 'html' || s.summary?.markdown))
+        : (isClass() ? CLASS_TABS.filter((k) => k !== 'answers' || s.answers?.length) : MEETING_TABS.filter((k) => k !== 'slides' || s.slides?.length)).filter((k) => (k !== 'notes' || hasLiveNotes()) && (k !== 'html' || s.summary?.markdown) && (k !== 'ask' || canAsk()))
     const panel = el('div.tab-panel', { role: 'tabpanel' })
     const head = el('section.meeting-head', {}, titleInput, el('div.meeting-meta-row', {}, projectBtn, modeTag, meta))
     const page = el('div.page.meeting-page', {}, head, liveNote, tabs, panel)
@@ -574,9 +576,9 @@ VIEWS.meeting = {
       for (const sl of s.slides ?? []) items.push({ t: slideTime(sl, s.startedAt), slide: sl })
       items.sort((a, b) => a.t - b.t)
       for (const it of items) box.append(it.seg ? lineNode({ ...it.seg, final: true }, s.startedAt, { mode: s.mode }) : slideNode(it.slide, { base: s.startedAt, dir: s.dir, startedAt: s.startedAt }))
-      // 下课后的课堂：选几个词、或者移到一句上点「问」，引用进「问 AI」
+      // 结束以后：选几个词、或者移到一句上点「问」，引用进「问 AI」
       unwireAsk?.()
-      unwireAsk = isClass() && tabList().includes('ask') ? wireAskTranscript(box, (q) => (setTab('ask'), askPanelView?.quote(q))) : null
+      unwireAsk = tabList().includes('ask') ? wireAskTranscript(box, (q) => (setTab('ask'), askPanelView?.quote(q))) : null
       const who = { me: 0, other: 0 }
       for (const seg of segs) who[segWho(seg)]++
       const questions = segs.filter((x) => x.question).length
@@ -641,7 +643,7 @@ VIEWS.meeting = {
       panel.append(el('div.panel-toolbar', {}, el('span.text-2.text-sm', { text: t(`{0} 条回答，按时间先后。生成纪要时会参考。`, list.length) })), box)
     }
 
-    /* ---- 问 AI（下课后）：课上问过的都在，接着问 ---- */
+    /* ---- 问 AI（结束以后）：进行中问过的都在，接着问 ---- */
 
     let askPanelView = null
     let unwireAsk = null
@@ -690,6 +692,7 @@ VIEWS.meeting = {
       if (!askPanelView) {
         askPanelView = askPanel({
           mode: 'after',
+          kind: () => modeOf(s?.mode),
           sessionId: () => id,
           base: () => s?.startedAt ?? 0,
           seg: askSeg,
@@ -704,7 +707,8 @@ VIEWS.meeting = {
           onState: (ok) => askPage?.querySelector('.ask-after-note')?.toggleAttribute('hidden', !ok),
         })
         askPanelView.load(s.asks ?? [])
-        askPage = el('div.ask-page', {}, el('div.ask-after-note', { dataset: { part: '下课后' } }, icon('info', 13), el('span', { text: t('下课了也能接着问：AI 用整节课的字幕、实时笔记、课堂笔记和课件来答，时间点一下就打开「字幕记录」里那一句。') })), askPanelView.root)
+        const afterNote = { class: t('下课了也能接着问：AI 用整节课的字幕、实时笔记、课堂笔记和课件来答，时间点一下就打开「字幕记录」里那一句。'), meeting: t('会开完了也能接着问：AI 用整场会的字幕、实时笔记和截图来答，时间点一下就打开「字幕记录」里那一句。'), interview: t('面试结束了也能接着问：AI 用整场面试的字幕、实时笔记和截图来答，时间点一下就打开「字幕记录」里那一句。') }
+        askPage = el('div.ask-page', {}, el('div.ask-after-note', { dataset: { part: '结束后' } }, icon('info', 13), el('span', { text: afterNote[modeOf(s?.mode)] })), askPanelView.root)
       }
       fill(panel, askPage)
       askPanelView.refreshStatus()

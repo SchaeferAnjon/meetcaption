@@ -1,5 +1,5 @@
 'use strict'
-// 问 AI：课上右栏的第三页和课后详情页的「问 AI」标签共用这一个面板。
+// 问 AI：实时页右栏的第三页和结束后详情页的「问 AI」标签共用这一个面板；课堂、会议、面试都有，文案按模式说（这节课 / 这场会 / 这场面试）。
 // 一条对话：问题在右边的气泡里（引用的字幕在气泡上面），回答在左边铺开（先一句要点，再几条，公式用 KaTeX），
 // 回答底下是「依据」（时间点一下，字幕回到那一句），再底下是接着问的问法；输入框一直在底下。
 // 回答由主进程一点点发来（ask:update），这里只管画；问答存在这节课的 session.asks 里。
@@ -7,13 +7,65 @@
 /**
  * host：{
  *   mode: 'live' | 'after'，
- *   sessionId()、base()（开课时间）、seg(id)（字幕段，找不到返回 null）、
+ *   kind()（这一场的模式：'class' | 'meeting' | 'interview'）、sessionId()、base()（开课时间）、seg(id)（字幕段，找不到返回 null）、
  *   jump(segId, sen)、openNote(n)、openSlide(file, at)、openPage(matId, n, label)、
  *   elapsed()（课上：已经讲了多久，毫秒）、terms()（课堂笔记里的术语，起手问法用）、onSeen()（回答完了但用户不在这一页）
  * }
  */
+// 各模式的文案：课堂说老师、这节课，会议说对方、这场会，面试说面试官、这场面试
+function askWords(kind) {
+  if (kind === 'class')
+    return {
+      placeholder: t('问这节课，比如：H(σ) 到底是什么？'),
+      what: { live: t('用这节课的字幕、笔记和截图回答'), after: t('用整节课的字幕、笔记和课件回答') },
+      after: t('下课后'),
+      why: t('老师为什么这么说？'),
+      relate: t('和前面讲的有什么关系？'),
+      none: { live: t('课上还没讲到，下面按通用知识回答'), after: t('这节课没讲到，下面按通用知识回答') },
+      aside: (when) => (when ? t(`老师 {0} 只把它当例子提了一句，没展开；下面按通用知识补充`, when) : t('老师只把它当例子提了一句，没展开；下面按通用知识补充')),
+      srcTitle: (when) => t(`老师 {0}`, when),
+      wait: t('正在看课上讲过的…'),
+      emptyTitle: t('没听懂就问'),
+      early: t('老师才讲了几分钟，课上的内容还少。现在问，AI 会多用通用知识，并在回答里标出来。'),
+      desc: { live: t('AI 会结合老师刚才讲的、实时笔记和截图来答。回答里的时间点一下，左边就回到那句字幕。'), after: t('AI 会结合整节课的字幕、实时笔记、课堂笔记和课件来答。回答里的时间点一下，就打开字幕记录里那一句。') },
+      starters: { live: [t('刚才这段讲了什么？'), t('到现在讲了哪些要点？')], after: [t('这节课讲了哪些要点？'), t('老师强调了什么？')] },
+      term: (term) => t(`老师说的 {0} 是什么？`, term),
+    }
+  const iv = kind === 'interview'
+  return {
+    placeholder: iv ? t('问这场面试，比如：面试官最在意什么？') : t('问这场会，比如：最后定了哪个方案？'),
+    what: iv ? { live: t('用这场面试的字幕、笔记和截图回答'), after: t('用整场面试的字幕、笔记和截图回答') } : { live: t('用这场会的字幕、笔记和截图回答'), after: t('用整场会的字幕、笔记和截图回答') },
+    after: iv ? t('面试后') : t('会后'),
+    why: iv ? t('面试官为什么这么问？') : t('对方为什么这么说？'),
+    relate: t('和前面说的有什么关系？'),
+    none: iv ? { live: t('面试里还没说到，下面按通用知识回答'), after: t('这场面试没说到，下面按通用知识回答') } : { live: t('会上还没说到，下面按通用知识回答'), after: t('这场会没说到，下面按通用知识回答') },
+    aside: (when) =>
+      iv
+        ? when
+          ? t(`面试官 {0} 只顺带提了一句，没展开；下面按通用知识补充`, when)
+          : t('面试官只顺带提了一句，没展开；下面按通用知识补充')
+        : when
+          ? t(`会上 {0} 只顺带提了一句，没展开；下面按通用知识补充`, when)
+          : t('会上只顺带提了一句，没展开；下面按通用知识补充'),
+    srcTitle: (when) => (iv ? t(`面试 {0}`, when) : t(`会上 {0}`, when)),
+    wait: iv ? t('正在看面试里说过的…') : t('正在看会上说过的…'),
+    emptyTitle: iv ? t('拿不准就问') : t('没跟上就问'),
+    early: iv ? t('面试才开始几分钟，说过的内容还少。现在问，AI 会多用通用知识，并在回答里标出来。') : t('会议才开了几分钟，说过的内容还少。现在问，AI 会多用通用知识，并在回答里标出来。'),
+    desc: iv
+      ? { live: t('AI 会结合面试里刚才说的、实时笔记和截图来答。回答里的时间点一下，左边就回到那句字幕。'), after: t('AI 会结合整场面试的字幕、实时笔记和截图来答。回答里的时间点一下，就打开字幕记录里那一句。') }
+      : { live: t('AI 会结合会上刚才说的、实时笔记和截图来答。回答里的时间点一下，左边就回到那句字幕。'), after: t('AI 会结合整场会的字幕、实时笔记和截图来答。回答里的时间点一下，就打开字幕记录里那一句。') },
+    starters: iv
+      ? { live: [t('面试官刚才问的是什么？'), t('到现在问了哪些问题？')], after: [t('面试官问了哪些问题？'), t('哪些地方我没答好？')] }
+      : { live: [t('刚才这段在聊什么？'), t('到现在定下了哪些事？')], after: [t('这场会定下了哪些事？'), t('对方提了哪些要求？')] },
+    term: (term) => (iv ? t(`面试官说的 {0} 是什么？`, term) : t(`对方说的 {0} 是什么？`, term)),
+  }
+}
+
 function askPanel(host) {
   const live = host.mode === 'live'
+  const kind = () => host.kind() ?? 'meeting'
+  const words = () => askWords(kind())
+  const when = live ? 'live' : 'after'
   const records = new Map() // id → { rec, me, ai }
   let ready = true
   let reason = ''
@@ -27,9 +79,10 @@ function askPanel(host) {
   const notice = el('div.ask-notice', { hidden: true }) // 已经问过以后 AI 用不了：原因放在输入框上面（还没问过时放在对话区里）
   const quoteBox = el('div.ask-quote-slot')
   const chips = el('div.ask-chips.is-small.ask-ready', { hidden: true })
-  const input = el('textarea.ask-input', { rows: 1, placeholder: t('问这节课，比如：H(σ) 到底是什么？'), 'aria-label': t('问 AI'), spellcheck: false })
+  const input = el('textarea.ask-input', { rows: 1, placeholder: words().placeholder, 'aria-label': t('问 AI'), spellcheck: false })
   const send = el('button.ask-send', { type: 'button', 'aria-label': t('发送'), title: t('发送（↵）') }, icon('arrow-up', 15))
-  const hint = el('div.ask-hint', {}, el('span', { text: t('↵ 发送 · ⇧↵ 换行') }), el('span.header-spacer'), el('span.ask-hint-what', { text: live ? t('用这节课的字幕、笔记和截图回答') : t('用整节课的字幕、笔记和课件回答') }))
+  const hintWhat = el('span.ask-hint-what', { text: words().what[when] })
+  const hint = el('div.ask-hint', {}, el('span', { text: t('↵ 发送 · ⇧↵ 换行') }), el('span.header-spacer'), hintWhat)
   const composer = el('div.ask-composer', { dataset: { part: '输入框' } }, notice, quoteBox, chips, el('div.ask-input-row', {}, input, send), hint)
   const root = el('div.ask-body.ask-a', { class: live ? '' : 'is-after' }, scroller, composer)
 
@@ -54,12 +107,12 @@ function askPanel(host) {
     if (ms == null) return ''
     return live ? fmtTime(ms) : fmtOffset(ms - host.base())
   }
-  const whenOf = (r) => (r.after ? t('下课后') : live ? fmtTime(r.askedAt) : fmtOffset(r.askedAt - host.base()))
+  const whenOf = (r) => (r.after ? words().after : live ? fmtTime(r.askedAt) : fmtOffset(r.askedAt - host.base()))
 
   function quoteNode(q, { onRemove } = {}) {
     const s = host.seg(q.segId)
     const when = timeOfSeg(q.segId, q.at)
-    const label = when ? t(`{0} {1}`, when, whoLabel(s ? segWho(s) : 'other', 'class')) : ''
+    const label = when ? t(`{0} {1}`, when, whoLabel(s ? segWho(s) : 'other', kind())) : ''
     return el(
       'div.ask-quote',
       { dataset: { part: '引用的字幕' } },
@@ -75,7 +128,7 @@ function askPanel(host) {
     quote = q ? { segId: q.segId, at: seg?.startedAt, sen: Number.isInteger(q.sen) ? q.sen : undefined, sel: q.sel || '', text: q.text || sentence || seg?.text || '' } : null
     ui.clear(quoteBox)
     if (quote) quoteBox.append(quoteNode(quote, { onRemove: () => (setQuote(null), input.focus()) }))
-    input.placeholder = quote ? t('问这一句，直接按 ↵ 就是「这句什么意思」') : t('问这节课，比如：H(σ) 到底是什么？')
+    input.placeholder = quote ? t('问这一句，直接按 ↵ 就是「这句什么意思」') : words().placeholder
     renderReady()
     grow()
   }
@@ -86,7 +139,8 @@ function askPanel(host) {
     chips.hidden = !quote || !ready
     if (chips.hidden) return
     const sel = quote.sel && quote.sel !== quote.text ? (quote.sel.length > 22 ? `${quote.sel.slice(0, 22)}…` : quote.sel) : ''
-    const list = sel ? [t(`「{0}」是什么？`, sel), t('它在这里是什么意思？'), t('和前面讲的有什么关系？')] : [t('这句什么意思？'), t('解释里面的术语'), t('老师为什么这么说？')]
+    const w = words()
+    const list = sel ? [t(`「{0}」是什么？`, sel), t('它在这里是什么意思？'), w.relate] : [t('这句什么意思？'), t('解释里面的术语'), w.why]
     for (const q of list) chips.append(el('button.ask-chip', { type: 'button', onClick: () => submit(q) }, q))
   }
 
@@ -95,9 +149,9 @@ function askPanel(host) {
   const coverText = (r) => {
     const c = r.cover
     if (!c || c.kind === 'full') return ''
-    if (c.kind === 'none') return r.after ? t('这节课没讲到，下面按通用知识回答') : t('课上还没讲到，下面按通用知识回答')
-    const when = c.segId ? timeOfSeg(c.segId, c.at) : ''
-    return when ? t(`老师 {0} 只把它当例子提了一句，没展开；下面按通用知识补充`, when) : t('老师只把它当例子提了一句，没展开；下面按通用知识补充')
+    const w = words()
+    if (c.kind === 'none') return r.after ? w.none.after : w.none.live
+    return w.aside(c.segId ? timeOfSeg(c.segId, c.at) : '')
   }
 
   function srcChip(s) {
@@ -107,7 +161,7 @@ function askPanel(host) {
       if (!when) return null
       const sen = (seg?.sentences ?? []).map((x) => x.text).join(' ') || seg?.text || ''
       const tr = (seg?.sentences ?? []).map((x) => x.tr).filter(Boolean).join(' ')
-      return el('button.ask-src-chip', { type: 'button', title: [t(`老师 {0}`, when), sen, tr].filter(Boolean).join('\n'), onClick: () => host.jump(s.id) }, el('span.num', { text: when }))
+      return el('button.ask-src-chip', { type: 'button', title: [words().srcTitle(when), sen, tr].filter(Boolean).join('\n'), onClick: () => host.jump(s.id) }, el('span.num', { text: when }))
     }
     if (s.type === 'note') {
       const title = String(host.notes?.()?.sections?.[s.n]?.title ?? '').replace(/（.*$/, '')
@@ -129,7 +183,7 @@ function askPanel(host) {
 
   function aiMsg(r) {
     const cover = el('div.ask-cover', { hidden: true, dataset: { part: '课上讲没讲' } })
-    const wait = el('div.ask-wait', { text: t('正在看课上讲过的…') })
+    const wait = el('div.ask-wait', { text: words().wait })
     const gist = el('div.answer-gist.ask-gist.selectable', { dataset: { part: '要点' } })
     const list = el('div.ask-points.selectable', { dataset: { part: '回答' } })
     const err = el('div.answer-note.is-error.ask-err', { hidden: true })
@@ -247,6 +301,7 @@ function askPanel(host) {
   }
 
   function load(asks) {
+    hintWhat.textContent = words().what[when]
     ui.clear(thread)
     records.clear()
     busy = null
@@ -350,17 +405,18 @@ function askPanel(host) {
     if (records.size) return clearEmpty()
     if (thread.querySelector('.ask-empty')) return
     if (!ready) return thread.append(el('div.ask-empty', {}, noAiNode()))
+    const w = words()
     const early = live && host.elapsed() < 3 * 60_000
     const term = [...(host.terms?.() ?? [])].reverse().find((x) => x?.term)?.term
-    const starters = live ? [t('刚才这段讲了什么？'), t('到现在讲了哪些要点？')] : [t('这节课讲了哪些要点？'), t('老师强调了什么？')]
-    if (term) starters.push(t(`老师说的 {0} 是什么？`, term))
+    const starters = [...w.starters[when]]
+    if (term) starters.push(w.term(term))
     thread.append(
       el(
         'div.ask-empty',
         { dataset: { part: '空的时候' } },
         el('div.ask-empty-icon', {}, icon('message-circle-question', 18)),
-        el('div.ask-empty-title', { text: t('没听懂就问') }),
-        el('div.ask-empty-desc', { text: early ? t('老师才讲了几分钟，课上的内容还少。现在问，AI 会多用通用知识，并在回答里标出来。') : live ? t('AI 会结合老师刚才讲的、实时笔记和截图来答。回答里的时间点一下，左边就回到那句字幕。') : t('AI 会结合整节课的字幕、实时笔记、课堂笔记和课件来答。回答里的时间点一下，就打开字幕记录里那一句。') }),
+        el('div.ask-empty-title', { text: w.emptyTitle }),
+        el('div.ask-empty-desc', { text: early ? w.early : w.desc[when] }),
         el('div.ask-empty-tip', {}, icon('captions', 13), el('span', { text: t('也可以在字幕里选中几个词，或者把鼠标移到一句上点「问」。') })),
         el('div.ask-chips', {}, starters.map((s) => el('button.ask-chip', { type: 'button', onClick: () => submit(s, { quote: null }) }, s))),
       ),
@@ -371,7 +427,7 @@ function askPanel(host) {
     root.classList.toggle('is-off', !ready)
     input.disabled = !ready
     if (!ready) input.placeholder = t('AI 用不了，接上以后就能问')
-    else input.placeholder = quote ? t('问这一句，直接按 ↵ 就是「这句什么意思」') : t('问这节课，比如：H(σ) 到底是什么？')
+    else input.placeholder = quote ? t('问这一句，直接按 ↵ 就是「这句什么意思」') : words().placeholder
     const empty = thread.querySelector('.ask-empty')
     if (empty && !records.size) {
       empty.remove()
@@ -424,11 +480,14 @@ function wireAskTranscript(container, onAsk) {
   let pop = null
   const hide = () => (pop?.remove(), (pop = null))
   const lineOf = (n) => n?.parentElement?.closest?.('.tline[data-id]') ?? null
-  // 一段字幕里有好几句：问的是鼠标最后停过的那一句（挪向右上角的「问」时不会变）
+  // 一段字幕里有好几句：问的是鼠标停着的那一句，「问」挪到这一句的右边（往右平移过去就点到，路上不经过别的句子）
   const onOver = (e) => {
     const pair = e.target.closest?.('.tline-pair')
     const line = pair?.closest('.tline[data-id]')
-    if (line) line.dataset.askSen = String([...line.querySelectorAll('.tline-pair')].indexOf(pair))
+    if (!line) return
+    line.dataset.askSen = String([...line.querySelectorAll('.tline-pair')].indexOf(pair))
+    const btn = line.querySelector('.ask-line-btn')
+    if (btn) btn.style.top = `${Math.max(5, pair.offsetTop - 2)}px`
   }
   container.addEventListener('mouseover', onOver)
   const add = () => {
