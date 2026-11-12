@@ -23,7 +23,10 @@ const fakeModel = {
   embed(x) {
     let s = 0
     for (const v of x) s += v * v
-    return Math.sqrt(s / x.length) > 0.2 ? Float32Array.from([1, 0]) : Float32Array.from([0, 1])
+    const rms = Math.sqrt(s / x.length)
+    // 0.08 到 0.15 之间：像我但打分不高（0.37，换了麦克风时的样子）
+    if (rms > 0.08 && rms < 0.15) return Float32Array.from([0.37, Math.sqrt(1 - 0.37 ** 2)])
+    return rms > 0.2 ? Float32Array.from([1, 0]) : Float32Array.from([0, 1])
   },
 }
 const profile = { embedding: Float32Array.from([1, 0]), modelId: 'fake', seconds: 12 }
@@ -183,6 +186,28 @@ test('engine: mic is me by voiceprint; a quiet copy of the other side is dropped
   assert.equal(ctx.asks.length, 2) // s1 和 m3
   // 我的话只会出现在别的句子的「上文」里，不会被单独翻译
   assert.ok(!ctx.llmCalls.some((c) => c.messages[0].content.endsWith('I think the second dataset is noisier.')))
+})
+
+// M1 上的真实情况：远程开会，我自己的话声纹只打到 0.3 多，以前全被当成对方，AI 去答我自己说的话
+test('engine: in a remote meeting my mic lines with a middling voiceprint score stay me and are not answered; face to face they are the other side', async (t) => {
+  const ctx = await start(await setup(), t)
+  const [sys, mic] = ctx.providers
+  const e = ctx.engine
+  const last = (id) => ctx.segs.filter((s) => s.id === id).at(-1)
+  e.feed('mic', tone(2000, 0.12)) // 0 到 2 秒：我，换了麦克风，打分 0.37
+  e.feed('mic', tone(2000, 0.12)) // 2 到 4 秒：还是我
+  e.feed('mic', tone(2000, 0.05)) // 4 到 6 秒：打分 0，真是屋里的别人
+  mic.emit('final', { key: 'm0', text: 'Can you please scroll down a bit?', span: { start: 0, end: 2000 } })
+  await tick(60)
+  assert.equal(last('mic:m0').who, 'other') // 电脑声音里还没人说话：面对面，按声纹算
+  sys.emit('final', { key: 's1', text: 'So which file should I click on, the mask check report?' })
+  mic.emit('final', { key: 'm1', text: 'The HTML file, and can you please scroll down?', span: { start: 2000, end: 4000 } })
+  mic.emit('final', { key: 'm2', text: 'Where do you keep the raw recordings?', span: { start: 4000, end: 6000 } })
+  await tick(60)
+  assert.equal(last('mic:m1').who, 'me')
+  assert.ok(Math.abs(last('mic:m1').vp - 0.37) < 0.01)
+  assert.equal(last('mic:m2').who, 'other')
+  assert.ok(!ctx.asks.some((a) => /HTML file/.test(a.question)))
 })
 
 test('engine: without a voiceprint every mic segment is me; nothing is asked when the AI is not ready', async (t) => {

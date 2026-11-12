@@ -31,6 +31,9 @@ import { t, uiLang } from './i18n.js'
 const debug = process.env.MEETCAPTION_DEBUG ? (...a) => console.error(new Date().toISOString().slice(11, 23), ...a) : () => {}
 const LIVE_KEEP = 300
 const PENDING = Symbol('pending')
+// 远程开会（对方从电脑声音进来）时，麦克风里的人几乎都是我：声纹分数要低到这个以下才算屋里的别人。
+// 实测 M1 上声纹注册和开会时的麦克风不一样，我自己的话打分 0.17 到 0.53（中位数 0.37），按 0.5 判有七成被当成了对方，AI 就去答我自己说的话。
+const REMOTE_OTHER_MAX = 0.2
 const DEFER_MS = 1500 // 麦克风段不像我、对方那一路又还在出字：等对方字幕跟上再判串音
 const SCORE_STEP_MS = 1500 // 说话过程中每多 1.5 秒重新打一次分，到 8 秒为止
 const SCORE_MAX = 6 * 16000 // 打分最多用 6 秒音频（取中间）：音频越长算得越久
@@ -423,6 +426,7 @@ export class MeetingEngine extends EventEmitter {
     this.answerSeg.clear()
     this.screenAsked.clear()
     this.lastMicWho = null
+    this.systemHeard = false // 这一场电脑声音里出过字：远程开会
     this.vp = null
     this.micCheck = false
     this.micRing = null
@@ -841,7 +845,10 @@ export class MeetingEngine extends EventEmitter {
       // OpenAI 这段还没 commit：就是门限里正在说的这一段
       m.span = this.#toMs(p, p.gate.openTurn()) ?? m.span
     }
-    if (source === 'system') this.#recheckDeferred()
+    if (source === 'system') {
+      if (text) this.systemHeard = true
+      this.#recheckDeferred()
+    }
     if (!final && seg.who === 'other') this.#maybePrefetchScreen(seg)
     if (source === 'mic' && this.micCheck) {
       if (final) {
@@ -988,7 +995,7 @@ export class MeetingEngine extends EventEmitter {
       this.#score(span).then((score) => {
         if (score == null || gen !== this.gen || seg.final || m.awaiting || m.settled || m.echo) return
         seg.vp = score
-        const who = score >= this.#threshold() || this.#systemActive() || this.#crosstalk(seg) ? 'me' : 'other'
+        const who = score >= this.#threshold() || this.#systemActive() || this.#crosstalk(seg) || this.#remoteMine(score) ? 'me' : 'other'
         if (who === seg.who) return
         seg.who = who
         seg.speaker = this.#label(who)
@@ -1025,7 +1032,7 @@ export class MeetingEngine extends EventEmitter {
   // 不像我、也不是串音：有分数就是对方。太短打不了分的（OK、Sure）：前一段有分数的是我（20 秒内）就跟着算我，
   // 否则按麦克风的默认（平时是我，教室现场是老师）。一问一答时这种短回应多半是听的那个人说的，不跟着对方走。
   #settleUnlike(seg) {
-    if (seg.vp != null) return this.#settle(seg, 'other', 'voiceprint')
+    if (seg.vp != null) return this.#remoteMine(seg.vp) ? this.#settle(seg, 'me', 'remote') : this.#settle(seg, 'other', 'voiceprint')
     if (!this.vp) return this.#settle(seg, this.#defaultWho('mic'), 'no-voiceprint')
     const l = this.lastMicWho
     this.#settle(seg, l?.who === 'me' && Date.now() - l.at < SHORT_FOLLOW_MS ? 'me' : this.#defaultWho('mic'), 'short')
@@ -1091,6 +1098,11 @@ export class MeetingEngine extends EventEmitter {
       if (x.source === 'system' && x.text && (this.meta.get(x.id)?.updatedAt ?? x.startedAt) >= since) texts.push(x.orig ?? x.text)
     }
     return isCrosstalk(seg.text, texts)
+  }
+
+  // 远程开会（开会、面试，电脑声音里有人说话）时声纹分数不算太低的麦克风段就是我；课堂按原来的判法
+  #remoteMine(score) {
+    return this.mode !== 'class' && this.systemHeard && score != null && score >= REMOTE_OTHER_MAX
   }
 
   #systemActive() {
