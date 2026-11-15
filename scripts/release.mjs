@@ -8,7 +8,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const TEAM = '3H5S5NXPXS' // Developer ID Application: zonghan jia，装着的正式版就是它签的
@@ -24,6 +24,31 @@ const run = (cmd, argv, opts = {}) => (execFileSync(cmd, argv, { cwd: ROOT, enco
 const fail = (msg) => {
   console.error(`没发：${msg}`)
   process.exit(1)
+}
+
+// 本机 node_modules 不全时 electron-builder 照样出包，装上一打开主进程就报 Cannot find module
+// （0.6.11 的 Mac 包少了 electron-updater 的 fs-extra 等依赖）。用包里自带的 Electron 当 Node 跑，
+// 从 app.asar 里按主进程的解析方式加载 src/main 引用的每个 npm 包；全能加载返回 ''，否则返回报错
+function checkMainDeps(app) {
+  const deps = new Set()
+  for (const f of fs.readdirSync(path.join(ROOT, 'src', 'main'), { recursive: true })) {
+    if (!f.endsWith('.js')) continue
+    for (const [, spec] of fs.readFileSync(path.join(ROOT, 'src', 'main', f), 'utf8').matchAll(/^import .* from '([^'./][^']*)'/gm)) {
+      if (!spec.startsWith('node:') && spec !== 'electron') deps.add(spec)
+    }
+  }
+  const macos = path.join(app, 'Contents', 'MacOS')
+  const parent = pathToFileURL(path.join(app, 'Contents', 'Resources', 'app.asar', 'package.json')).href
+  const code = `for (const m of ${JSON.stringify([...deps])}) {
+  try { await import(import.meta.resolve(m, ${JSON.stringify(parent)})) } catch (e) { console.log(m + ': ' + e.message.split('\\n')[0]) }
+}`
+  const r = spawnSync(path.join(macos, fs.readdirSync(macos)[0]), ['--experimental-import-meta-resolve', '--input-type=module', '-e', code], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    encoding: 'utf8',
+    timeout: 60_000,
+  })
+  if (r.status !== 0) return `检查没跑起来：${r.error?.message ?? r.stderr.trim().split('\n').pop()}`
+  return r.stdout.trim().replaceAll('\n', '；')
 }
 
 // 代码和 tag 对得上：工作区干净，HEAD 就是 tag 指的提交，tag 已经推上去了，GitHub 上还没有这个 Release
@@ -77,6 +102,8 @@ for (const dir of ['mac', 'mac-arm64']) {
   if (spawnSync('codesign', ['--verify', '--deep', '--strict', p]).status !== 0) fail(`${dir} 的签名校验没过`)
   const info = spawnSync('codesign', ['-dvv', p], { encoding: 'utf8' }).stderr
   if (!/Authority=Developer ID Application:/.test(info) || !info.includes(`TeamIdentifier=${TEAM}`)) fail(`${dir} 不是团队 ${TEAM} 的 Developer ID 签的`)
+  const missing = checkMainDeps(p)
+  if (missing) fail(`${dir} 的 app.asar 里主进程的依赖不全（${missing}）：本机 node_modules 和 package-lock.json 对不上，先 npm ci 再打`)
 }
 
 // 更新要的文件：latest-mac.yml 里两个架构的 zip，latest.yml 里的 exe，版本号都是这一版
