@@ -97,6 +97,7 @@ contextBridge.exposeInMainWorld('app', {
   listSessions: invoke('sessions:list'), // listSessions({ projectId })
   loadSession: invoke('sessions:load'),
   renameSession: invoke('sessions:rename'),
+  renameSpeaker: invoke('sessions:renameSpeaker'), // (sessionId, 第几个说话人, 新名字) → { ok, speakers }：同一场里这个人的句子一起改，正在记录的字幕窗跟着变
   moveSession: invoke('sessions:move'),
   removeSession: invoke('sessions:remove'),
   openFolder: invoke('sessions:openFolder'),

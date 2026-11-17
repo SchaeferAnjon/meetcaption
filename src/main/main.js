@@ -1839,18 +1839,26 @@ function wireIpc() {
       return { ok: false, error: err.message }
     }
   })
-  ipcMain.handle('video:renameSpeaker', (_e, id, index, name) => {
+  // 改说话人的名字，这个人的句子一起改：视频的名字在 video.speakers，实时记的在 speakers；正在记录的这一场交给引擎（它管着名字，字幕窗跟着变）
+  const renameSpeaker = (_e, id, index, name) => {
     const clean = String(name ?? '').trim().slice(0, 40)
     if (!clean) return { ok: false, error: t('名字不能是空的') }
-    const s = store.mutate(id, (x) => {
-      const names = x.video?.speakers
-      if (!names || !(index in names)) throw new Error(t('找不到这个说话人'))
-      names[index] = clean
-      for (const seg of x.segments) if (seg.sp === index) seg.speaker = clean
-    })
-    emitSessions({ sessionId: id })
-    return { ok: true, speakers: s.video.speakers }
-  })
+    try {
+      if (engine.state !== 'idle' && engine.session?.id === id) return { ok: true, speakers: engine.renameSpeaker(index, clean) }
+      const s = store.mutate(id, (x) => {
+        const names = x.video?.speakers ?? x.speakers
+        if (!names || !(index in names)) throw new Error(t('找不到这个说话人'))
+        names[index] = clean
+        for (const seg of x.segments) if (seg.sp === index && seg.who !== 'me') seg.speaker = clean
+      })
+      emitSessions({ sessionId: id })
+      return { ok: true, speakers: s.video?.speakers ?? s.speakers }
+    } catch (e) {
+      return { ok: false, error: e.message }
+    }
+  }
+  ipcMain.handle('video:renameSpeaker', renameSpeaker)
+  ipcMain.handle('sessions:renameSpeaker', renameSpeaker)
 
   // 窗口和引导
   ipcMain.handle('window:openSettings', (_e, section) => openSettings(section))

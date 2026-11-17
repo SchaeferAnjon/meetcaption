@@ -423,7 +423,6 @@ async function openVideoSheet(file) {
 
 /* ---------------- 结果页：左边视频，右边字幕 ---------------- */
 
-const SPEAKER_TINTS = ['blue', 'green', 'pink', 'orange', 'purple', 'teal', 'yellow', 'red']
 const RATES = [1, 1.25, 1.5, 2, 0.75]
 const SUBS_KEY = 'meetcaption.video.subs'
 

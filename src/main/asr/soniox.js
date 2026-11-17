@@ -20,6 +20,12 @@ import { t } from '../i18n.js'
 //
 // 断线期间本地识别接手（fallback.js）：hold() 之后连上的连接先不送音频，只发 keepalive，发 'online'；
 // 本地识别交回时 resumeFrom(样本序号) 从那里补发，接着正常送。
+//
+// 分说话人（diarize）：开 enable_speaker_diarization，每个字带 Soniox 的说话人编号（"1"、"2"…，每条连接从 1 重来）。
+// 定稿的字换了人就在那里断成两句；partial / final 多带 speaker（这一句定稿的字的编号，还没有定稿的字时取尾巴里第一个字的）
+// 和 conn（第几条连接），引擎靠 conn 知道编号重新开始了（diarize.js 把新连接的编号对回之前的人）。
+// Soniox 说端点检测会降低分人的准度，但它给的句末是断句的主要依据（翻译、笔记都等定稿），所以照开。
+// 2026-11-17 实测（say 的三种声音、98 秒课堂对话）：开着端点检测 13 句里 2 句短句标错了人；关掉时全对，但一个句末都没有。
 
 const RATE = 16000
 const KEEP_SAMPLES = RATE * 60
@@ -28,7 +34,9 @@ const KEEP_SAMPLES = RATE * 60
 // 后备：一句已经超过 SPLIT_AFTER_MS，定稿的字刚好写到句号问号叹号，就在这里自己断开：前面这句定稿，后面的字算下一句。
 // 不靠「后面没有还在认的字」判断停顿：Soniox 定稿比说话慢一两秒，句号定下来时下一句的开头早就在尾巴里了
 const SPLIT_AFTER_MS = 8000
-const SENTENCE_END = /[.?!。？！]["'”’)）]?$/
+// 数字后面的点不算：「0.001」Soniox 常分成「0.」「001」两个字，在「0.」处断会把一个数切成两句（2026-11-17 实测）
+const SENTENCE_END = /(?:[?!。？！]|(?<!\d)\.)["'”’)）]?$/
+const WORDY = /[\p{L}\p{N}]/u // 只在有字的 token 上按换人断句：单独的标点、空格跟着前一句
 const ROTATE_BEFORE_MS = 90_000 // 离 Key 到点不到这么久，就在下一个句末换连接
 const FORCE_BEFORE_MS = 20_000 // 到这时还没等到句末（一直有人在说）：让 Soniox 把手上的字都定稿（finalize），定完就换
 const DEAD_AFTER_MS = 20_000 // 送着音频、这么久一条回复都没有，当连接死了
@@ -61,9 +69,9 @@ export class SonioxStreamASR extends EventEmitter {
    * key：自带的 Soniox Key；getKey：async () => { key, maxMs, model? }（会员）。两个给一个。
    * language：项目「对方说的语言」；context：项目背景（≤ 2000 字）；hotwords：术语。
    */
-  constructor({ key = '', getKey = null, language = 'auto', context = '', hotwords = [], model = 'stt-rt-v5', url = 'wss://stt-rt.soniox.com/transcribe-websocket', timing = {} }) {
+  constructor({ key = '', getKey = null, language = 'auto', context = '', hotwords = [], model = 'stt-rt-v5', url = 'wss://stt-rt.soniox.com/transcribe-websocket', diarize = false, timing = {} }) {
     super()
-    this.opts = { key, getKey, language, context, hotwords, model, url }
+    this.opts = { key, getKey, language, context, hotwords, model, url, diarize }
     this.tm = { rotateBeforeMs: ROTATE_BEFORE_MS, forceBeforeMs: FORCE_BEFORE_MS, deadAfterMs: DEAD_AFTER_MS, silentAfterMs: SILENT_AFTER_MS, keepaliveMs: KEEPALIVE_MS, stableMs: STABLE_MS, watchMs: 2000, ...timing }
     this.conn = null
     this.closing = false
@@ -197,6 +205,7 @@ export class SonioxStreamASR extends EventEmitter {
       max_endpoint_delay_ms: 1000,
       client_reference_id: `meetcaption-${conn.id}`,
     }
+    if (this.opts.diarize) cfg.enable_speaker_diarization = true
     const terms = hotwords.filter(Boolean).slice(0, 100)
     const text = String(context ?? '').trim().slice(0, 2000)
     if (terms.length || text) cfg.context = { ...(text ? { text } : {}), ...(terms.length ? { terms } : {}) }
@@ -294,7 +303,13 @@ export class SonioxStreamASR extends EventEmitter {
   // ---------- 结果 ----------
 
   #newSeg() {
-    return { key: `sx${this.seq}-${Math.random().toString(36).slice(2, 8)}`, text: '', tail: '', start: null, end: null }
+    return { key: `sx${this.seq}-${Math.random().toString(36).slice(2, 8)}`, text: '', tail: '', start: null, end: null, speaker: null, tailSpeaker: null }
+  }
+
+  // 分说话人时 partial / final 多带的两项：这一句是谁说的（Soniox 的编号）、编号是哪条连接给的
+  #who(conn, seg) {
+    if (!this.opts.diarize) return {}
+    return { speaker: seg.speaker ?? seg.tailSpeaker ?? null, conn: conn.id }
   }
 
   #span(conn, seg) {
@@ -321,10 +336,17 @@ export class SonioxStreamASR extends EventEmitter {
     // 每条回复带着这一刻全部没定稿的字：上一条的尾巴作废（其中定下来的这条里会作为 final 再来）
     seg.tail = ''
     let tail = ''
+    let tailSpeaker = null
     for (const t of m.tokens ?? []) {
       if (t.text === '<end>' || t.text === '<fin>') {
         this.#finishSeg(conn)
         continue
+      }
+      // 定稿的字换了人：前面这句到此为止，这个字起是下一句
+      if (this.opts.diarize && t.is_final && t.speaker != null && WORDY.test(t.text)) {
+        const cur = conn.seg
+        if (cur.speaker != null && cur.speaker !== t.speaker && cur.text.trim()) this.#finishSeg(conn)
+        conn.seg.speaker ??= t.speaker
       }
       const s = conn.seg
       if (t.start_ms != null) {
@@ -336,18 +358,24 @@ export class SonioxStreamASR extends EventEmitter {
         if (t.end_ms != null) s.fend = t.end_ms
         if (t.end_ms != null) this.finalEnd = Math.max(this.finalEnd, conn.base + Math.round((t.end_ms * RATE) / 1000))
         if (s.fend != null && s.fend - s.start >= SPLIT_AFTER_MS && SENTENCE_END.test(s.text.trimEnd())) this.#finishSeg(conn)
-      } else tail += t.text
+      } else {
+        tail += t.text
+        if (t.speaker != null && WORDY.test(t.text)) tailSpeaker ??= t.speaker
+      }
     }
     const cur = conn.seg
     cur.tail = tail
+    cur.tailSpeaker = tailSpeaker
     const shown = (cur.text + cur.tail).trim()
     // stable：已经定稿（is_final）的那一截，是 shown 的开头，之后只会往后接、不会再改。引擎拿它判断一句话是不是已经说完。
     // 字没变、只是尾巴里的字变成了定稿，也要再发一次（stable 变长了）
     const stable = cur.text.trim()
-    if (shown && (cur !== seg || shown !== seg.shown || stable !== seg.stable)) {
+    const who = this.#who(conn, cur)
+    if (shown && (cur !== seg || shown !== seg.shown || stable !== seg.stable || who.speaker !== seg.shownSpeaker)) {
       cur.shown = shown
       cur.stable = stable
-      this.emit('partial', { key: cur.key, text: shown, stable, span: this.#span(conn, cur) })
+      cur.shownSpeaker = who.speaker
+      this.emit('partial', { key: cur.key, text: shown, stable, span: this.#span(conn, cur), ...who })
     }
     if (m.finished) this.#finishSeg(conn)
     const idle = conn.seg.text === '' && conn.seg.tail === ''
@@ -363,7 +391,7 @@ export class SonioxStreamASR extends EventEmitter {
   #finishSeg(conn) {
     const seg = conn.seg
     const text = (seg.text + seg.tail).trim()
-    if (text) this.emit('final', { key: seg.key, text, span: this.#span(conn, seg) })
+    if (text) this.emit('final', { key: seg.key, text, span: this.#span(conn, seg), ...this.#who(conn, seg) })
     conn.seg = this.#newSeg()
   }
 
@@ -374,7 +402,7 @@ export class SonioxStreamASR extends EventEmitter {
     clearTimeout(conn.stableTimer)
     const seg = conn.seg
     const text = seg.text.trim()
-    if (text) this.emit('final', { key: seg.key, text, span: this.#span(conn, { start: seg.start, end: seg.fend ?? seg.end }) })
+    if (text) this.emit('final', { key: seg.key, text, span: this.#span(conn, { start: seg.start, end: seg.fend ?? seg.end }), ...this.#who(conn, seg) })
     else if (seg.shown) this.emit('drop', { key: seg.key })
     conn.seg = this.#newSeg()
     conn.ws?.terminate()

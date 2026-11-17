@@ -57,6 +57,7 @@ End-to-end without devices: add `--fake-system=a.wav --fake-mic=b.wav` to `--sel
 - `src/main/i18n.js`, `src/renderer/shared/i18n.js`, `src/i18n/`: interface languages, keyed by the Simplified Chinese source text
 - `src/main/languages.js`: the 60 recognition and translation languages
 - `src/main/engine.js`: capture, recognition, sentences, me/other, translation and terms, answers, saving
+- `src/main/diarize.js`: live speaker labels with Soniox: maps Soniox speaker numbers (they restart on every new connection) to people by voiceprint, names them "Speaker 1, 2, 3" or "Teacher" (the one who talks most in class), keeps names the user typed
 - `src/main/llm/`: ChatGPT sign-in and OpenAI-compatible providers
 - `src/renderer/`: captions window, answer card, main window, settings, onboarding and the shared design system
 

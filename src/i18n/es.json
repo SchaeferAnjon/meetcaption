@@ -1913,5 +1913,6 @@
  "会上 {0} 只顺带提了一句，没展开；联网没查成，下面按通用知识补充": "En la reunión solo se mencionó de pasada a las {0}. La búsqueda web no funcionó; lo demás es conocimiento general",
  "会上只顺带提了一句，没展开；联网没查成，下面按通用知识补充": "En la reunión solo se mencionó de pasada. La búsqueda web no funcionó; lo demás es conocimiento general",
  "联网没查成，下面按面试内容和通用知识回答": "La búsqueda web no funcionó. La respuesta de abajo se basa en la entrevista y en conocimiento general",
- "联网没查成，下面按会上内容和通用知识回答": "La búsqueda web no funcionó. La respuesta de abajo se basa en la reunión y en conocimiento general"
+ "联网没查成，下面按会上内容和通用知识回答": "La búsqueda web no funcionó. La respuesta de abajo se basa en la reunión y en conocimiento general",
+ "{0}，点一下改名字": "{0}, haz clic para cambiar el nombre"
 }

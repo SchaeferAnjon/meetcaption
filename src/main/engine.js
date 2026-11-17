@@ -3,7 +3,8 @@ import { SpeechGate } from './audio/gate.js'
 import { MacSystemAudio, macTapSupported } from './audio/macTap.js'
 import { AudioRing } from './audio/ring.js'
 import { WavCapture } from './audio/wav.js'
-import { cosine, pcm16ToFloat32, resample, scoreSegment } from './audio/voiceprint.js'
+import { cosine, embedPcm } from './audio/voiceprint.js'
+import { SpeakerBook } from './diarize.js'
 import { OpenAIRealtimeASR } from './asr/openai.js'
 import { VolcStreamASR } from './asr/volc.js'
 import { LocalStreamASR, localAsrAvailable } from './asr/local.js'
@@ -28,6 +29,9 @@ import { t, uiLang } from './i18n.js'
 // 不是的话，录了声纹就比声纹：像我的算我，不像的算对方（面对面开会）；没录声纹都算我。
 // 模式（modes.js）：面试强制自动答题；课堂上对方叫「老师」，可以截取画面。三种模式都边听边整理实时笔记（class/liveNotes.js）。
 // 课堂的教室现场只开麦克风：录了声纹的话像我的算我（我在课上提问），其余算老师；没录声纹都算老师。网课同会议，电脑声音是老师。
+// 用 Soniox 识别时开分说话人（两路都开）：别人的话按 Soniox 的说话人编号分成「说话人 1、2、3」，课堂里讲得最多的叫「老师」，
+// 只有一个人的会议照旧叫「对方」（diarize.js）；名字点一下能改，同一场里这个人的句子一起改（renameSpeaker）。
+// 段落上的 sp 是第几个人（session.speakers 的下标，和视频模式一样），我的话没有 sp。
 const debug = process.env.MEETCAPTION_DEBUG ? (...a) => console.error(new Date().toISOString().slice(11, 23), ...a) : () => {}
 const LIVE_KEEP = 300
 const PENDING = Symbol('pending')
@@ -90,7 +94,7 @@ function createProvider(s) {
   }
   if (s.engine === 'soniox') {
     if (!s.sonioxKey && !s.sonioxGetKey) throw new Error(t('还没填 Soniox 的 API Key，去「设置」里填'))
-    const cloud = new SonioxStreamASR({ key: s.sonioxKey, getKey: s.sonioxGetKey, language: s.language, context: s.context, hotwords, url: process.env.MEETCAPTION_SONIOX_URL || undefined })
+    const cloud = new SonioxStreamASR({ key: s.sonioxKey, getKey: s.sonioxGetKey, language: s.language, context: s.context, hotwords, diarize: true, url: process.env.MEETCAPTION_SONIOX_URL || undefined })
     // 断线时本地识别接着认（只认中英文）
     if (needsMultilingual(s.language) || !localAsrAvailable()) return cloud
     return new LocalFallbackASR({ cloud, makeLocal: () => new LocalStreamASR() })
@@ -213,7 +217,7 @@ export class MeetingEngine extends EventEmitter {
     this.live = new Map()
     this.meta = new Map() // 段落 id → 不广播的内部状态 { span, updatedAt, endedAt, awaiting, deferred, settled, ... }
     this.pipelines = new Map()
-    this.micRing = null
+    this.rings = new Map() // 声音来源 → 最近 60 秒的音频（声纹打分、说话人向量用）；暂停后还留着，收尾时还要用
     this.enh = new Map() // 句子 → PENDING | { tr?, chunks?, terms? } | null
     this.enhEarly = new Map() // 还在路上的句子 → 已经流式收到的 { tr, fixed? }
     this.enhHold = false // 答题优先，新的译文请求先等着
@@ -239,6 +243,10 @@ export class MeetingEngine extends EventEmitter {
     this.scoring = new Set() // 声纹进程里还在算的分（麦克风段的判断）：停止、暂停时等它们落定
     this.micCheck = false // 麦克风的定稿要不要判（比声纹、查串音）：有声纹，或者同时在录电脑声音（没声纹也要滤串音）
     this.lastMicWho = null
+    this.book = null // 分说话人（diarize.js）：识别给了说话人编号才用上
+    this.spkModel = null // 没录声纹时分说话人用的声纹模型（只算向量，不比我的声纹）
+    this.pipeSeq = 0 // 第几套识别实例（暂停后继续会新建）：和连接号一起认出 Soniox 的编号从哪重新开始
+    this.namesKey = '' // 上次广播的说话人名字，变了才重标
     this.askedAt = new Map()
     this.answered = new Set() // 已经答完的提问段（一次提问的最后一段）：拼新问题时不再当铺垫
     this.answerSeg = new Map()
@@ -431,7 +439,10 @@ export class MeetingEngine extends EventEmitter {
     this.myScores = [] // 远程开会时判成我的麦克风段的声纹分数：散会后看声纹还认不认得我
     this.vp = null
     this.micCheck = false
-    this.micRing = null
+    this.rings.clear()
+    this.book = new SpeakerBook({ mode: this.mode })
+    this.spkModel = null
+    this.namesKey = ''
     this.paused = false
     this.devices = {}
     this.fakeCapture = null
@@ -457,6 +468,7 @@ export class MeetingEngine extends EventEmitter {
       const vpLoad = withMic ? this.#loadVoiceprint(warnings) : null
       await Promise.all([...this.pipelines.values()].map((p) => p.provider.connect()))
       await vpLoad
+      if (s.engine === 'soniox' && !this.vp) this.#loadSpeakerModel()
       this.micCheck = this.pipelines.has('mic') && (Boolean(this.vp) || this.pipelines.has('system'))
       checkAbort()
       const cls = this.mode === 'class' ? { classSource: this.classSource, slides: [] } : {}
@@ -493,15 +505,28 @@ export class MeetingEngine extends EventEmitter {
   }
 
   // 每一路一个识别实例和门限，麦克风另有 60 秒环形缓冲给声纹打分。继续（暂停后）时也是新建一套：span 从新的这一路音频算起
+  // 分说话人（Soniox）时电脑声音也留 60 秒，算说话人的声纹向量用
   #buildPipelines(s) {
     const ps = { ...s, hotwords: this.hotwords }
+    const epoch = ++this.pipeSeq
     for (const source of this.sources) {
       const provider = this.makeProvider(ps)
-      this.#wireProvider(source, provider)
-      const ring = source === 'mic' ? new AudioRing(provider.sampleRate, 60) : null
+      this.#wireProvider(source, provider, epoch)
+      const ring = source === 'mic' || s.engine === 'soniox' ? new AudioRing(provider.sampleRate, 60) : null
       this.pipelines.set(source, { source, provider, gate: new SpeechGate({ sampleRate: provider.sampleRate }), ring, lastRealAt: 0 })
-      if (ring) this.micRing = ring
+      if (ring) this.rings.set(source, ring)
     }
+  }
+
+  // 没录声纹也要算说话人的向量（重连后对人、纠正 Soniox 标错的句子）：模型在后台加载，没加载上就只用 Soniox 的编号
+  #loadSpeakerModel() {
+    const gen = this.gen
+    this.voiceprint
+      ?.loadModel?.()
+      .then((m) => {
+        if (gen === this.gen) this.spkModel = m
+      })
+      .catch((e) => debug('speaker model', e.message))
   }
 
   // 有声纹才加载模型（冷启动会卡主进程 1 到 2 秒，放在连接识别服务的同时做）
@@ -779,15 +804,19 @@ export class MeetingEngine extends EventEmitter {
     return Math.max(now - back, this.session?.startedAt ?? 0)
   }
 
-  #wireProvider(source, provider) {
-    provider.on('partial', ({ key, text, span, stable }) => {
+  #wireProvider(source, provider, epoch) {
+    // Soniox 分说话人：编号在这一套识别实例的这条连接里才有意义
+    const spk = ({ speaker, conn }) => (speaker == null ? null : { stream: `${epoch}:${conn}`, label: String(speaker) })
+    provider.on('partial', (e) => {
+      const { key, text, span, stable } = e
       debug(source, 'partial', key.slice(-6), JSON.stringify(text))
-      this.#onText(source, key, text, false, span, stable)
+      this.#onText(source, key, text, false, span, stable, spk(e))
     })
-    provider.on('final', ({ key, text, span }) => {
-      debug(source, 'FINAL', key.slice(-6), JSON.stringify(text), span ? `${Math.round(span.start)}-${Math.round(span.end)}ms` : '')
+    provider.on('final', (e) => {
+      const { key, text, span } = e
+      debug(source, 'FINAL', key.slice(-6), e.speaker != null ? `S${e.speaker}@${e.conn}` : '', JSON.stringify(text), span ? `${Math.round(span.start)}-${Math.round(span.end)}ms` : '')
       if (this.#defaultWho(source) === 'other') this.weakWatch?.final(text)
-      this.#onText(source, key, text, true, span)
+      this.#onText(source, key, text, true, span, null, spk(e))
     })
     // 识别服务改了断句，之前的未定稿句子作废（豆包）：从实时记录里拿掉
     provider.on('drop', ({ key }) => this.#dropStale(`${source}:${key}`))
@@ -818,7 +847,8 @@ export class MeetingEngine extends EventEmitter {
     return m
   }
 
-  #onText(source, key, text, final, span, stable = null) {
+  // spk：Soniox 分说话人给的 { stream, label }，没分就是 null
+  #onText(source, key, text, final, span, stable = null, spk = null) {
     if (!this.session) return
     const id = `${source}:${key}`
     let seg = this.live.get(id)
@@ -839,6 +869,11 @@ export class MeetingEngine extends EventEmitter {
     seg.text = text || (final ? seg.text : '')
     m.updatedAt = Date.now()
     m.stable = final ? null : stable // 识别服务说已经定下来的那一截（text 的开头），没说就是 null
+    if (spk) {
+      m.spk = spk
+      seg.diar = true
+      this.#applyName(seg)
+    }
     const p = this.pipelines.get(source)
     if (span) {
       m.span = span
@@ -862,7 +897,72 @@ export class MeetingEngine extends EventEmitter {
       // 还在说的这段和对方刚说的话重合：多半是外放漏进麦克风的，先不上屏（不然同一句会有「对方」「我」两行），定稿再判
       if (this.#hideEcho(seg, m)) return
     }
+    // 分了说话人的定稿：先算这句的声纹向量（对人、纠正标错的人用），算完再定稿
+    if (final && m.spk && m.span && this.#spkModelReady()) {
+      m.awaiting = true
+      this.#track(this.#embedThenUpdate(seg, m))
+      return
+    }
     this.#update(seg, final)
+  }
+
+  #spkModelReady() {
+    return Boolean(this.vp?.model ?? this.spkModel)
+  }
+
+  async #embedThenUpdate(seg, m) {
+    const gen = this.gen
+    const r = await this.#embed(seg.source, m.span)
+    if (gen !== this.gen || !this.live.has(seg.id)) return
+    m.emb = r?.embedding ?? null
+    this.#update(seg, true)
+  }
+
+  // 显示的名字：我的话是「我」；分了说话人的按 diarize.js 起的名字（还没定下是谁时先猜），没分的照旧（对方 / 老师）
+  #applyName(seg) {
+    const m = this.#m(seg)
+    const idx = seg.who === 'me' || !m.spk ? null : (m.sp ?? this.book.guess(seg.source, m.spk))
+    if (idx == null) delete seg.sp
+    else seg.sp = idx
+    if (idx != null && !seg.final) this.book.speaking(seg.source, idx)
+    seg.speaker = seg.who !== 'me' && m.spk ? this.book.name(idx) : this.#label(seg.who)
+  }
+
+  // 一句定稿了：这句算谁的（Soniox 的编号对到人上，声音明显是别人的改过来），记账
+  #placeSpeaker(seg) {
+    const m = this.#m(seg)
+    if (!m.spk) return
+    const emb = m.emb ?? null
+    m.sp = this.book.place(seg.source, m.spk, emb)
+    this.book.heard(m.sp, { who: seg.who, chars: seg.text.length, emb })
+    this.#applyName(seg)
+  }
+
+  // 有人的名字变了（新来了人、换了老师、改了名）：实时记录和存档里这个人的句子都换成新名字，广播出去
+  #relabel() {
+    const s = this.session
+    if (!s || !this.book?.people.length) return
+    const names = this.book.names()
+    const key = names.join('\n')
+    if (key === this.namesKey) return
+    this.namesKey = key
+    s.speakers = names
+    for (const seg of this.live.values()) {
+      if (seg.sp == null || seg.who === 'me' || names[seg.sp] === seg.speaker) continue
+      seg.speaker = names[seg.sp]
+      if (seg.final) this.#persist(seg)
+      this.emit('segment', seg)
+    }
+    for (const r of s.segments) if (r.sp != null && r.who !== 'me' && names[r.sp] && r.speaker !== names[r.sp]) r.speaker = names[r.sp]
+    if (this.state !== 'idle') this.store.scheduleSave(s)
+  }
+
+  /** 改说话人的名字（这一场正在记录时）：这个人的句子一起改，字幕窗跟着变。→ 每个人现在的名字 */
+  renameSpeaker(index, name) {
+    if (!this.session || this.state === 'idle') throw new Error(t('没在记录'))
+    this.book.rename(index, name)
+    this.#relabel()
+    return this.session.speakers
   }
 
   // 麦克风还没定稿的段看着像串音就藏起来：已经上过屏的发一个空文本让界面拿掉。声纹认出是我的照常显示。→ 藏了没有
@@ -881,6 +981,7 @@ export class MeetingEngine extends EventEmitter {
     seg.final = final
     let ask = false
     if (final) {
+      this.#placeSpeaker(seg)
       this.#m(seg).endedAt = Date.now()
       if (seg.who === 'other' && (isQuestion(seg.text) || this.#continuesQuestion(seg))) seg.question = true
       else delete seg.question
@@ -898,6 +999,7 @@ export class MeetingEngine extends EventEmitter {
       this.notes?.add({ ...seg, durationMs: span ? span.end - span.start : Date.now() - seg.startedAt })
     }
     this.emit('segment', seg)
+    if (final) this.#relabel()
     if (ask) this.#maybeAsk(seg, ask)
   }
 
@@ -935,35 +1037,36 @@ export class MeetingEngine extends EventEmitter {
 
   // 声纹分数；音频不够（去掉静音不到 1 秒）或没有声纹返回 null。向量在声纹进程里算（model.scorePcm），不卡主进程
   async #score(span) {
-    const ring = this.micRing
-    const vp = this.vp
-    if (!vp || !span || !ring) return null
+    if (!this.vp) return null
+    return (await this.#embed('mic', span))?.score ?? null
+  }
+
+  // 这一段的声纹向量和（录了声纹时）跟我的声纹比的分数：{ embedding, score | null }；音频不够、没有模型返回 null。
+  // 没录声纹但分着说话人时用 spkModel 只算向量
+  async #embed(source, span) {
+    const ring = this.rings.get(source)
+    const model = this.vp?.model ?? this.spkModel
+    if (!model || !span || !ring) return null
     const pcm = ring.read(span.start - 150, span.end + 150)
     if (!pcm || pcm.length < ring.rate) return null
     try {
       const t0 = performance.now()
-      const r = await this.#scoreAudio(vp, pcm, ring.rate)
+      const r = await this.#embedAudio(model, pcm, ring.rate)
       this.emit('trace', { type: 'score', ms: Math.round(performance.now() - t0), seconds: r?.seconds ?? null })
-      return r ? Math.round(r.score * 100) / 100 : null
+      if (!r) return null
+      const profile = this.vp?.profile
+      const score = profile && profile.modelId === model.modelId ? Math.round(cosine(profile.embedding, r.embedding) * 100) / 100 : null
+      return { embedding: r.embedding, score }
     } catch (e) {
       debug('voiceprint', e.message)
       return null
     }
   }
 
-  async #scoreAudio({ model, profile }, pcm, rate) {
-    if (model.scorePcm) {
-      const r = await model.scorePcm(pcm, rate)
-      return r && profile.modelId === model.modelId ? { score: cosine(profile.embedding, r.embedding), seconds: r.seconds } : null
-    }
+  async #embedAudio(model, pcm, rate) {
+    if (model.scorePcm) return model.scorePcm(pcm, rate)
     // 模型在进程内同步算的（单测、自测）
-    let x = pcm16ToFloat32(pcm)
-    if (rate !== 16000) x = resample(x, rate, 16000)
-    if (x.length > SCORE_MAX) {
-      const off = (x.length - SCORE_MAX) >> 1
-      x = x.subarray(off, off + SCORE_MAX)
-    }
-    return scoreSegment(model, profile, x)
+    return embedPcm(model, pcm, rate, { maxSamples: SCORE_MAX })
   }
 
   // 登记一个还在算的判断，算完（成不成都算）自动注销；停止、暂停时 #settleScoring 等它们
@@ -1000,7 +1103,7 @@ export class MeetingEngine extends EventEmitter {
         const who = score >= this.#threshold() || this.#systemActive() || this.#crosstalk(seg) || this.#remoteMine(score) ? 'me' : 'other'
         if (who === seg.who) return
         seg.who = who
-        seg.speaker = this.#label(who)
+        this.#applyName(seg)
         this.#update(seg, false)
       }),
     )
@@ -1014,10 +1117,13 @@ export class MeetingEngine extends EventEmitter {
       return
     }
     let score = null
-    if (this.vp && m.span) {
+    // 分着说话人时没录声纹也算向量（m.emb，定稿时对人用）
+    if ((this.vp || (m.spk && this.spkModel)) && m.span) {
       const gen = this.gen
-      score = await this.#score(m.span)
+      const r = await this.#embed('mic', m.span)
       if (gen !== this.gen || m.settled) return
+      score = r?.score ?? null
+      m.emb = r?.embedding ?? null
     }
     if (score != null) seg.vp = score
     else delete seg.vp
@@ -1033,9 +1139,12 @@ export class MeetingEngine extends EventEmitter {
 
   // 不像我、也不是串音：有分数就是对方。太短打不了分的（OK、Sure）：前一段有分数的是我（20 秒内）就跟着算我，
   // 否则按麦克风的默认（平时是我，教室现场是老师）。一问一答时这种短回应多半是听的那个人说的，不跟着对方走。
+  // 分着说话人时，Soniox 这个编号的句子大多被声纹认成我：短句也算我
   #settleUnlike(seg) {
     if (seg.vp != null) return this.#remoteMine(seg.vp) ? this.#settle(seg, 'me', 'remote') : this.#settle(seg, 'other', 'voiceprint')
     if (!this.vp) return this.#settle(seg, this.#defaultWho('mic'), 'no-voiceprint')
+    const m = this.#m(seg)
+    if (m.spk && this.book.mostlyMe(this.book.guess(seg.source, m.spk))) return this.#settle(seg, 'me', 'speaker')
     const l = this.lastMicWho
     this.#settle(seg, l?.who === 'me' && Date.now() - l.at < SHORT_FOLLOW_MS ? 'me' : this.#defaultWho('mic'), 'short')
   }
@@ -1062,7 +1171,7 @@ export class MeetingEngine extends EventEmitter {
     m.settled = true
     clearTimeout(m.timer)
     seg.who = who
-    seg.speaker = this.#label(who)
+    this.#applyName(seg)
     if (how === 'voiceprint') this.lastMicWho = { who, at: Date.now() }
     if (who === 'me' && seg.vp != null && this.systemHeard && this.mode !== 'class') this.myScores.push(seg.vp)
     debug('mic', who, how, seg.vp, JSON.stringify(seg.text))
@@ -1135,6 +1244,7 @@ export class MeetingEngine extends EventEmitter {
     if (seg.orig) record.orig = seg.orig // AI 纠错前的识别原文（text 是纠正后的）
     if (seg.question) record.question = true
     if (seg.vp != null) record.vp = seg.vp
+    if (seg.sp != null && seg.who !== 'me') record.sp = seg.sp // 第几个说话人（session.speakers 的下标）
     if (this.state === 'idle') {
       // 会已经停了（停止后才回来的译文）：只改文件里的这一段，别用内存里停止时的旧对象把会后改的标题、纪要、待办盖掉
       this.#patchStored(this.session.id, (s) => upsertSegment(s.segments, record))

@@ -53,6 +53,7 @@ VIEWS.live = {
 
     // 实时记录（字幕和课堂截图按时间排在一起）
     const list = el('div.transcript.live-transcript', { role: 'log', 'aria-live': 'off', 'aria-label': t('实时记录') })
+    speakerTips(list)
     const empty = el('div.live-empty')
     const scroller = el('div.pane-body.live-scroll', { tabindex: '0' }, empty, list)
     const jump = el('button.btn.btn-sm.jump-latest', { type: 'button', hidden: true, onClick: () => ((scroller.scrollTop = scroller.scrollHeight), (jump.hidden = true)) }, icon('chevron-down', 14), t('回到最新'))
@@ -236,7 +237,15 @@ VIEWS.live = {
       empty.hidden = nodes.size + slideNodes.size > 0
     }
 
-    const segOpts = () => ({ mode: mode() })
+    // 分了说话人的标签点一下改名：正在记录时引擎会把这个人的每一行按新名字重发一遍；已经停了的这里自己改
+    const renamed = (speakers, sp, name) => {
+      for (const seg of state.live?.segs.values() ?? []) {
+        if (seg.sp !== sp || seg.who === 'me' || seg.speaker === name) continue
+        seg.speaker = speakers?.[sp] ?? name
+        if (nodes.has(seg.id)) onSegment(seg)
+      }
+    }
+    const segOpts = () => ({ mode: mode(), rename: { sessionId: state.live?.sessionId, onDone: renamed } })
     const slideOpts = () => ({ dir: state.live?.dir, startedAt: state.live?.startedAt })
 
     // 按时间把节点插到对的位置（截图可能比正在说的那句早一点）
@@ -328,6 +337,7 @@ VIEWS.live = {
       nodes.clear()
       slideNodes.clear()
       const segs = state.live ? [...state.live.segs.values()] : []
+      list.classList.toggle('has-spk', segs.some((x) => x.sp != null))
       const items = segs.map((seg) => ({ t: seg.startedAt ?? 0, seg }))
       for (const sl of state.live?.slides ?? []) items.push({ t: slideTime(sl, state.live.startedAt), slide: sl })
       items.sort((a, b) => a.t - b.t)
@@ -356,9 +366,13 @@ VIEWS.live = {
         empty.hidden = nodes.size + slideNodes.size > 0
         return
       }
+      if (seg.sp != null) list.classList.add('has-spk')
       let n = lineNode(seg, null, segOpts())
       // 还在出字的那一行每来几个字更新一次：留着原来的节点只换里面的字，不然鼠标停在上面时悬停底色和「问」按钮每次都重新淡入，看着像在闪
       if (old) {
+        // 正在改这一行的说话人名字：留着输入框，别被新来的译文冲掉
+        const editing = old.querySelector('.tline-spk-input')?.closest('.tline-who')
+        if (editing) n.querySelector('.tline-who')?.replaceWith(editing)
         old.className = n.className
         Object.assign(old.dataset, n.dataset)
         const btn = old.querySelector(':scope > .ask-line-btn')
