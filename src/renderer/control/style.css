@@ -2672,6 +2672,12 @@ button.nav-section:focus-visible {
 
 .ask-wait { color: var(--text-3); font-size: var(--fs-sm); line-height: 20px; }
 .ask-wait[hidden] { display: none; }
+/* 联网：「正在联网查」和没查成的那一行灰字，图标对齐第一行字 */
+.ask-wait.is-web { display: flex; align-items: flex-start; gap: 6px; }
+.ask-wait .icon, .ask-web-note .icon { flex: none; margin-top: 3px; color: var(--text-3); }
+.ask-web-note { display: flex; align-items: flex-start; gap: 6px; color: var(--text-3); font-size: var(--fs-sm); line-height: 20px; text-wrap: pretty; }
+.ask-web-note[hidden] { display: none; }
+.ask-src-chip.is-web .icon { flex: none; color: var(--text-3); }
 .ask-cover[hidden] { display: none; }
 .ask-ready { padding-bottom: 6px; }
 .ask-ready[hidden] { display: none; }

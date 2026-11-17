@@ -8,6 +8,8 @@ import { speakerLabel } from '../modes.js'
 // 取材：这一场的字幕（整场，太长时只留和问题最相关的几段加最近一段和引用那句的前后）、实时笔记、课件里最相关的几页、截图（最多附两张）。
 // prompt 里的说法按模式换：课堂说「这节课 / 老师」，会议说「这场会 / 对方」，面试说「这场面试 / 面试官」。
 // 回答按行写：覆盖、要点、几条、依据（引用资料里的编号）、接着问。解析边流边出，没写完的行先不露出来。
+// 联网（AI 服务是 DeepSeek 或会员时）：资料不够回答时 AI 第一行只写「搜索：<搜索词>」，ask.js 看到这一行就停掉这次回答、去搜，
+// 再把搜索结果（编号「网N」）连同原问题问一次，这一次不再给搜索这一条；「依据」里的 网N 是出处链接。
 
 export const ASK_LIMITS = {
   transcriptTokens: 3200, // 字幕最多占的 token（估算）
@@ -18,6 +20,8 @@ export const ASK_LIMITS = {
   pageChars: 1200,
   images: 2,
   history: 4, // 带上之前几问
+  webChars: 700, // 一条搜索结果的摘要最多几个字（DeepSeek 给的 summary 600 到 800 字）
+  webSources: 3, // 「依据」里最多几条网页
   historyChars: 900,
   lineChars: 360,
 }
@@ -288,16 +292,23 @@ export function slidesForAsk(slides, { quoteAt = null, clockTime, limit = ASK_LI
 }
 
 // 「覆盖」的三个词（讲过、提了一句、没讲到）各模式都一样，parseAsk 认的就是这三个
-const TAIL = (w) => [
+const TAIL = (w, web = false) => [
   '回答按下面的行写，一行一件事，不用 Markdown 标题、粗体和表格：',
   `第 1 行：「覆盖：」后面写 讲过、提了一句、没讲到 三选一。讲过：${w.it}（${w.seen}）讲到了问题问的内容；提了一句：${w.src}只在${w.aside}时顺带说了一个词或一句话、完全没有解释，这时在后面加上提到它的那句的编号，写成「覆盖：提了一句 #12」；没讲到：资料里完全没有。${w.src}用几句话解释过的就是「讲过」，拿不准时写「讲过」。`,
   '第 2 行：「要点：」后面一句话直接回答问题，不超过 30 个字。',
   '第 3 行起：2 到 4 行，每行以「- 」开头，只讲一件事；公式用 $…$ 写在句子里，重要的公式单独占一行、用 $$…$$ 包住（每个公式只占一行，不换行）。',
-  `倒数第 2 行：「依据：」后面列出你用到的资料，用资料里的编号，空格隔开，例如「依据：${w.cite}」；只列真正用到的，字幕编号最多 4 个（挑最能说明问题的），没有就写「依据：无」。`,
+  `倒数第 2 行：「依据：」后面列出你用到的资料，用资料里的编号，空格隔开，例如「依据：${w.cite}${web ? ' 网1 网3' : ''}」；只列真正用到的，字幕编号最多 4 个（挑最能说明问题的）${web ? '，用到的搜索结果写「网N」，最多 3 个' : ''}，没有就写「依据：无」。`,
   '最后一行：「接着问：」后面给我一到两个顺着这个回答最可能想接着问的问题，每个不超过 20 个字，用「｜」隔开，只写普通文字：不要公式、$ 符号、下标和花括号，变量直接写字母。',
 ]
 
-export function askSystem({ lang = 'zh', live = true, mode = 'class' } = {}) {
+/** 能联网时加的一条：资料不够就先只写一行「搜索：<搜索词>」。parseSearch 认的就是这个格式。 */
+const SEARCH_RULE = (w) =>
+  `- 能联网查：问的是${w.src}只顺带提到、没解释的词（缩写、术语、人名、产品、事件），或者${w.it}的资料里没有、要最新的事实、数字、日期才答得准的，先查再答：整个回答只写一行「搜索：<搜索词>」就停，不写覆盖、要点和别的行。搜索词 2 到 6 个词，写成在搜索引擎里会搜的样子，缩写后面带上${w.it}所在的领域（比如「PPG 光电容积脉搏波」）。资料里已经讲清楚的、只问${w.it}里说了什么的，不要查，直接按下面的行回答。`
+
+/**
+ * search：这次能不能联网（DeepSeek 和会员才有）；web：这次的资料里有没有联网搜索的结果（有就按结果回答、引用写「网N」）。两个不会同时为真。
+ */
+export function askSystem({ lang = 'zh', live = true, mode = 'class', search = false, web = false } = {}) {
   const L = promptLang(lang)
   const w = askWords(mode)
   return [
@@ -306,13 +317,27 @@ export function askSystem({ lang = 'zh', live = true, mode = 'class' } = {}) {
     `- 先看资料里${w.src}是怎么${w.say}的，术语、符号和${w.src}的说法保持一致。回答用${L}写；${w.src}用的英文术语（或其他语言的术语）第一次出现时放在译名后面的括号里，比如「耦合（coupling）」。`,
     `- 短，一眼能扫完：一句要点，再 2 到 4 条，每条只讲一件事、不超过 50 个字（英文 30 个词），公式不算字数；一件事说不完就拆成两条或砍掉次要的。全部加起来不超过 200 个字。不复述问题，不客套，不写「根据资料」「${w.it}提到」这类铺垫，不附逐句翻译。`,
     `- ${w.gap}，用${L}说人话。`,
-    `- 资料里没有的内容按通用知识补充，不要装作${w.src}${w.say}过；也不要编资料里没有的数字、名字和公式。${w.src}只提了一句或没${w.say}到时，照实填「覆盖」，回答里不用重复解释这件事（界面会写）。`,
+    web
+      ? `- 资料里没有的内容先看「联网搜索的结果」，事实、数字、日期以结果为准；结果里也没有的按通用知识补充，拿不准的直说没查到。不要装作${w.src}${w.say}过，也不要编数字、名字和公式。${w.src}只提了一句或没${w.say}到时，照实填「覆盖」；要点和每一条都只讲问的东西本身，不写${w.src}讲没讲、讲到哪（界面已经写在上面）。`
+      : `- 资料里没有的内容按通用知识补充，不要装作${w.src}${w.say}过；也不要编资料里没有的数字、名字和公式。${w.src}只提了一句或没${w.say}到时，照实填「覆盖」，回答里不用重复解释这件事（界面会写）。`,
     '- 问题和引用的字幕是语音识别出来的，可能有错字，按最可能的意思理解；和「术语」里的词发音相近的，就是那个术语。',
-    '- 回答里不要写编号（#12 这类）和时间，也不要提「资料」；编号只写在「依据」那一行。',
+    `- 回答里不要写编号（#12 这类）${web ? '、网址' : ''}和时间，也不要提「资料」${web ? '和「搜索结果」' : ''}；编号只写在「依据」那一行。`,
     '- 不用破折号。',
+    ...(search ? [SEARCH_RULE(w)] : []),
     '',
-    ...TAIL(w),
+    ...TAIL(w, web),
   ].join('\n')
+}
+
+/** 搜索结果 → 编了号的文字（网1、网2…）。results：[{ title, url, date, summary }] */
+export function webForAsk(results, max = ASK_LIMITS.webChars) {
+  return (results ?? [])
+    .map((r, i) => {
+      const date = r.date ? `（${String(r.date).slice(0, 10)}）` : ''
+      const body = oneLine(r.summary)
+      return `网${i + 1} ${oneLine(r.title) || r.url}${date} ${r.url}\n${body.length > max ? `${body.slice(0, max)}…` : body}`
+    })
+    .join('\n')
 }
 
 /**
@@ -322,7 +347,7 @@ export function askSystem({ lang = 'zh', live = true, mode = 'class' } = {}) {
  * history：之前几问 [{ q, quote, gist, points }]；keywords：术语（项目里设的和笔记里的）；context：课程背景。
  * → { system, messages, refs }：refs 是回答里的编号对应的东西。
  */
-export function askMessages({ session, mode = session.mode ?? 'class', live, now = Date.now(), lang = 'zh', context = '', keywords = [], transcript, notes = '', pages = { text: '', picked: [] }, slides = { list: '', attach: [] }, question, quote = null, quoteLine = null, history = [] }) {
+export function askMessages({ session, mode = session.mode ?? 'class', live, now = Date.now(), lang = 'zh', context = '', keywords = [], transcript, notes = '', pages = { text: '', picked: [] }, slides = { list: '', attach: [] }, question, quote = null, quoteLine = null, history = [], search = false, web = null }) {
   const parts = []
   const w = askWords(mode)
   const mins = Math.max(0, Math.round(((live ? now : (session.endedAt ?? now)) - session.startedAt) / 60000))
@@ -335,13 +360,16 @@ export function askMessages({ session, mode = session.mode ?? 'class', live, now
   if (slides.list) mat.push(`${w.in}截的屏幕画面：${slides.list}${slides.attach.length ? '。标着「附图」的附在这条消息后面，按截图编号从小到大' : ''}`)
   mat.push(`${w.in}的字幕（编号 #N，[时间] 说话人：原话；「……」是省略的部分）：\n${transcript.text || '（还没有识别出字幕）'}`)
   parts.push(`${w.it}的资料：\n\n${mat.join('\n\n')}`)
+  const webList = web?.results?.length ? web.results : null
+  if (webList) parts.push(`刚才联网搜索了「${oneLine(web.query)}」，结果（编号「网N」，标题、日期、网址，下一行是摘要）：\n${webForAsk(webList)}`)
   if (quote) {
     const no = quoteLine?.no
     const sel = quote.sel && quote.sel !== quote.text ? `；我选中的是「${oneLine(quote.sel)}」` : ''
     parts.push(`我引用了这一句字幕${no ? `（#${no}）` : ''}：「${oneLine(quote.text)}」${sel}。`)
   }
   parts.push(`我的问题：${oneLine(question)}`)
-  parts.push(`记得${promptLang(lang)}回答，按「覆盖、要点、- 几条、依据、接着问」的行写。`)
+  const ask = search && !webList
+  parts.push(ask ? `记得${promptLang(lang)}回答：要联网查就只写一行「搜索：<搜索词>」；不用查就按「覆盖、要点、- 几条、依据、接着问」的行写。` : `记得${promptLang(lang)}回答，按「覆盖、要点、- 几条、依据、接着问」的行写。`)
   const content = parts.join('\n\n')
   const messages = []
   for (const h of history.slice(-ASK_LIMITS.history)) {
@@ -356,8 +384,9 @@ export function askMessages({ session, mode = session.mode ?? 'class', live, now
     notes: (notes.match(/^笔记\d+/gm) ?? []).length,
     slides: new Map(slides.attach.map((x) => [x.no, x])),
     pages: pages.picked,
+    web: webList ?? [],
   }
-  return { system: askSystem({ lang, live, mode }), messages, refs }
+  return { system: askSystem({ lang, live, mode, search: ask, web: Boolean(webList) }), messages, refs }
 }
 
 function historyText(h) {
@@ -374,6 +403,28 @@ const plain = (v) => v.replace(/\$/g, '').replace(/_\{([^}]*)\}/g, '_$1').replac
 const noOpenMath = (v) => ((v.match(/(?<!\\)\$/g) ?? []).length % 2 ? v.slice(0, v.lastIndexOf('$')).trimEnd() : v)
 
 const COVER = { 讲过: 'full', 没讲到: 'none', 提了一句: 'partial' }
+
+// 「搜索：<搜索词>」那一行（全角半角冒号都认，模型偶尔加粗）
+const SEARCH_LINE = /^搜索\s*[:：]/
+
+/**
+ * 回答的第一行是不是「搜索：<搜索词>」（流式写到一半也能看）：
+ * → { query }：是，这一行写完了（后面有换行，或者 final）；'wait'：还看不出来（第一行刚写了「搜」，或者搜索词还没写完）；null：不是，照常回答。
+ */
+export function parseSearch(raw, { final = false } = {}) {
+  const text = noDashes(String(raw ?? '')).replace(/\r/g, '').replace(/^\s+/, '')
+  if (!text) return final ? null : 'wait'
+  const nl = text.indexOf('\n')
+  const first = stripMd(nl >= 0 ? text.slice(0, nl) : text).trim()
+  const done = nl >= 0 || final
+  if (!SEARCH_LINE.test(first)) return !done && '搜索：'.startsWith(first.replace(/:$/, '：')) ? 'wait' : null
+  if (!done) return 'wait'
+  const query = first
+    .replace(SEARCH_LINE, '')
+    .replace(/^[\s*「“"']+|[\s*」”"'。.]+$/g, '')
+    .trim()
+  return query ? { query } : null
+}
 
 function stripMd(s) {
   return s.replace(/\*\*|__/g, '').replace(/^\s*#{1,6}\s+/, '')
@@ -405,6 +456,7 @@ export function parseAsk(raw, refs = null, { final = false } = {}) {
       continue
     }
     let m
+    if (SEARCH_LINE.test(line)) continue
     if ((m = line.match(/^覆盖\s*[:：]\s*(讲过|没讲到|提了一句)\s*(?:#(\d+))?/))) {
       out.formatted = true
       out.cover = { kind: COVER[m[1]], ...(m[2] ? { segNo: Number(m[2]) } : {}) }
@@ -457,7 +509,21 @@ export function coverOf(cover, refs) {
   return id != null ? { kind: 'partial', segId: id, ...(refs.ats?.has(id) ? { at: refs.ats.get(id) } : {}) } : { kind: 'partial' }
 }
 
-/** 「依据」那一行里的编号 → [{ type: 'seg', id } | { type: 'note', n } | { type: 'slide', file, at } | { type: 'page', mat, n }]，同一个只出一次，认不出的丢掉。 */
+// 出处按钮上写的网站：只留主域名（img2.kepuchina.cn → kepuchina.cn）；.com.cn、.ac.uk 这类两段的后缀留三段。完整网址在悬停提示里
+const hostOf = (url) => {
+  let host
+  try {
+    host = new URL(url).hostname
+  } catch {
+    return ''
+  }
+  const parts = host.split('.')
+  if (parts.length <= 2 || /^\d+$/.test(parts.at(-1))) return host
+  const two = /^(com|net|org|gov|edu|ac|co|or|ne|go)$/.test(parts.at(-2)) && parts.at(-1).length === 2
+  return parts.slice(two ? -3 : -2).join('.')
+}
+
+/** 「依据」那一行里的编号 → [{ type: 'seg', id } | { type: 'note', n } | { type: 'slide', file, at } | { type: 'page', mat, n } | { type: 'web', url, title, site }]，同一个只出一次，认不出的丢掉。 */
 export function resolveSources(line, refs) {
   const src = []
   const seen = new Set()
@@ -471,7 +537,18 @@ export function resolveSources(line, refs) {
     src.push(item)
   }
   if (!refs) return src
-  for (const m of String(line ?? '').matchAll(/#(\d+)|笔记\s*(\d+)|截图\s*(\d+)|课件\s*(\d*)\s*p\.?\s*(\d+)/gi)) {
+  let webs = 0
+  for (const m of String(line ?? '').matchAll(/#(\d+)|笔记\s*(\d+)|截图\s*(\d+)|课件\s*(\d*)\s*p\.?\s*(\d+)|网\s*(\d+)/gi)) {
+    if (m[6]) {
+      // 搜索结果：只放能用系统浏览器打开的 https 网址
+      const r = refs.web?.[Number(m[6]) - 1]
+      if (r && /^https:\/\//.test(r.url) && !seen.has(`w${r.url}`) && webs < ASK_LIMITS.webSources) {
+        webs++
+        seen.add(`w${r.url}`)
+        src.push({ type: 'web', url: r.url, title: oneLine(r.title).slice(0, 200), site: hostOf(r.url) })
+      }
+      continue
+    }
     if (m[1]) {
       const id = refs.seg?.get(Number(m[1]))
       if (id != null) push(`s${id}`, { type: 'seg', id, ...(refs.ats?.has(id) ? { at: refs.ats.get(id) } : {}) })

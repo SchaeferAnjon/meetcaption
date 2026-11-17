@@ -45,6 +45,7 @@ End-to-end without devices: add `--fake-system=a.wav --fake-mic=b.wav` to `--sel
 - `MEETCAPTION_UPDATE_URL=<url>`: check a local update server (a folder with `latest-mac.yml` and the zip) instead of GitHub, to test automatic updates with a packaged build.
 - `MEETCAPTION_SONIOX_URL=<ws url>`: connect Soniox recognition through another address (for testing network drops through a local relay).
 - `MEETCAPTION_NO_EXTERNAL=1`: do not open the system browser (for tests).
+- `E2E=1` (or `MEETCAPTION_E2E=1`): test mode for driving the app with Playwright in the background (`src/main/testMode.js`). Windows are never shown, are fully transparent, let the mouse through and are moved back off screen; no Dock icon, no menu bar icon, no global shortcuts, no permission prompts at launch; the browser, Finder, file panels, message boxes, context menus and notifications are recorded instead of shown (`globalThis.mcScreen`, external links print `[openExternal] <url>`). Combine with `MEETCAPTION_USERDATA` and a `saveDir` in a temporary folder. Playwright emulates a light color scheme by default; call `page.emulateMedia({ colorScheme: 'dark' })` for dark screenshots.
 - `MEETCAPTION_DEBUG=1`: print recognition events, audio positions and the me/other decisions.
 
 ## Code layout

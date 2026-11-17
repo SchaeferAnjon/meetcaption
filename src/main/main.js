@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { externalUrl } from './externalUrl.js'
+import { E2E, guardScreen } from './testMode.js'
 import { SettingsStore, keywordList } from './settings.js'
 import { accelLabel, menuItemWithKey, patchFor, registerHotkey } from './hotkeys.js'
 import { upgradePatch } from './defaults.js'
@@ -16,6 +17,7 @@ import { MeetingEngine } from './engine.js'
 import { Member, memberSettings, withMemberAuth, PACKS as MEMBER_PACKS } from './member/client.js'
 import { RendererCapture } from './rendererCapture.js'
 import { ChatGPTAuth, complete, listModels, llmStatus, resolveModel, isAbort, PROVIDERS } from './llm/index.js'
+import { searchConfig, webSearch } from './llm/search.js'
 import { OpenAIRealtimeASR } from './asr/openai.js'
 import { VolcStreamASR } from './asr/volc.js'
 import { SonioxStreamASR } from './asr/soniox.js'
@@ -54,6 +56,8 @@ const isMac = process.platform === 'darwin'
 const isWin = process.platform === 'win32'
 
 if (process.env.MEETCAPTION_USERDATA) app.setPath('userData', process.env.MEETCAPTION_USERDATA)
+// E2E=1：窗口不上屏、不抢焦点，给 Playwright 在后台驱动（testMode.js）
+guardScreen()
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 // 从源码跑（electron .）时名字是包名，换成「会议字幕」；打好的包用打包时的名字（开发版叫「MeetCaption 开发版」，数据目录、单实例锁都和正式版分开）
 if (isMac && !app.isPackaged) app.setName('会议字幕')
@@ -109,6 +113,14 @@ const effective = (s = settings.get(), at = null) => (member ? memberSettings(s,
 // 翻译、纪要、答题统一走 A 模块的 complete；每次取最新设置，切换 AI 服务不用重建什么。会员通道回 401 换凭据再试一次
 const llm = ({ sessionStartedAt = null, ...o }) =>
   withMemberAuth(member, () => effective(settings.get(), sessionStartedAt), (s) => complete(s, chatgptAuth, o))
+// 问 AI 的联网搜索：自带 DeepSeek Key 直接调 DeepSeek，会员走我们服务器的 /v1/search（凭据同 AI，回 401 一样换凭据再试一次）；别的 AI 服务不搜
+const canSearch = (at = null) => Boolean(searchConfig(effective(settings.get(), at)))
+const search = ({ query, askId, signal, sessionStartedAt = null }) =>
+  withMemberAuth(member, () => effective(settings.get(), sessionStartedAt), (s) => {
+    const cfg = searchConfig(s)
+    if (!cfg) throw new Error('search unavailable for this AI service')
+    return webSearch(cfg, query, { askId, signal })
+  })
 const aiStatus = (s = effective(), at = null) => {
   const st = llmStatus(s, chatgptAuth)
   // 会员没有 Key 可填：AI 用不了时说是场次的事
@@ -590,6 +602,7 @@ function hotkeyStatus() {
 const HOTKEY_NAMES = { hotkeyToggle: '显示 / 隐藏字幕', hotkeyRecord: '开始 / 停止记录', 'assist.hotkeyAsk': '回答刚才的问题', 'class.hotkeySlide': '截取画面' }
 
 function registerHotkeys() {
+  if (E2E) return // 测试模式不占全局快捷键（会和正在用的正式版抢）
   globalShortcut.unregisterAll()
   const s = settings.get()
   const moved = []
@@ -1454,7 +1467,7 @@ async function requestPermission(kind) {
 // 不等开始上课才弹。还没给的在主窗口挂提示。首次引导开着时它会一步步自己要，这里不抢。每次启动只要一次。
 let permissionsAsked = false
 async function requestPermissionsAtLaunch() {
-  if (!isMac || selfTest || uiSelfTest || permissionsAsked || (onboardingWin && !onboardingWin.isDestroyed())) return
+  if (!isMac || selfTest || uiSelfTest || E2E || permissionsAsked || (onboardingWin && !onboardingWin.isDestroyed())) return
   permissionsAsked = true
   if (systemPreferences.getMediaAccessStatus('microphone') === 'not-determined') await systemPreferences.askForMediaAccess('microphone').catch(() => false)
   if (screenPermission() !== 'granted') await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } }).catch(() => {})
@@ -2217,6 +2230,8 @@ app.whenReady().then(async () => {
   classAsk = new ClassAsk({
     store,
     llm,
+    search,
+    searchable: canSearch,
     aiStatus: (at) => aiStatus(effective(settings.get(), at), at),
     // 这一场正在记录：用引擎手里的字幕和笔记
     source: (id) => (engine.state !== 'idle' && engine.session?.id === id ? { session: engine.session, segments: engine.snapshot().segments } : null),
@@ -2248,7 +2263,7 @@ app.whenReady().then(async () => {
     return
   }
 
-  if (isMac) app.dock?.setIcon(path.join(root, 'assets/icon.png'))
+  if (isMac && !E2E) app.dock?.setIcon(path.join(root, 'assets/icon.png'))
   dragHelper = new DragHelper({
     root,
     appName: systemListName(),
@@ -2283,7 +2298,7 @@ app.whenReady().then(async () => {
   updater.start()
   // 0.6.6 到 0.6.7 有过每天一次的匿名使用统计，现在不再发了：把当时存在本机的随机编号文件也删掉
   fs.rmSync(path.join(app.getPath('userData'), 'usage-ping.json'), { force: true })
-  createTray()
+  if (!E2E) createTray() // 测试模式不在菜单栏放图标
   registerHotkeys()
   // 第一次启动：先出引导，完成后再开主窗口。没走完就被系统授权重启打断的，接着出（从同一步）；自己关掉的以后从设置里再打开
   const ob = settings.get().onboarding

@@ -23,6 +23,12 @@ function askWords(kind) {
       relate: t('和前面讲的有什么关系？'),
       none: { live: t('课上还没讲到，下面按通用知识回答'), after: t('这节课没讲到，下面按通用知识回答') },
       aside: (when) => (when ? t(`老师 {0} 只把它当例子提了一句，没展开；下面按通用知识补充`, when) : t('老师只把它当例子提了一句，没展开；下面按通用知识补充')),
+      // 联网查过以后：查到了说按查到的资料补；没查成（失败、没结果）并进同一行，不另起一行
+      webNone: { live: t('课上还没讲到，下面按联网查到的资料回答'), after: t('这节课没讲到，下面按联网查到的资料回答') },
+      webAside: (when) => (when ? t(`老师 {0} 只把它当例子提了一句，没展开；下面按联网查到的资料补充`, when) : t('老师只把它当例子提了一句，没展开；下面按联网查到的资料补充')),
+      missNone: { live: t('课上还没讲到，联网也没查成，下面按通用知识回答'), after: t('这节课没讲到，联网也没查成，下面按通用知识回答') },
+      missAside: (when) => (when ? t(`老师 {0} 只把它当例子提了一句，没展开；联网没查成，下面按通用知识补充`, when) : t('老师只把它当例子提了一句，没展开；联网没查成，下面按通用知识补充')),
+      webMiss: t('联网没查成，下面按课上内容和通用知识回答'),
       srcTitle: (when) => t(`老师 {0}`, when),
       wait: t('正在看课上讲过的…'),
       emptyTitle: t('没听懂就问'),
@@ -47,6 +53,25 @@ function askWords(kind) {
         : when
           ? t(`会上 {0} 只顺带提了一句，没展开；下面按通用知识补充`, when)
           : t('会上只顺带提了一句，没展开；下面按通用知识补充'),
+    webNone: iv ? { live: t('面试里还没说到，下面按联网查到的资料回答'), after: t('这场面试没说到，下面按联网查到的资料回答') } : { live: t('会上还没说到，下面按联网查到的资料回答'), after: t('这场会没说到，下面按联网查到的资料回答') },
+    webAside: (when) =>
+      iv
+        ? when
+          ? t(`面试官 {0} 只顺带提了一句，没展开；下面按联网查到的资料补充`, when)
+          : t('面试官只顺带提了一句，没展开；下面按联网查到的资料补充')
+        : when
+          ? t(`会上 {0} 只顺带提了一句，没展开；下面按联网查到的资料补充`, when)
+          : t('会上只顺带提了一句，没展开；下面按联网查到的资料补充'),
+    missNone: iv ? { live: t('面试里还没说到，联网也没查成，下面按通用知识回答'), after: t('这场面试没说到，联网也没查成，下面按通用知识回答') } : { live: t('会上还没说到，联网也没查成，下面按通用知识回答'), after: t('这场会没说到，联网也没查成，下面按通用知识回答') },
+    missAside: (when) =>
+      iv
+        ? when
+          ? t(`面试官 {0} 只顺带提了一句，没展开；联网没查成，下面按通用知识补充`, when)
+          : t('面试官只顺带提了一句，没展开；联网没查成，下面按通用知识补充')
+        : when
+          ? t(`会上 {0} 只顺带提了一句，没展开；联网没查成，下面按通用知识补充`, when)
+          : t('会上只顺带提了一句，没展开；联网没查成，下面按通用知识补充'),
+    webMiss: iv ? t('联网没查成，下面按面试内容和通用知识回答') : t('联网没查成，下面按会上内容和通用知识回答'),
     srcTitle: (when) => (iv ? t(`面试 {0}`, when) : t(`会上 {0}`, when)),
     wait: iv ? t('正在看面试里说过的…') : t('正在看会上说过的…'),
     emptyTitle: iv ? t('拿不准就问') : t('没跟上就问'),
@@ -150,9 +175,16 @@ function askPanel(host) {
     const c = r.cover
     if (!c || c.kind === 'full') return ''
     const w = words()
-    if (c.kind === 'none') return r.after ? w.none.after : w.none.live
-    return w.aside(c.segId ? timeOfSeg(c.segId, c.at) : '')
+    const kind = r.web?.status === 'ok' ? 'web' : missed(r) ? 'miss' : ''
+    if (c.kind === 'none') return (kind === 'web' ? w.webNone : kind === 'miss' ? w.missNone : w.none)[r.after ? 'after' : 'live']
+    return (kind === 'web' ? w.webAside : kind === 'miss' ? w.missAside : w.aside)(c.segId ? timeOfSeg(c.segId, c.at) : '')
   }
+
+  // 联网没查成（失败或没结果）
+  const missed = (r) => r.web?.status === 'failed' || r.web?.status === 'empty'
+
+  // 单独一行灰字：只在没查成、又没有「覆盖」那一行可以并进去时出（课上讲过，或者回答还没写到覆盖）
+  const webText = (r) => (missed(r) && !coverText(r) ? words().webMiss : '')
 
   function srcChip(s) {
     if (s.type === 'seg') {
@@ -171,6 +203,10 @@ function askPanel(host) {
       const when = live ? fmtTime(s.at) : fmtOffset(s.at - host.base())
       return el('button.ask-src-chip', { type: 'button', onClick: () => host.openSlide(s.file, s.at) }, icon('camera', 12), el('span', { text: t(`截图 {0}`, when) }))
     }
+    if (s.type === 'web') {
+      // 搜到的网页：点一下用系统浏览器打开（主进程只放行 https）
+      return el('button.ask-src-chip.is-web', { type: 'button', title: [s.title, s.url].filter(Boolean).join('\n'), onClick: () => call('openExternal', s.url) }, icon('globe', 12), el('span', { text: s.site || s.url }))
+    }
     if (s.type === 'page') {
       const label = t(`课件 p.{0}`, s.n)
       return el('button.ask-src-chip', { type: 'button', title: s.name ?? '', onClick: () => host.openPage(s.matId, s.n, label) }, icon('presentation', 12), el('span', { text: label }))
@@ -183,6 +219,7 @@ function askPanel(host) {
 
   function aiMsg(r) {
     const cover = el('div.ask-cover', { hidden: true, dataset: { part: '课上讲没讲' } })
+    const webNote = el('div.ask-web-note', { hidden: true, dataset: { part: '联网' } })
     const wait = el('div.ask-wait', { text: words().wait })
     const gist = el('div.answer-gist.ask-gist.selectable', { dataset: { part: '要点' } })
     const list = el('div.ask-points.selectable', { dataset: { part: '回答' } })
@@ -192,7 +229,7 @@ function askPanel(host) {
     copy.classList.add('btn-sm', 'ask-copy')
     const src = el('div.ask-src', { hidden: true, dataset: { part: '依据' } })
     const next = el('div.ask-next', { hidden: true, dataset: { part: '接着问' } })
-    const answer = el('div.ask-answer', {}, cover, wait, gist, list, err, stopped, src)
+    const answer = el('div.ask-answer', {}, webNote, cover, wait, gist, list, err, stopped, src)
     const node = el('div.ask-msg.is-ai', { dataset: { part: 'AI 的回答', id: r.id } }, answer, next)
     let cur = r
 
@@ -201,6 +238,21 @@ function askPanel(host) {
       const streaming = cur.status === 'streaming'
       answer.classList.toggle('is-streaming', streaming)
       wait.hidden = !streaming || Boolean(cur.gist) || Boolean(cur.points?.length)
+      const wt = webText(cur)
+      if (!wait.hidden) {
+        // 没查成的那句先写在等待这一行里，回答写出「覆盖」再并进覆盖条
+        const label = cur.web?.status === 'searching' ? t(`正在联网查「{0}」…`, cur.web.query) : cur.web?.status === 'ok' ? t('查到了，正在整理回答…') : wt || words().wait
+        if (wait.dataset.label !== label) {
+          wait.dataset.label = label
+          wait.classList.toggle('is-web', Boolean(cur.web))
+          fill(wait, cur.web ? icon('globe', 13) : null, el('span', { text: label }))
+        }
+      }
+      webNote.hidden = !wt || !wait.hidden
+      if (wt && webNote.dataset.label !== wt) {
+        webNote.dataset.label = wt
+        fill(webNote, icon('globe', 13), el('span', { text: wt }))
+      }
       const ct = coverText(cur)
       cover.hidden = !ct
       if (ct) fill(cover, icon(cur.cover.kind === 'none' ? 'book-open' : 'info', 13), el('span', { text: ct }))
