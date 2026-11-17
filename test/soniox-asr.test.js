@@ -89,6 +89,29 @@ test('自带 Key：鉴权放在请求头，配置带语言、术语和背景；�
   f.close()
 })
 
+// 2026-11-17 实测：重连后的连接一开头就是补发的话，Soniox 之后再也不给 <end>，一句话越拉越长、一直不定稿
+test('Soniox 不给句尾时：一句超过 8 秒、定稿的字写到句号，就在这里自己断开，后面的字算下一句；不满 8 秒的句号不断', async (t) => {
+  const f = await fakeSoniox(t)
+  const asr = new SonioxStreamASR({ key: 'sk', language: 'en', url: f.url })
+  const ev = collect(asr)
+  await asr.connect()
+  await until(() => f.conns[0]?.config)
+  const c = f.conns[0]
+  f.send(c, [tok('One', 0, 300), tok(' short.', 300, 2000), tok(' Then', 2100, 2400, false)])
+  f.send(c, [tok(' Then a long part', 2100, 8500), tok(' ends here.', 8500, 9000), tok(' Next', 9100, 9400), tok(' one', 9400, 9600, false)])
+  await until(() => ev.some((e) => e.name === 'final'))
+  const fin = ev.filter((e) => e.name === 'final')
+  assert.equal(fin.length, 1)
+  assert.equal(fin[0].text, 'One short. Then a long part ends here.')
+  assert.deepEqual(fin[0].span, { start: 0, end: 9000 })
+  assert.equal(c.finalize, 0, '自己断，不用发 finalize')
+  await until(() => ev.at(-1)?.name === 'partial')
+  assert.equal(ev.at(-1).text, 'Next one', '断开后的字是下一句的开头')
+  assert.equal(ev.at(-1).span.start, 9100)
+  await asr.close()
+  f.close()
+})
+
 test('断线：这一句已定稿的字发出去，从最后一个定稿的字的终点补发；没定稿的尾巴新连接重认', async (t) => {
   const f = await fakeSoniox(t)
   const asr = new SonioxStreamASR({ key: 'k', url: f.url })

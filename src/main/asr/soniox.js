@@ -23,6 +23,12 @@ import { t } from '../i18n.js'
 
 const RATE = 16000
 const KEEP_SAMPLES = RATE * 60
+// Soniox 有时整条连接都不给句尾（<end>）：重连、会员换 Key 后接着补发的那条连接，一开头就是一串补发的话，之后再也不断句，
+// 一句话越拉越长、一直不定稿，翻译和笔记都等着（2026-11-17 实测：重连后 60 秒没断过一次句；不掐断时每 13 秒断一次）。
+// 后备：一句已经超过 SPLIT_AFTER_MS，定稿的字刚好写到句号问号叹号，就在这里自己断开：前面这句定稿，后面的字算下一句。
+// 不靠「后面没有还在认的字」判断停顿：Soniox 定稿比说话慢一两秒，句号定下来时下一句的开头早就在尾巴里了
+const SPLIT_AFTER_MS = 8000
+const SENTENCE_END = /[.?!。？！]["'”’)）]?$/
 const ROTATE_BEFORE_MS = 90_000 // 离 Key 到点不到这么久，就在下一个句末换连接
 const FORCE_BEFORE_MS = 20_000 // 到这时还没等到句末（一直有人在说）：让 Soniox 把手上的字都定稿（finalize），定完就换
 const DEAD_AFTER_MS = 20_000 // 送着音频、这么久一条回复都没有，当连接死了
@@ -329,6 +335,7 @@ export class SonioxStreamASR extends EventEmitter {
         s.text += t.text
         if (t.end_ms != null) s.fend = t.end_ms
         if (t.end_ms != null) this.finalEnd = Math.max(this.finalEnd, conn.base + Math.round((t.end_ms * RATE) / 1000))
+        if (s.fend != null && s.fend - s.start >= SPLIT_AFTER_MS && SENTENCE_END.test(s.text.trimEnd())) this.#finishSeg(conn)
       } else tail += t.text
     }
     const cur = conn.seg
