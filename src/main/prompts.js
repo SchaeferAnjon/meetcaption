@@ -46,6 +46,12 @@ export function transcriptText(session) {
 
 export { clock }
 
+/** 识别稿按声音分了说话人（Soniox 实时分人、视频的分人）时补在「谁是谁」后面的一句；没分就是空串。 */
+export function speakersNote(session) {
+  if (!session.segments?.some((s) => s.sp != null && s.who !== 'me')) return ''
+  return '；识别稿按声音分了说话人，「说话人 1」「说话人 2」或人名是不同的人（用户改过名的就是真名），分人偶尔会错'
+}
+
 const WEEKDAYS = '日一二三四五六'
 
 /** 'YYYY-MM-DD'（本地时间） */
@@ -92,7 +98,7 @@ export function summaryMessages({ session, project = null, projects = [], contex
   const out = writeLang(session, project)
   const w = templateWords(out)
   const h = w.summary
-  const system = `你是一位细心的会议助理。用户刚开完一场会。下面是会议的自动识别稿（可能有识别错误、缺标点，也可能只录到一方；「我」是用户，「对方」是会上的其他人）。
+  const system = `你是一位细心的会议助理。用户刚开完一场会。下面是会议的自动识别稿（可能有识别错误、缺标点，也可能只录到一方；「我」是用户，「对方」是会上的其他人${speakersNote(session)}）。
 请用${promptLang(out)}写会议纪要，术语、论文章节名、人名保留原文。要求：
 - 只根据识别稿写，不编造；拿不准的地方标「${w.tbc}」。
 - 相对时间要换算成具体日期：会议日期是 ${dateText}，「next Friday」「in two weeks」「下周三」这类都算出日期并保留原话；「next + 星期几」按下一周的那一天算。

@@ -1884,5 +1884,6 @@
  "面试官问完就自动回答": "Automatisch antworten, wenn die interviewende Person ihre Frage gestellt hat",
  "和开会分开设。开会、面试途中在 AI 回答栏顶上也能直接开关。": "Getrennt von Meetings einstellbar. Während eines Meetings oder Gesprächs auch direkt oben im KI-Antworten-Bereich umschaltbar.",
  "开会的时候我一般先讲上周做完了什么，再说遇到的问题，最后商量下一步怎么安排。": "In Meetings erzähle ich meist zuerst, was ich letzte Woche fertig gemacht habe, dann welche Probleme es gab, und zum Schluss besprechen wir die nächsten Schritte.",
- "这场会里你说的话，声纹打分大多只有 {0}（要到 {1} 才认得出是你）。远程开会不受影响，面对面开会和上课时可能把你的话当成别人的。用开会的麦克风重录一次声纹就好。": "In diesem Meeting lagen die Stimmabdruck-Werte deiner Sätze meist nur bei {0} (erkannt wirst du ab {1}). Online-Meetings sind nicht betroffen, aber vor Ort und im Unterricht können deine Sätze jemand anderem zugeordnet werden. Nimm deinen Stimmabdruck mit dem Mikrofon, das du in Meetings nutzt, neu auf."
+ "这场会里你说的话，声纹打分大多只有 {0}（要到 {1} 才认得出是你）。远程开会不受影响，面对面开会和上课时可能把你的话当成别人的。用开会的麦克风重录一次声纹就好。": "In diesem Meeting lagen die Stimmabdruck-Werte deiner Sätze meist nur bei {0} (erkannt wirst du ab {1}). Online-Meetings sind nicht betroffen, aber vor Ort und im Unterricht können deine Sätze jemand anderem zugeordnet werden. Nimm deinen Stimmabdruck mit dem Mikrofon, das du in Meetings nutzt, neu auf.",
+ "{0}，点一下改名字": "{0}, zum Umbenennen klicken"
 }

@@ -571,22 +571,41 @@ VIEWS.meeting = {
 
     function renderTranscript() {
       const segs = s.segments.filter((x) => x.text)
-      const box = el('div.transcript.meeting-transcript')
+      const box = el('div.transcript.meeting-transcript', { class: segs.some((x) => x.sp != null) ? 'has-spk' : '' })
+      speakerTips(box)
       const items = segs.map((seg) => ({ t: seg.startedAt ?? 0, seg }))
       for (const sl of s.slides ?? []) items.push({ t: slideTime(sl, s.startedAt), slide: sl })
       items.sort((a, b) => a.t - b.t)
-      for (const it of items) box.append(it.seg ? lineNode({ ...it.seg, final: true }, s.startedAt, { mode: s.mode }) : slideNode(it.slide, { base: s.startedAt, dir: s.dir, startedAt: s.startedAt }))
+      // 分了说话人的标签点一下改名，这场里这个人的句子一起改
+      const rename = {
+        sessionId: s.id,
+        onDone: (speakers, sp, name) => {
+          if (s.video) s.video.speakers = speakers
+          else s.speakers = speakers
+          for (const x of s.segments) if (x.sp === sp && x.who !== 'me') x.speaker = name
+          renderTranscript()
+        },
+      }
+      for (const it of items) box.append(it.seg ? lineNode({ ...it.seg, final: true }, s.startedAt, { mode: s.mode, rename }) : slideNode(it.slide, { base: s.startedAt, dir: s.dir, startedAt: s.startedAt }))
       // 结束以后：选几个词、或者移到一句上点「问」，引用进「问 AI」
       unwireAsk?.()
       unwireAsk = tabList().includes('ask') ? wireAskTranscript(box, (q) => (setTab('ask'), askPanelView?.quote(q))) : null
       const who = { me: 0, other: 0 }
       for (const seg of segs) who[segWho(seg)]++
+      // 分了说话人：按人数段，多的在前
+      const byName = new Map()
+      for (const seg of segs) {
+        if (segWho(seg) === 'me') continue
+        const name = seg.sp != null ? seg.speaker : whoLabel('other', s.mode)
+        byName.set(name, (byName.get(name) ?? 0) + 1)
+      }
+      const others = [...byName].sort((a, b) => b[1] - a[1]).map(([name, n]) => t(`{0} {1} 段`, name, n))
       const questions = segs.filter((x) => x.question).length
-      fill(panel, 
+      fill(panel,
         el(
           'div.panel-toolbar',
           {},
-          el('span.text-2.text-sm', { text: segs.length ? [t(`{0} {1} 段`, whoLabel('other', s.mode), who.other), who.me ? t(`我 {0} 段`, who.me) : null, questions ? t(`提问 {0} 次`, questions) : null, s.slides?.length ? t(`{0} 张截图`, s.slides.length) : null].filter(Boolean).join(' · ') : '' }),
+          el('span.text-2.text-sm', { text: segs.length ? [...(others.length ? others : [t(`{0} {1} 段`, whoLabel('other', s.mode), 0)]), who.me ? t(`我 {0} 段`, who.me) : null, questions ? t(`提问 {0} 次`, questions) : null, s.slides?.length ? t(`{0} 张截图`, s.slides.length) : null].filter(Boolean).join(' · ') : '' }),
           el('span.header-spacer'),
           el('button.btn.btn-sm', { type: 'button', disabled: !segs.length, onClick: () => copyText(transcriptText(s), t('字幕记录已复制')) }, icon('copy', 14), t('复制全文')),
         ),

@@ -1884,5 +1884,6 @@
  "面试官问完就自动回答": "Répondre automatiquement quand le recruteur a fini sa question",
  "和开会分开设。开会、面试途中在 AI 回答栏顶上也能直接开关。": "Réglé séparément des réunions. Pendant une réunion ou un entretien, vous pouvez aussi l'activer en haut du panneau des réponses IA.",
  "开会的时候我一般先讲上周做完了什么，再说遇到的问题，最后商量下一步怎么安排。": "En réunion, je commence en général par ce que j'ai terminé la semaine dernière, puis les problèmes rencontrés, et enfin on décide de la suite.",
- "这场会里你说的话，声纹打分大多只有 {0}（要到 {1} 才认得出是你）。远程开会不受影响，面对面开会和上课时可能把你的话当成别人的。用开会的麦克风重录一次声纹就好。": "Dans cette réunion, le score d'empreinte vocale de vos phrases n'était le plus souvent que de {0} (il faut {1} pour vous reconnaître). Les réunions à distance ne sont pas concernées, mais en présentiel et en cours vos phrases peuvent être attribuées à quelqu'un d'autre. Réenregistrez votre empreinte vocale avec le micro que vous utilisez en réunion."
+ "这场会里你说的话，声纹打分大多只有 {0}（要到 {1} 才认得出是你）。远程开会不受影响，面对面开会和上课时可能把你的话当成别人的。用开会的麦克风重录一次声纹就好。": "Dans cette réunion, le score d'empreinte vocale de vos phrases n'était le plus souvent que de {0} (il faut {1} pour vous reconnaître). Les réunions à distance ne sont pas concernées, mais en présentiel et en cours vos phrases peuvent être attribuées à quelqu'un d'autre. Réenregistrez votre empreinte vocale avec le micro que vous utilisez en réunion.",
+ "{0}，点一下改名字": "{0}, cliquer pour renommer"
 }

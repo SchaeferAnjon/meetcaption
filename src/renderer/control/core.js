@@ -796,11 +796,76 @@ function segWho(seg) {
   return seg.who ?? (seg.source === 'mic' ? 'me' : 'other')
 }
 
+// 视频模式的说话人颜色（按 sp 轮着用）
+const SPEAKER_TINTS = ['blue', 'green', 'pink', 'orange', 'purple', 'teal', 'yellow', 'red']
+// 实时记录里分出来的其他人：避开「我」的绿、「对方 / 老师」的蓝、「提问」的琥珀和表示录音、出错的红；第 5 个人起用灰
+const OTHER_TINTS = ['pink', 'purple', 'teal', 'indigo']
+const otherTint = (sp) => OTHER_TINTS[sp] ?? 'gray'
+
 /**
- * 一段字幕：时间、我 / 对方（课堂是老师）、每句原文下面紧跟它的译文。
+ * 说话人标签：我 / 对方（课堂是老师）；分了说话人（Soniox）的是「说话人 2」或改过的名字，每人一个颜色。
+ * 叫「老师」「对方」的那个人（谁当老师会换）不论编号几都用对方的蓝，和没分说话人时一样。
+ * rename 给了（{ sessionId, onDone(speakers, sp, name) }）时分了人的标签是按钮，点一下就地改名，同一场里这个人的句子一起改；
+ * 悬停提示（全名和「点一下改名字」）由列表用 speakerTips 委托挂上。
+ */
+function speakerTag(seg, mode, rename = null) {
+  const who = segWho(seg)
+  const named = who !== 'me' && (seg.sp != null || seg.diar) && seg.speaker
+  const text = named ? seg.speaker : whoLabel(who, mode)
+  if (who === 'me' || seg.sp == null) return el('span.tag', { class: who === 'me' ? 'tag-me' : 'tag-other', text })
+  const lead = text === whoLabel('other', mode)
+  const look = lead ? { class: 'tag-other' } : { dataset: { tint: otherTint(seg.sp) } }
+  if (!rename?.sessionId) return el('span.tag', { ...look, text })
+  const btn = el('button.tag.tline-spk', { type: 'button', ...look, 'aria-label': t('{0}，点一下改名字', text), text })
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    renameSpeakerInline(btn, seg.sp, rename)
+  })
+  return btn
+}
+
+/** 字幕列表上分了人的标签：悬停显示全名（长名字会被截断）和「点一下改名字」。列表常重画，挂在列表上委托。 */
+function speakerTips(list) {
+  ui.tipDelegate(list, '.tline-spk', (b) => ({ title: b.textContent, text: t('点一下改名字') }))
+}
+
+function renameSpeakerInline(btn, sp, { sessionId, onDone }) {
+  const old = btn.textContent
+  const input = el('input.tline-spk-input', { type: 'text', value: old, maxLength: 40, 'aria-label': t('说话人的名字') })
+  btn.replaceWith(input)
+  input.focus()
+  input.select()
+  let done = false
+  const finish = async (save) => {
+    if (done) return
+    done = true
+    const name = input.value.trim()
+    if (save && name && name !== old) {
+      const r = await call('renameSpeaker', sessionId, sp, name)
+      if (failed(r)) ui.toast({ title: t('没能改名'), message: r?.error, type: 'error' })
+      else {
+        btn.textContent = name
+        onDone?.(r.speakers, sp, name)
+      }
+    }
+    // 实时页上这一行可能已经按新名字重画了，输入框不在了就不用换回去
+    if (input.isConnected) input.replaceWith(btn)
+  }
+  input.addEventListener('click', (e) => e.stopPropagation())
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation()
+    if (e.isComposing) return
+    if (e.key === 'Enter') finish(true)
+    if (e.key === 'Escape') finish(false)
+  })
+  input.addEventListener('blur', () => finish(true))
+}
+
+/**
+ * 一段字幕：时间、说话人（speakerTag）、每句原文下面紧跟它的译文。
  * 意群同色、术语两边虚线由 shared/bilingual.js 画。base 给了会议开始时间就显示会议里的位置。
  */
-function lineNode(seg, base, { mode = 'meeting' } = {}) {
+function lineNode(seg, base, { mode = 'meeting', rename = null } = {}) {
   const who = segWho(seg)
   const time = base ? fmtOffset(seg.startedAt - base) : fmtTime(seg.startedAt)
   const pr = chunkPrefs()
@@ -819,7 +884,7 @@ function lineNode(seg, base, { mode = 'meeting' } = {}) {
     'div.tline',
     { class: [who === 'me' ? 'is-me' : 'is-other', seg.final === false ? 'is-live' : '', seg.question ? 'is-question' : '', pr.className], dataset: { id: seg.id, t: String(seg.startedAt ?? 0) } },
     el('span.tline-time.num', { text: time, title: fmtClock(seg.startedAt) }),
-    el('span.tline-who', {}, el('span.tag', { class: who === 'me' ? 'tag-me' : 'tag-other', text: whoLabel(who, mode) })),
+    el('span.tline-who', {}, speakerTag(seg, mode, rename)),
     el('div.tline-main', {}, pairs),
   )
 }

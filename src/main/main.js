@@ -54,6 +54,30 @@ const isMac = process.platform === 'darwin'
 const isWin = process.platform === 'win32'
 
 if (process.env.MEETCAPTION_USERDATA) app.setPath('userData', process.env.MEETCAPTION_USERDATA)
+// E2E=1：测试模式。窗口一个都不上屏幕、不抢焦点（Playwright 通过 CDP 照样能点、能打字、能截图），不占全局快捷键，
+// 打开网页 / 访达、系统对话框、右键菜单都只打印出来
+if (process.env.E2E === '1') {
+  const noop = () => {}
+  for (const m of ['show', 'showInactive', 'focus', 'moveTop']) BrowserWindow.prototype[m] = noop
+  app.focus = noop
+  app.on('browser-window-created', (_e, win) => {
+    win.setOpacity(0)
+    win.setIgnoreMouseEvents(true)
+    win.webContents.setBackgroundThrottling(false)
+  })
+  app.whenReady().then(() => app.dock?.hide())
+  globalShortcut.register = () => true
+  const record = (what) => (...a) => console.log(`[e2e] ${what}`, ...a.filter((x) => typeof x === 'string'))
+  shell.openExternal = async (...a) => record('openExternal')(...a)
+  shell.showItemInFolder = record('showItemInFolder')
+  shell.openPath = async (...a) => (record('openPath')(...a), '')
+  dialog.showMessageBox = async (...a) => (record('showMessageBox')(...a), { response: 0, checkboxChecked: false })
+  dialog.showMessageBoxSync = (...a) => (record('showMessageBoxSync')(...a), 0)
+  dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] })
+  dialog.showSaveDialog = async () => ({ canceled: true })
+  dialog.showErrorBox = record('showErrorBox')
+  Menu.prototype.popup = record('menu.popup')
+}
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 // 从源码跑（electron .）时名字是包名，换成「会议字幕」；打好的包用打包时的名字（开发版叫「MeetCaption 开发版」，数据目录、单实例锁都和正式版分开）
 if (isMac && !app.isPackaged) app.setName('会议字幕')
@@ -1826,18 +1850,26 @@ function wireIpc() {
       return { ok: false, error: err.message }
     }
   })
-  ipcMain.handle('video:renameSpeaker', (_e, id, index, name) => {
+  // 改说话人的名字，这个人的句子一起改：视频的名字在 video.speakers，实时记的在 speakers；正在记录的这一场交给引擎（它管着名字，字幕窗跟着变）
+  const renameSpeaker = (_e, id, index, name) => {
     const clean = String(name ?? '').trim().slice(0, 40)
     if (!clean) return { ok: false, error: t('名字不能是空的') }
-    const s = store.mutate(id, (x) => {
-      const names = x.video?.speakers
-      if (!names || !(index in names)) throw new Error(t('找不到这个说话人'))
-      names[index] = clean
-      for (const seg of x.segments) if (seg.sp === index) seg.speaker = clean
-    })
-    emitSessions({ sessionId: id })
-    return { ok: true, speakers: s.video.speakers }
-  })
+    try {
+      if (engine.state !== 'idle' && engine.session?.id === id) return { ok: true, speakers: engine.renameSpeaker(index, clean) }
+      const s = store.mutate(id, (x) => {
+        const names = x.video?.speakers ?? x.speakers
+        if (!names || !(index in names)) throw new Error(t('找不到这个说话人'))
+        names[index] = clean
+        for (const seg of x.segments) if (seg.sp === index && seg.who !== 'me') seg.speaker = clean
+      })
+      emitSessions({ sessionId: id })
+      return { ok: true, speakers: s.video?.speakers ?? s.speakers }
+    } catch (e) {
+      return { ok: false, error: e.message }
+    }
+  }
+  ipcMain.handle('video:renameSpeaker', renameSpeaker)
+  ipcMain.handle('sessions:renameSpeaker', renameSpeaker)
 
   // 窗口和引导
   ipcMain.handle('window:openSettings', (_e, section) => openSettings(section))

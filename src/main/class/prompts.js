@@ -1,4 +1,4 @@
-import { calendarText, clock, dateLabel, transcriptText } from '../prompts.js'
+import { calendarText, clock, dateLabel, speakersNote, transcriptText } from '../prompts.js'
 import { relativeDayHints } from '../todos.js'
 import { promptLang, writeLang } from '../languages.js'
 import { templateRule, templateWords } from '../templateWords.js'
@@ -27,7 +27,7 @@ export function linesText(lines) {
 const NOTES_ROLE = {
   class: {
     who: '你是课堂笔记助手，用户正在听一节课（多半是英文授课），你边听边帮他整理笔记。',
-    lines: '新增的课堂字幕（[分:秒] 说话人：内容；「老师」是授课老师，「我」是用户）',
+    lines: '新增的课堂字幕（[分:秒] 说话人：内容；「老师」是授课老师，「说话人 2」这类编号或人名是课上发言的其他人（同学等），「我」是用户）',
     background: '课程背景',
     date: '上课日期',
     first: '还没有，这是这节课的第一段。',
@@ -40,7 +40,7 @@ const NOTES_ROLE = {
   },
   meeting: {
     who: '你是会议记录助手，用户正在开会，你边听边帮他整理会议笔记。',
-    lines: '新增的会议字幕（[分:秒] 说话人：内容；「我」是用户，「对方」是会上的其他人）',
+    lines: '新增的会议字幕（[分:秒] 说话人：内容；「我」是用户，「对方」「说话人 1、2」这类编号或人名是会上的其他人）',
     background: '会议背景',
     date: '会议日期',
     first: '还没有，这是这场会的第一段。',
@@ -52,7 +52,7 @@ const NOTES_ROLE = {
   },
   interview: {
     who: '你是面试记录助手，用户正在参加面试，你边听边帮他整理面试笔记，方便他随时看问过什么、答得怎么样。',
-    lines: '新增的面试字幕（[分:秒] 说话人：内容；「我」是用户，「对方」是面试官）',
+    lines: '新增的面试字幕（[分:秒] 说话人：内容；「我」是用户，「对方」「说话人 1、2」这类编号或人名是面试官）',
     background: '面试背景',
     date: '面试日期',
     first: '还没有，这是这场面试的第一段。',
@@ -149,7 +149,7 @@ export function classNotesMessages({ session, project = null, extraAsk = '', sli
   const w = templateWords(out)
   const h = w.class
   const slideNames = allSlides?.length ? allSlides : slides
-  const system = `你是一位细心的课堂笔记助手。用户刚听完一节课，下面是课堂的自动识别稿（可能有识别错误、缺标点；「老师」是授课老师，「我」是用户，我偶尔会在课上提问）。
+  const system = `你是一位细心的课堂笔记助手。用户刚听完一节课，下面是课堂的自动识别稿（可能有识别错误、缺标点；「老师」是授课老师，「我」是用户，我偶尔会在课上提问${speakersNote(session)}）。
 请用${promptLang(out)}写一份课堂笔记，术语、人名、模型名、书名保留原文；公式用 LaTeX（行内用 $...$，单独一行的用 $$...$$）。要求：
 - 只根据识别稿、实时笔记和截图写，不编造；识别稿里念出来的公式（比如 "y i minus theta transpose x i, squared"）还原成 LaTeX；拿不准的标「${w.tbc}」。
 - 时间戳用识别稿里的 [mm:ss]。

@@ -383,6 +383,46 @@ button.nav-section:focus-visible {
   padding: 0 6px;
 }
 
+/* 分了说话人的标签：点一下改名字。有分了人的行时整列放宽，放得下「说话人 12」和四个字的名字 */
+.transcript.has-spk .tline {
+  grid-template-columns: 42px 64px minmax(0, 1fr);
+}
+.tline-spk {
+  max-width: 100%;
+  border: 0;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tline-spk[data-tint]:hover {
+  background: color-mix(in srgb, var(--tint, var(--c-gray)) 26%, transparent);
+}
+.tline-spk.tag-other:hover {
+  background: color-mix(in srgb, var(--other) 22%, transparent);
+}
+.tline-spk:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.tline-spk-input {
+  width: 100%;
+  min-width: 0;
+  height: 19px;
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--field-bg);
+  font-size: var(--fs-xs);
+}
+.tline-spk-input:focus,
+.tline-spk-input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 .tline-text {
   font-size: var(--fs-md);
   line-height: 1.55;

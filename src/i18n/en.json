@@ -1884,5 +1884,6 @@
  "面试官问完就自动回答": "Answer automatically when the interviewer finishes a question",
  "和开会分开设。开会、面试途中在 AI 回答栏顶上也能直接开关。": "Set separately from meetings. During a meeting or interview you can also switch it at the top of the AI answers panel.",
  "开会的时候我一般先讲上周做完了什么，再说遇到的问题，最后商量下一步怎么安排。": "In meetings I usually start with what I finished last week, then the problems I ran into, and finally we agree on the next steps.",
- "这场会里你说的话，声纹打分大多只有 {0}（要到 {1} 才认得出是你）。远程开会不受影响，面对面开会和上课时可能把你的话当成别人的。用开会的麦克风重录一次声纹就好。": "In this meeting your voiceprint scores were mostly only {0} (it needs {1} to recognize you). Remote meetings are not affected, but in person and in class your lines may be taken for someone else's. Record your voiceprint again with the microphone you use for meetings."
+ "这场会里你说的话，声纹打分大多只有 {0}（要到 {1} 才认得出是你）。远程开会不受影响，面对面开会和上课时可能把你的话当成别人的。用开会的麦克风重录一次声纹就好。": "In this meeting your voiceprint scores were mostly only {0} (it needs {1} to recognize you). Remote meetings are not affected, but in person and in class your lines may be taken for someone else's. Record your voiceprint again with the microphone you use for meetings.",
+ "{0}，点一下改名字": "{0}, click to rename"
 }

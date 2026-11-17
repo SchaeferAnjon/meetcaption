@@ -114,7 +114,8 @@ function visibleSegments() {
 // 按句子排：每句原文下面紧跟它的译文。放不下时从最上面整句移走，不出现半行。
 function sentenceItems(list) {
   const items = []
-  const mixed = config.showMic && list.some(isMine)
+  // 有我的话、或者这一场分出过不止一个别人（Soniox 分说话人）：每段前面写是谁
+  const mixed = (config.showMic && list.some(isMine)) || seenOthers.size > 1
   for (const seg of list) {
     const sentences = seg.sentences?.length ? seg.sentences : [{ text: seg.text }]
     const mine = isMine(seg)
@@ -127,14 +128,23 @@ function sentenceItems(list) {
         live: !seg.final && last,
         mine,
         speaker: mixed && i === 0 ? speakerLabel(seg, mine) : '',
+        tint: mixed && i === 0 && !mine ? speakerTint(seg) : '',
       })
     })
   }
   return items.slice(-16)
 }
 
+// 分出来的其他人和主窗口同一个颜色（control/core.js 的 OTHER_TINTS）；叫老师 / 对方的那个人用默认的蓝
+const OTHER_TINTS = ['pink', 'purple', 'teal', 'indigo']
+function speakerTint(seg) {
+  if (seg.sp == null || !seg.speaker || seg.speaker === (config.mode === 'class' ? t('老师') : t('对方'))) return ''
+  return OTHER_TINTS[seg.sp] ?? 'gray'
+}
+
 function speakerLabel(seg, mine) {
   if (mine) return t('我')
+  if (seg.sp != null && seg.speaker) return seg.speaker // 分了说话人：「说话人 2」或改过的名字
   if (config.mode === 'class') return t('老师')
   return seg.speaker && seg.speaker !== '我' ? seg.speaker : t('对方')
 }
@@ -153,14 +163,15 @@ function itemNode(it) {
   const cls = `seg${it.live ? ' live' : ''}${it.mine ? ' mine' : ''}`
   if (n.el.className !== cls) n.el.className = cls
   const opts = { colors: chunkPrefs().colors, terms: termsOn(), key: `${it.key}@` }
-  const sig = `${bi.signature(it.sen, opts)}|${it.speaker}|${it.showTr}|${it.sen.prov ? 'prov' : ''}`
+  const sig = `${bi.signature(it.sen, opts)}|${it.speaker}|${it.tint}|${it.showTr}|${it.sen.prov ? 'prov' : ''}`
   if (sig === n.sig) return n.el
   n.sig = sig
   const r = bi.render(it.sen, opts)
   const kids = []
   if (it.speaker) {
     const sp = document.createElement('span')
-    sp.className = 'speaker'
+    sp.className = it.tint ? 'speaker tinted' : 'speaker'
+    if (it.tint) sp.style.setProperty('--tint', `var(--c-${it.tint})`)
     sp.textContent = it.speaker
     kids.push(sp)
   }
@@ -387,7 +398,12 @@ document.addEventListener('visibilitychange', () => {
   hideTip()
 })
 
+// 这一场里出现过的别人（分了说话人的按 sp，没分的算一个）：出现过两个人以后名字一直显示，不跟着滚出去的那段一起消失
+const seenOthers = new Set()
+const noteOther = (seg) => seg.text && !isMine(seg) && seenOthers.add(seg.sp ?? '')
+
 function upsert(seg) {
+  noteOther(seg)
   if (!seg.text && segments.has(seg.id)) segments.delete(seg.id)
   else if (seg.text) segments.set(seg.id, seg)
   if (segments.size > 40) {
@@ -402,7 +418,8 @@ api.onConfig(applyConfig)
 api.onSegment(upsert)
 api.onSegments((list) => {
   segments.clear()
-  for (const s of list) segments.set(s.id, s)
+  seenOthers.clear()
+  for (const s of list) segments.set(s.id, s), noteOther(s)
   lastActivity = list.length ? Date.now() : 0
   render()
 })

@@ -122,6 +122,12 @@ body {
   background: rgba(90, 169, 255, 0.2);
 }
 
+/* 分说话人时其他人各自的颜色（和主窗口的标签同色） */
+.speaker.tinted {
+  color: color-mix(in oklab, var(--tint), white 35%);
+  background: color-mix(in srgb, var(--tint) 22%, transparent);
+}
+
 .seg.mine .speaker {
   color: #86e3ae;
   background: rgba(63, 207, 127, 0.2);

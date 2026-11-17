@@ -40,6 +40,7 @@ End-to-end without devices: add `--fake-system=a.wav --fake-mic=b.wav` to `--sel
 
 ## Environment variables
 
+- `E2E=1`: test mode. No window ever appears on screen or takes focus (drive it with Playwright's `_electron.launch`; clicks, typing and screenshots work through CDP), global shortcuts are not registered, and opening links, Finder, system dialogs and context menus only print what they would have done.
 - `MEETCAPTION_USERDATA=<folder>`: keep settings, voiceprint and sign-ins in a test folder instead of your own data.
 - `MEETCAPTION_API=<url>`: point the membership client at another backend.
 - `MEETCAPTION_UPDATE_URL=<url>`: check a local update server (a folder with `latest-mac.yml` and the zip) instead of GitHub, to test automatic updates with a packaged build.
@@ -56,6 +57,7 @@ End-to-end without devices: add `--fake-system=a.wav --fake-mic=b.wav` to `--sel
 - `src/main/i18n.js`, `src/renderer/shared/i18n.js`, `src/i18n/`: interface languages, keyed by the Simplified Chinese source text
 - `src/main/languages.js`: the 60 recognition and translation languages
 - `src/main/engine.js`: capture, recognition, sentences, me/other, translation and terms, answers, saving
+- `src/main/diarize.js`: live speaker labels with Soniox: maps Soniox speaker numbers (they restart on every new connection) to people by voiceprint, names them "Speaker 1, 2, 3" or "Teacher" (the one who talks most in class), keeps names the user typed
 - `src/main/llm/`: ChatGPT sign-in and OpenAI-compatible providers
 - `src/renderer/`: captions window, answer card, main window, settings, onboarding and the shared design system
 
