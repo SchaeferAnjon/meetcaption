@@ -41,7 +41,10 @@ export const searchQuery = (q) => [...String(q ?? '').replace(/\s+/g, ' ').trim(
 export async function webSearch(cfg, query, { askId = '', signal, timeoutMs = cfg.member ? TIMEOUT.member : TIMEOUT.own, fetch: f = globalThis.fetch } = {}) {
   const q = searchQuery(query)
   if (!q) throw new SearchError('搜索词是空的')
-  const timeout = AbortSignal.timeout(timeoutMs)
+  // 用普通的 setTimeout 计时：AbortSignal.timeout 的计时器不拦着进程退出（Node 22 的单测里会在等超时的时候直接收场）
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(new DOMException('timeout', 'TimeoutError')), timeoutMs)
+  const timeout = ctrl.signal
   let res
   try {
     res = await f(cfg.url, {
@@ -52,9 +55,11 @@ export async function webSearch(cfg, query, { askId = '', signal, timeoutMs = cf
     })
   } catch (e) {
     if (signal?.aborted) throw e
+    clearTimeout(timer)
     throw new SearchError(timeout.aborted ? 'timeout' : (e.cause?.code ?? e.message))
   }
   const text = await res.text().catch(() => '')
+  clearTimeout(timer)
   if (!res.ok) throw new SearchError(`HTTP ${res.status} ${text.slice(0, 200)}`, res.status)
   let data
   try {
