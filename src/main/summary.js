@@ -14,6 +14,7 @@ import { t } from './i18n.js'
 // 会后纪要：先流式生成纪要（知道这场会属于哪个项目，也知道其他项目），存盘；
 // 再做一次结构化提取，把待办和 DDL 标到各自的项目，存进 session.summary.items。
 // 课堂会议（session.mode === 'class'）用课堂笔记的 prompt，带最近 6 张截图；作业提取出来全部归到这节课的项目。
+// 会议、面试有截图（手动截的、录屏里自动截的）时纪要也带上，让模型在讲到的地方引用。
 // 课堂笔记写完还出一份图文版（课堂笔记.html，notesHtml.js）：有课件时和作业提取同时让模型把老师讲的点对到课件的行上（slideMap）。
 // 事件：'progress' { id, phase: 'summary' | 'items' | 'html', text }，'saved' { id, items: boolean }
 
@@ -55,6 +56,27 @@ export function dropMissingImages(markdown, dir) {
   return markdown
     .replace(new RegExp(`^[ \\t]*${IMG.source}[ \\t]*(?:\\n|$)`, 'gm'), (all, src) => (exists(src) ? all : ''))
     .replace(IMG, (all, src) => (exists(src) ? all : ''))
+}
+
+/** 截图多不多：视频、录屏里自动截的画面可能有几十张，这时只给模型看一部分，其余的只给文件名和时间。 */
+export function manySlides(session) {
+  return Boolean(session.video) || (session.slides ?? []).some((x) => x?.source === 'recording')
+}
+
+const evenly = (list, n) => (list.length <= n ? list : Array.from({ length: n }, (_, i) => list[Math.round((i * (list.length - 1)) / Math.max(1, n - 1))]))
+
+/**
+ * 附给模型看的截图（按时间排）：只有手动截的就是最近 6 张；视频里自动截的均匀挑 8 张；
+ * 录屏里自动截的和手动截的都有时，手动截的（用户特意截的）先放进去（最多 6 张），剩下的位置从自动截的里均匀挑，一共不超过 8 张（至少挑 2 张自动的）。
+ */
+export function pickSlides(session) {
+  const all = (Array.isArray(session.slides) ? session.slides : []).filter((x) => x?.file)
+  if (session.video) return all.length > MAX_VIDEO_SLIDES ? evenly(all, MAX_VIDEO_SLIDES) : all.slice(-MAX_SLIDES)
+  const auto = all.filter((x) => x.source === 'recording')
+  if (!auto.length) return all.slice(-MAX_SLIDES)
+  const manual = all.filter((x) => x.source !== 'recording').slice(-MAX_SLIDES)
+  const picked = evenly(auto, Math.max(2, MAX_VIDEO_SLIDES - manual.length))
+  return [...manual, ...picked].sort((a, b) => a.at - b.at)
 }
 
 const MAX_CONTINUE = 4
@@ -115,11 +137,9 @@ export class Summarizer extends EventEmitter {
     return { project, projects: all }
   }
 
-  // 最近 6 张截图：[{ file, at, dataUrl }]，读不到的跳过
+  // 附给模型看的截图：[{ file, at, dataUrl }]，读不到的跳过（挑哪几张见 pickSlides）
   #slides(session) {
-    const all = (Array.isArray(session.slides) ? session.slides : []).filter((x) => x?.file)
-    // 视频里自动截的画面可能有几十张：均匀挑出几张给模型看
-    const list = session.video && all.length > MAX_VIDEO_SLIDES ? Array.from({ length: MAX_VIDEO_SLIDES }, (_, i) => all[Math.round((i * (all.length - 1)) / (MAX_VIDEO_SLIDES - 1))]) : all.slice(-MAX_SLIDES)
+    const list = pickSlides(session)
     const out = []
     let dir = null
     try {
@@ -160,15 +180,17 @@ export class Summarizer extends EventEmitter {
             pages.push(this.loadImage(x.file))
           } catch {}
         }
-        const [sys, user] = classNotesMessages({ session, project, extraAsk, slides, allSlides: session.video ? session.slides : null, liveNotes: session.liveNotes ?? null, materials })
+        const [sys, user] = classNotesMessages({ session, project, extraAsk, slides, allSlides: manySlides(session) ? session.slides.filter((x) => x?.file) : null, liveNotes: session.liveNotes ?? null, materials })
         system = sys
         const text = user.content + answersNote(session)
         const images = [...slides.map((x) => x.dataUrl), ...pages]
         content = images.length ? [{ type: 'text', text }, ...images.map((dataUrl) => ({ type: 'image', dataUrl }))] : text
       } else {
-        const [sys, user] = summaryMessages({ session, project, projects, extraAsk })
+        const slides = this.#slides(session)
+        const [sys, user] = summaryMessages({ session, project, projects, extraAsk, slides, allSlides: manySlides(session) ? session.slides.filter((x) => x?.file) : null })
         system = sys
-        content = user.content + answersNote(session)
+        const text = user.content + answersNote(session)
+        content = slides.length ? [{ type: 'text', text }, ...slides.map((x) => ({ type: 'image', dataUrl: x.dataUrl }))] : text
       }
       // 全局约定不许破折号：prompt 里说了模型偶尔还是会写，流式和存盘前都换掉；编出来的图片（会话文件夹里没有这个文件）也一样去掉
       const clean = (text) => dropMissingImages(noDashes(text), this.store.dir(id))

@@ -449,7 +449,12 @@ function lineAt(lines, ms) {
 function videoView(ctx, s0, opts = {}) {
   let s = s0
   let lines = videoLines(s)
-  const slides = () => [...(s.slides ?? [])].filter((x) => x.file).map((x) => ({ ...x, ms: x.at - s.startedAt })).sort((a, b) => a.ms - b.ms)
+  // 视频模式是一段从 0 开始的视频；记录时录的屏是好几段（clips.js）。播放器里的时间都是这一场里的毫秒
+  const recorded = !s.video
+  let clips = videoClips(s)
+  let ci = 0 // 正在放第几段
+  const inClips = (ms) => clipSeekable(clips, ms) != null
+  const slides = () => [...(s.slides ?? [])].filter((x) => x.file).map((x) => ({ ...x, ms: x.at - s.startedAt })).filter((x) => !recorded || inClips(x.ms)).sort((a, b) => a.ms - b.ms)
   const listeners = new Set() // (ms, idx) → void
   let subsOn = store(SUBS_KEY) !== '0'
   let wide = false // 看笔记时视频缩小，画面字幕让位给下面的「正在说」
@@ -472,22 +477,46 @@ function videoView(ctx, s0, opts = {}) {
   const ticks = el('div.vm-ticks')
   const scrub = el('div.vm-scrub', { role: 'slider', tabindex: 0, 'aria-label': t('播放进度') }, el('i.vm-tr'), played, ticks, knob)
   const ctrl = el('div.vm-ctrl', {}, scrub, el('div.vm-ctrl-row', {}, playBtn, time, el('span.vm-grow'), rateBtn, subsBtn))
+  // 录了好几段屏：一段一个按钮，写着它在这一场里的起止时间，点一下切过去
+  const clipBar = el('div.vm-clips', { hidden: !recorded, role: 'tablist', 'aria-label': t('录屏分段') })
   const player = el('div.vm-player', {}, frame, ctrl)
 
-  const dur = () => (Number.isFinite(video.duration) && video.duration > 0 ? video.duration * 1000 : s.video?.durationMs ?? 0)
-  const now = () => video.currentTime * 1000
+  const clip = () => clips[ci] ?? { start: 0, end: null }
+  // 这一段有多长（毫秒）
+  const dur = () => (Number.isFinite(video.duration) && video.duration > 0 ? video.duration * 1000 : recorded ? Math.max(0, (clip().end ?? 0) - clip().start) : s.video?.durationMs ?? 0)
+  // 现在放到这一场的第几毫秒
+  const now = () => clip().start + video.currentTime * 1000
 
   function drawTicks() {
-    ticks.replaceChildren(...slides().map((x) => el('i.vm-tk', { style: { left: `${Math.min(100, (x.ms / (dur() || 1)) * 100)}%` } })))
+    const c = clip()
+    ticks.replaceChildren(
+      ...slides()
+        .filter((x) => !recorded || (x.ms >= c.start - 1500 && (c.end == null || x.ms <= c.end)))
+        .map((x) => el('i.vm-tk', { style: { left: `${Math.max(0, Math.min(100, ((x.ms - c.start) / (dur() || 1)) * 100))}%` } })),
+    )
+  }
+
+  function drawClips() {
+    clipBar.hidden = !recorded || !clips.length
+    clipBar.replaceChildren(
+      ...clips.map((c, i) =>
+        el(
+          'button.vm-clip',
+          { type: 'button', role: 'tab', 'aria-selected': String(i === ci), onClick: () => seek(c.start, true) },
+          el('span.vm-clip-n', { text: t(`录屏 {0}`, c.n) }),
+          el('span.vm-clip-t.num', { text: c.end != null ? `${fmtOffset(c.start)}–${fmtOffset(c.end)}` : fmtOffset(c.start) }),
+        ),
+      ),
+    )
   }
 
   function sync() {
     const ms = now()
     const d = dur()
-    const f = d ? ms / d : 0
+    const f = d ? Math.min(1, (ms - clip().start) / d) : 0
     played.style.width = `${f * 100}%`
     knob.style.left = `${f * 100}%`
-    time.textContent = `${fmtOffset(ms)} / ${fmtOffset(d)}`
+    time.textContent = `${fmtOffset(ms)} / ${fmtOffset(clip().start + d)}`
     const i = lineAt(lines, ms)
     const cur = i >= 0 && ms <= lines[i].end + 800 ? lines[i] : null
     if (subsOn && cur && !wide) {
@@ -504,11 +533,41 @@ function videoView(ctx, s0, opts = {}) {
     frame.classList.toggle('is-playing', on)
   }
 
+  // 换到第 i 段：换视频文件，等它读出长度再跳
+  let loading = null
+  function useClip(i) {
+    if (i === ci && video.getAttribute('src')) return loading ?? Promise.resolve()
+    ci = i
+    msg.hidden = true
+    big.hidden = false
+    video.src = fileUrl(clips[i].file)
+    drawClips()
+    loading = new Promise((resolve) => {
+      const done = () => (video.removeEventListener('loadedmetadata', done), video.removeEventListener('error', done), (loading = null), resolve())
+      video.addEventListener('loadedmetadata', done)
+      video.addEventListener('error', done)
+    })
+    return loading
+  }
+
   const toggle = () => (video.paused ? video.play().catch(() => {}) : video.pause())
+  /** 跳到这一场的第 ms 毫秒（录了屏的：在哪一段就切到哪一段）。这一刻没在录屏回 false。 */
   function seek(ms, play = false) {
-    video.currentTime = Math.max(0, Math.min(ms, Math.max(0, dur() - 50))) / 1000
-    if (play) video.play().catch(() => {})
-    sync()
+    let i = 0
+    if (recorded) {
+      const at = clipSeekable(clips, ms)
+      if (at == null) return false
+      ms = at
+      i = clipIndexAt(clips, ms)
+    }
+    const go = () => {
+      video.currentTime = Math.max(0, Math.min(ms - clip().start, Math.max(0, dur() - 50))) / 1000
+      if (play) video.play().catch(() => {})
+      sync()
+    }
+    if (i !== ci || !video.getAttribute('src')) useClip(i).then(go)
+    else go()
+    return true
   }
   const failMsg = (text) => ((msg.textContent = text), (msg.hidden = false), (big.hidden = true))
   video.addEventListener('timeupdate', sync)
@@ -518,16 +577,21 @@ function videoView(ctx, s0, opts = {}) {
   video.addEventListener('loadedmetadata', () => {
     drawTicks()
     sync()
-    if (hasPicture && s.video?.hasVideo && !video.videoWidth) failMsg(t('这个视频的画面放不出来（编码不支持），声音和字幕照常。'))
+    if (hasPicture && (recorded || s.video?.hasVideo) && !video.videoWidth) failMsg(t('这个视频的画面放不出来（编码不支持），声音和字幕照常。'))
   })
-  video.addEventListener('error', () => failMsg(t('视频读不出来：文件可能被挪走或删掉了。字幕和笔记还在。')))
-  video.addEventListener('ended', () => setPlaying(false))
+  video.addEventListener('error', () => failMsg(recorded ? t('录屏读不出来：文件可能被挪走或删掉了。字幕和笔记还在。') : t('视频读不出来：文件可能被挪走或删掉了。字幕和笔记还在。')))
+  // 一段放完接着放下一段
+  video.addEventListener('ended', () => {
+    if (recorded && ci + 1 < clips.length) seek(clips[ci + 1].start, true)
+    else setPlaying(false)
+  })
   playBtn.addEventListener('click', toggle)
   big.addEventListener('click', toggle)
   frame.addEventListener('click', (e) => (e.target === video || e.target === frame) && toggle())
   rateBtn.addEventListener('click', () => {
     const next = RATES[(RATES.indexOf(video.playbackRate) + 1) % RATES.length]
     video.playbackRate = next
+    video.defaultPlaybackRate = next
     rateBtn.textContent = `${next}×`
   })
   subsBtn.addEventListener('click', () => {
@@ -538,7 +602,7 @@ function videoView(ctx, s0, opts = {}) {
   })
   const scrubTo = (e) => {
     const r = scrub.getBoundingClientRect()
-    seek(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * dur())
+    seek(clip().start + Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * dur())
   }
   scrub.addEventListener('pointerdown', (e) => {
     scrub.setPointerCapture(e.pointerId)
@@ -547,25 +611,28 @@ function videoView(ctx, s0, opts = {}) {
   })
   scrub.addEventListener('pointerup', () => (scrub.onpointermove = null))
   scrub.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft') (e.preventDefault(), seek(now() - 5000))
-    else if (e.key === 'ArrowRight') (e.preventDefault(), seek(now() + 5000))
+    const c = clip()
+    const keep = (ms) => Math.max(c.start, Math.min(ms, c.start + dur()))
+    if (e.key === 'ArrowLeft') (e.preventDefault(), seek(keep(now() - 5000)))
+    else if (e.key === 'ArrowRight') (e.preventDefault(), seek(keep(now() + 5000)))
   })
   const onKey = (e) => {
     if (e.key !== ' ' || e.isComposing || e.metaKey || e.ctrlKey) return
     const a = document.activeElement
     if (a && (a.matches?.('input, textarea, select, [contenteditable]') || (a.closest?.('.tabs, .menu, .modal') ?? null))) return
-    if (a && a !== document.body && !a.closest?.('.vm-player, .vm-lines')) return
+    if (a && a !== document.body && !a.closest?.('.vm-player, .vm-lines, .vm-clips')) return
     e.preventDefault()
     toggle()
   }
   document.addEventListener('keydown', onKey)
   setPlaying(false)
-  video.src = fileUrl(s.video.file)
+  if (clips.length) useClip(0)
+  else failMsg(recorded ? t('录屏读不出来：文件可能被挪走或删掉了。字幕和笔记还在。') : t('视频读不出来：文件可能被挪走或删掉了。字幕和笔记还在。'))
   video.addEventListener('loadeddata', () => (video.currentTime = Math.min(video.currentTime, 0)), { once: true })
 
   /* 自动截的画面：一排缩略图，点一下跳过去 */
   const strip = el('div.vm-frames', { hidden: true })
-  const cap = el('div.vm-cap', { hidden: true }, icon('image', 14), el('b', { text: t('自动截的画面') }), el('span.vm-hint', { text: t('画面一变就截一张，点一下跳过去') }))
+  const cap = el('div.vm-cap', { hidden: true }, icon('image', 14), el('b', { text: recorded ? t('录屏里的画面') : t('自动截的画面') }), el('span.vm-hint', { text: recorded ? t('画面一变就截一张，手动截的也在，点一下跳过去') : t('画面一变就截一张，点一下跳过去') }))
   function drawFrames() {
     const list = slides()
     cap.hidden = strip.hidden = !list.length
@@ -582,6 +649,7 @@ function videoView(ctx, s0, opts = {}) {
     for (const b of strip.children) b.classList.toggle('is-on', b === on)
   })
   drawFrames()
+  drawClips()
 
   /* 宽模式下视频下面「正在说」 */
   const nowBox = el('div.vm-now', { hidden: true }, el('div.vm-cap', {}, icon('captions', 14), el('b', { text: t('正在说') })), el('div.vm-now-o'), el('div.vm-now-z'))
@@ -593,7 +661,7 @@ function videoView(ctx, s0, opts = {}) {
     nowO.classList.toggle('is-quiet', !cur)
   })
 
-  const left = el('div.vm-left', {}, player, cap, strip, nowBox)
+  const left = el('div.vm-left', {}, player, clipBar, cap, strip, nowBox)
 
   /* 右边的字幕列表：点一句跳到那一句并播放，播放时这一句高亮、列表跟着滚 */
   function renderTranscript(panel) {
@@ -701,6 +769,7 @@ function videoView(ctx, s0, opts = {}) {
 
   /** 笔记里的 [mm:ss]、截图点一下回到视频那一刻 */
   function decorate(root) {
+    if (recorded) return decorateInline(root)
     for (const h of root.querySelectorAll('h2, h3, li, p')) {
       const node = h.firstChild
       if (!node || node.nodeType !== 3) continue
@@ -720,6 +789,37 @@ function videoView(ctx, s0, opts = {}) {
     }
   }
 
+  // 录了屏的会议纪要、课堂笔记：时间写在句子中间（「原话："…" [12:03]」）、表格里，都换成能点的时间；落在录屏里的才换
+  function decorateInline(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => (/\[\d{1,2}:\d{2}/.test(n.nodeValue) && !n.parentElement?.closest('code, pre, button, a, .katex') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+    })
+    const nodes = []
+    while (walker.nextNode()) nodes.push(walker.currentNode)
+    for (const node of nodes) {
+      const text = node.nodeValue
+      const out = []
+      let last = 0
+      for (const m of text.matchAll(/\[(\d{1,2}:\d{2}(?::\d{2})?)\]/g)) {
+        const parts = m[1].split(':').map(Number)
+        const ms = (parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1]) * 1000
+        if (!inClips(ms)) continue
+        out.push(text.slice(last, m.index), el('button.vm-tchip', { type: 'button', title: t('回到录屏这一刻'), onClick: () => seek(ms, true) }, icon('play', 10), m[1]))
+        last = m.index + m[0].length
+      }
+      if (!out.length) continue
+      out.push(text.slice(last))
+      node.replaceWith(...out.filter((x) => x !== ''))
+    }
+    for (const img of root.querySelectorAll('img.prose-slide')) {
+      const file = (img.getAttribute('src') || '').split('/').pop()
+      const slide = slides().find((x) => x.file.endsWith(file))
+      if (!slide) continue
+      img.title = t(`回到录屏 {0}`, fmtOffset(slide.ms))
+      img.addEventListener('click', (e) => (e.stopImmediatePropagation(), seek(slide.ms, true)), true)
+    }
+  }
+
   return {
     left,
     seek,
@@ -727,6 +827,14 @@ function videoView(ctx, s0, opts = {}) {
     video,
     renderTranscript,
     decorate,
+    /** 这一场的第 ms 毫秒有没有录屏（能不能跳过去）。 */
+    canSeek: (ms) => !recorded || inClips(ms),
+    /** 播放时每次时间变了回调 (ms) → void；返回取消函数。 */
+    onTime(fn) {
+      listeners.add(fn)
+      return () => listeners.delete(fn)
+    },
+    playing: () => !video.paused,
     setWide(on) {
       wide = on
       nowBox.hidden = !on
@@ -736,6 +844,11 @@ function videoView(ctx, s0, opts = {}) {
     update(next) {
       s = next
       lines = videoLines(s)
+      if (recorded) {
+        clips = videoClips(s)
+        ci = Math.min(ci, Math.max(0, clips.length - 1))
+        drawClips()
+      }
       drawFrames()
       drawTicks()
       sync()

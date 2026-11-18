@@ -530,6 +530,7 @@ function buildHotkeys() {
       P.row(t('开始 / 停止记录'), P.hotkeyRecorder('hotkeyRecord', { def: 'CommandOrControl+Alt+R', label: t('开始 / 停止记录') }), t('不用切回主窗口：没在记录就在当前项目里开始，正在记录就停止。')),
       P.row(t('回答刚才的问题'), P.hotkeyRecorder('assist.hotkeyAsk', { def: 'CommandOrControl+Alt+A', label: t('回答刚才的问题') }), askHint),
       P.row(t('截取画面'), P.hotkeyRecorder('class.hotkeySlide', { def: 'CommandOrControl+Alt+P', label: t('截取画面') }), t('记录时把当前屏幕（会上共享的内容、网课课件）存进这场会议，开会和上课都能用。')),
+      P.row(t('开始 / 停止录屏'), P.hotkeyRecorder('hotkeyScreen', { def: 'CommandOrControl+Alt+M', label: t('开始 / 停止录屏') }), t('记录时按一下开始录鼠标所在的那块屏幕，再按一下停止；录下的视频和这场的记录放在同一个文件夹里。')),
     ),
     P.section(
       t('主窗口里'),

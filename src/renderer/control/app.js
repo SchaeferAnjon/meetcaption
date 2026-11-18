@@ -210,6 +210,15 @@ function wireEvents() {
   })
   subscribe('notes:update', onNotes)
   subscribe('slides:added', onSlide)
+  subscribe('screenrec:state', (st) => {
+    state.screenRec = { ...state.screenRec, ...st }
+    emit('screenrec', state.screenRec)
+  })
+  subscribe('recording:progress', (p) => {
+    if (p.done) state.recFrames.delete(p.sessionId)
+    else state.recFrames.set(p.sessionId, p)
+    emit('rec-frames', p)
+  })
   subscribe('materials:progress', (p) => emit('materials', p))
 }
 
@@ -301,6 +310,11 @@ async function boot() {
   wireMember(init)
   if (init.openPricing) openPricing(init.openPricing)
 
+  if (init.screenRec) {
+    const { frames, ...st } = init.screenRec
+    state.screenRec = { ...state.screenRec, ...st }
+    for (const p of frames ?? []) state.recFrames.set(p.sessionId, p)
+  }
   if (init.video?.running) state.video = { running: true, name: init.video.name, progress: init.video.progress ?? null }
   const snap = init.snapshot ?? { state: 'idle', segments: [] }
   const sess = snap.session ?? {}

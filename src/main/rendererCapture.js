@@ -6,12 +6,28 @@ import { micLabel } from './micLabel.js'
 // 页面用 AudioContext 直接按识别需要的采样率重采样，AudioWorklet 攒 100ms 一包 16 位 PCM 发回主进程。
 
 let displayHandlerInstalled = false
+// 别的隐藏窗口也要 getDisplayMedia 时按页面地址分开：录屏窗口（renderer/recorder）要的是鼠标所在那块屏幕的画面，不要声音
+const displayRoutes = new Map() // 页面地址里的一段 → () => Promise<屏幕 source | null>
+
+/** 页面地址含 urlPart 的窗口调 getDisplayMedia 时，给它 pick() 选的那块屏幕（只有画面）。 */
+export function routeDisplayMedia(urlPart, pick) {
+  displayRoutes.set(urlPart, pick)
+  installDisplayMediaHandler()
+}
 
 function installDisplayMediaHandler() {
   if (displayHandlerInstalled) return
   displayHandlerInstalled = true
   session.defaultSession.setDisplayMediaRequestHandler(
-    (_request, callback) => {
+    (request, callback) => {
+      const url = String(request.frame?.url ?? '')
+      for (const [part, pick] of displayRoutes) {
+        if (!url.includes(part)) continue
+        Promise.resolve(pick())
+          .then((source) => callback(source ? { video: source } : {}))
+          .catch(() => callback({}))
+        return
+      }
       desktopCapturer
         .getSources({ types: ['screen'] })
         .then((sources) => callback(sources.length ? { video: sources[0], audio: 'loopback' } : {}))

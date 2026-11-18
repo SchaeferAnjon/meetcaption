@@ -50,6 +50,8 @@ const EVENTS = new Set([
   'video:done', // { sessionId, name, partial, notesError, translateFailed, usage, timings, sessions }
   'video:failed', // { name, cancelled, error, code }
   'video:open', // 点系统通知：打开这个视频的结果页 { sessionId }
+  'screenrec:state', // 录屏开关 { sessionId, on, recording, starting, startAt（正在录的这段从什么时候开始）, count（这一场录了几段）, totalMs }
+  'recording:progress', // 停止记录后从录屏里截画面的进度 { sessionId, total, index, fraction, done, added }
   'slides:added', // 截取了一张画面 { sessionId, file: 'slides/时.分.秒.jpg', at（截图时刻，毫秒时间戳，同 seg.startedAt）, url（file:// 地址）}
 ])
 
@@ -61,6 +63,7 @@ contextBridge.exposeInMainWorld('app', {
   updateSettings: invoke('settings:update'),
   start: invoke('engine:start'), // start({ projectId, mode: 'meeting'|'interview'|'class', classSource: 'mic'|'system' })，都可以不给
   captureSlide: invoke('class:captureSlide'), // → { file, at, url } | { error, code }
+  screenRecToggle: invoke('screenrec:toggle'), // (on?) 开 / 关录屏，不给就切换 → { ok, ...录屏状态 } | { ok: false, error, code }
   exportNotes: invoke('notes:export'),
   openNotesHtml: invoke('notes:openHtml'), // (sessionId) → { ok, htmlError } 用浏览器打开图文版课堂笔记，没有就先做
   buildNotesHtml: invoke('notes:buildHtml'), // (sessionId) → { ok, html, htmlError } 重做图文版课堂笔记

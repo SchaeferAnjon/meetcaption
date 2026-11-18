@@ -59,6 +59,7 @@ End-to-end without devices: add `--fake-system=a.wav --fake-mic=b.wav` to `--sel
 - `src/main/engine.js`: capture, recognition, sentences, me/other, translation and terms, answers, saving
 - `src/main/diarize.js`: live speaker labels with Soniox: maps Soniox speaker numbers (they restart on every new connection) to people by voiceprint, names them "Speaker 1, 2, 3" or "Teacher" (the one who talks most in class), keeps names the user typed
 - `src/main/llm/`: ChatGPT sign-in and OpenAI-compatible providers
+- `src/main/recording/`, `src/renderer/recorder/`: screen recording while recording a meeting or class: the display under the mouse at 30 fps with the two caption audio sources mixed in, written chunk by chunk to `recordings/录屏-N.mp4` in the session folder (`session.recordings`); after stopping, frames where the picture changes go into `session.slides` (`source: 'recording'`)
 - `src/renderer/`: captions window, answer card, main window, settings, onboarding and the shared design system
 
 ## README images

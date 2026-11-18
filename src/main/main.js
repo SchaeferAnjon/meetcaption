@@ -45,6 +45,8 @@ import { renderPdf } from './class/pdfRender.js'
 import { ClassAsk } from './class/ask.js'
 import { VideoService } from './video/service.js'
 import { VideoWorker } from './video/worker.js'
+import { ScreenRecorder } from './recording/recorder.js'
+import { ScreenRecording } from './recording/controller.js'
 import { DROP_EXTS } from './video/demux.js'
 import { toSrt, writeSrtBesideVideo, SRT_VARIANTS } from './video/srt.js'
 import { setUiLang, systemUiLang, t, uiDict, uiLang } from './i18n.js'
@@ -67,7 +69,7 @@ const selfTest = process.argv.find((a) => a.startsWith('--selftest'))
 const uiSelfTest = selfTest?.startsWith('--selftest=ui') ? Number(selfTest.split(':')[1]) || 8 : 0
 if (!selfTest && !app.requestSingleInstanceLock()) app.quit()
 
-let settings, projects, store, summarizer, classAsk, engine, capture, chatgptAuth, assistant, vpStore, member, videoService
+let settings, projects, store, summarizer, classAsk, engine, capture, chatgptAuth, assistant, vpStore, member, videoService, screenRec
 let controlWin = null
 let settingsWin = null
 let onboardingWin = null
@@ -79,6 +81,7 @@ let editMode = false
 let hotkeyError = null
 let askHotkeyError = null
 let slideHotkeyError = null
+let screenHotkeyError = null
 let recordHotkeyError = null
 let hotkeyNotice = null // 默认快捷键换成了备选：启动时主窗口还没建好，等它加载完再提示
 let classAnswered = false // 课堂上默认不出答题框，按快捷键答过一次才出
@@ -441,7 +444,7 @@ function createOverlay() {
   overlayWin.setAlwaysOnTop(true, 'screen-saver')
   overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true })
   overlayWin.setIgnoreMouseEvents(true)
-  overlayWin.setContentProtection(settings.get().hideFromScreenShare)
+  overlayWin.setContentProtection(settings.get().hideFromScreenShare || protectHolds > 0)
   lockNavigation(overlayWin)
   overlayWin.loadFile(path.join(root, 'renderer/overlay/index.html'))
   let saveTimer
@@ -511,7 +514,7 @@ function createAnswer() {
     preload: path.join(root, 'preload/answer.cjs'),
     page: path.join(root, 'renderer/answer/index.html'),
     bounds: s.overlay.answerBounds,
-    contentProtection: s.hideFromScreenShare,
+    contentProtection: s.hideFromScreenShare || protectHolds > 0,
     onBoundsChange: (b) => settings.update({ overlay: { answerBounds: b } }),
     // 默认位置避开主窗口右上角的「停止」和窗口按钮；启动时主窗口还没建，按它默认居中的位置算
     avoid: () => (controlWin && !controlWin.isDestroyed() && controlWin.isVisible() ? controlWin.getBounds() : centeredIn(screen.getPrimaryDisplay().workArea, CONTROL_SIZE)),
@@ -571,8 +574,7 @@ function applyOverlayAppearance() {
   const b = getBoundsKept(overlayWin)
   const height = overlayHeight(s.overlay)
   if (b.height !== height) setBoundsKept(overlayWin, resized(b, height))
-  overlayWin.setContentProtection(s.hideFromScreenShare)
-  if (answerWin && !answerWin.isDestroyed()) answerWin.setContentProtection(s.hideFromScreenShare)
+  applyContentProtection()
   refreshOverlay()
 }
 
@@ -596,10 +598,12 @@ function hotkeyStatus() {
     ask: { accel: assistOn(s) ? s.assist.hotkeyAsk : '', error: askHotkeyError },
     // 截取画面：只在上课记录时注册；active 表示现在注册上了
     slide: { accel: s.class.hotkeySlide, error: slideHotkeyError, active: slideRunning() && Boolean(s.class.hotkeySlide) && !slideHotkeyError },
+    // 录屏开关：也只在记录时注册
+    screen: { accel: s.hotkeyScreen, error: screenHotkeyError, active: slideRunning() && Boolean(s.hotkeyScreen) && !screenHotkeyError },
   }
 }
 
-const HOTKEY_NAMES = { hotkeyToggle: '显示 / 隐藏字幕', hotkeyRecord: '开始 / 停止记录', 'assist.hotkeyAsk': '回答刚才的问题', 'class.hotkeySlide': '截取画面' }
+const HOTKEY_NAMES = { hotkeyToggle: '显示 / 隐藏字幕', hotkeyRecord: '开始 / 停止记录', 'assist.hotkeyAsk': '回答刚才的问题', 'class.hotkeySlide': '截取画面', hotkeyScreen: '开始 / 停止录屏' }
 
 function registerHotkeys() {
   if (E2E) return // 测试模式不占全局快捷键（会和正在用的正式版抢）
@@ -615,6 +619,7 @@ function registerHotkeys() {
   recordHotkeyError = reg('hotkeyRecord', s.hotkeyRecord, () => toggleRecording())
   askHotkeyError = assistOn(s) ? reg('assist.hotkeyAsk', s.assist.hotkeyAsk, () => askLast()) : null
   slideHotkeyError = slideRunning() ? reg('class.hotkeySlide', s.class.hotkeySlide, () => slideFromHotkey()) : null
+  screenHotkeyError = slideRunning() ? reg('hotkeyScreen', s.hotkeyScreen, () => screenRecFromOutside()) : null
   if (moved.length) {
     // 默认组合被别的程序占了：换成的备选存回设置（设置一变会再注册一遍、发状态），提示一次
     settings.update(Object.assign({}, ...moved.map((m) => patchFor(m.key, m.to))))
@@ -705,6 +710,7 @@ function updateTrayMenu() {
       { ...menuItemWithKey(overlayWanted ? t('隐藏字幕') : t('显示字幕'), s.hotkeyToggle), click: toggleOverlay },
       ...(assistOn(s) ? [{ ...menuItemWithKey(t('回答刚才的问题'), s.assist.hotkeyAsk), click: () => askLast() }] : []),
       ...(slideRunning() ? [{ ...menuItemWithKey(t('截取画面'), s.class.hotkeySlide), click: () => slideFromHotkey() }] : []),
+      ...(slideRunning() ? [{ ...menuItemWithKey(screenRec?.wanted ? t('停止录屏') : t('开始录屏'), s.hotkeyScreen), click: () => screenRecFromOutside() }] : []),
       { label: assistOn(s) ? t('调整字幕和答题框位置') : t('调整字幕位置'), click: () => setEditMode(true) },
       { type: 'separator' },
       { label: t('打开主窗口'), click: showControl },
@@ -1179,13 +1185,8 @@ function changeMaterials(id, fn) {
  */
 async function captureSlide() {
   if (engine.state !== 'running' || !engine.session) return { error: t('还没开始记录，开始记录后才能截取画面'), code: 'not-running' }
-  const hide = settings.get().hideFromScreenShare
-  const wins = [
-    ...[controlWin, settingsWin, onboardingWin].map((w) => [w, false]),
-    ...[overlayWin, answerWin].map((w) => [w, hide]),
-  ].filter(([w]) => w && !w.isDestroyed() && w.isVisible())
+  const release = holdContentProtection()
   try {
-    for (const [w] of wins) w.setContentProtection(true)
     const shot = await captureScreen({ maxWidth: 1920, quality: 0.85 })
     const at = Date.now()
     const id = engine.session.id
@@ -1195,8 +1196,40 @@ async function captureSlide() {
   } catch (e) {
     return { error: e.message, code: e.code ?? null }
   } finally {
-    for (const [w, keep] of wins) if (!w.isDestroyed()) w.setContentProtection(keep)
+    release()
   }
+}
+
+// 截图、录屏时把我们自己的窗口（主窗口、设置、引导、字幕窗、答题框）挡在画面外：字幕一直在变，录进去会让「画面一变就截一张」不停地截。
+// 截图和录屏可能同时在用，按次数记：都放开了才恢复原来的设置（字幕窗和答题框照「共享屏幕时隐藏」，别的窗口不挡）
+let protectHolds = 0
+function applyContentProtection() {
+  const hide = settings.get().hideFromScreenShare
+  for (const w of [controlWin, settingsWin, onboardingWin]) if (w && !w.isDestroyed()) w.setContentProtection(protectHolds > 0)
+  for (const w of [overlayWin, answerWin]) if (w && !w.isDestroyed()) w.setContentProtection(protectHolds > 0 || hide)
+}
+function holdContentProtection() {
+  protectHolds++
+  applyContentProtection()
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    protectHolds--
+    applyContentProtection()
+  }
+}
+// 录屏中途新开的窗口（设置、引导）也挡上
+app.on('browser-window-created', (_e, w) => {
+  if (protectHolds > 0) w.setContentProtection(true)
+})
+
+// 快捷键、托盘菜单开关录屏：失败了把主窗口叫出来说原因（多半是没给屏幕录制权限）
+async function screenRecFromOutside() {
+  const r = await screenRec.toggle()
+  if (r.ok) return
+  showControl()
+  toUi('engine:notice', { level: 'error', text: r.error, code: r.code === 'no-permission' ? 'screen-permission' : 'screen-record' })
 }
 
 // 快捷键截图：成功不打扰（界面收 slides:added），失败给一条提示
@@ -1665,6 +1698,7 @@ function wireIpc() {
     theme: themeInfo(),
     chrome: chromeInfo(),
     video: videoService?.snapshot() ?? { running: false },
+    screenRec: screenRec ? { ...screenRec.status(), frames: [...screenRec.progress.values()] } : null,
   }))
   ipcMain.handle('settings:update', (_e, patch) => settings.update(patch))
   ipcMain.handle('engine:start', (_e, opts) => startEngine(opts ?? {}))
@@ -1744,6 +1778,8 @@ function wireIpc() {
   // 纪要和待办
   ipcMain.handle('summary:generate', async (_e, id, extraAsk) => {
     try {
+      // 录屏的画面还在截（或者录完还没截）：等截完，笔记和纪要才有这些图用；截不出来也照常生成
+      await screenRec.frames(id).catch(() => {})
       return { ok: true, ...(await summarizer.generate(id, extraAsk)) }
     } catch (e) {
       return { ok: false, error: isAbort(e) ? t('已取消') : e.message }
@@ -1966,6 +2002,7 @@ function wireIpc() {
 
   // 课堂
   ipcMain.handle('class:captureSlide', () => captureSlide())
+  ipcMain.handle('screenrec:toggle', (_e, on) => screenRec.toggle(typeof on === 'boolean' ? on : undefined))
   ipcMain.handle('notes:export', (e, id) => exportNotes(e, id))
 
   // 答题
@@ -2070,6 +2107,10 @@ function wireEngine() {
   engine.on('notice', (n) => toUi('engine:notice', n))
   engine.on('notes', (n) => toUi('notes:update', n))
   engine.on('slide', (x) => toUi('slides:added', { ...x, url: slideUrl(x.sessionId, x.file) }))
+  screenRec.on('state', (st) => (toUi('screenrec:state', st), updateTrayMenu()))
+  screenRec.on('progress', (p) => toUi('recording:progress', p))
+  screenRec.on('notice', (n) => toUi('engine:notice', n))
+  screenRec.on('changed', (x) => emitSessions({ sessionId: x.sessionId }))
   assistant.on('answer', (a) => {
     toAnswer('answer:update', a)
     toUi('assist:answer', a)
@@ -2263,6 +2304,15 @@ app.whenReady().then(async () => {
     busy: () => engine.state !== 'idle',
   })
 
+  screenRec = new ScreenRecording({
+    engine,
+    store,
+    makeRecorder: () => new ScreenRecorder(),
+    makeWorker: () => new VideoWorker(),
+    protect: () => holdContentProtection(),
+    permission: () => screenPermission(),
+  })
+
   if (useFakes) engine.useFakeSources(fakeFiles)
 
   if (selfTest && !uiSelfTest) {
@@ -2362,6 +2412,8 @@ app.on('before-quit', async (e) => {
     e.preventDefault()
     quitting = true
     if (busy) await engine.stop().catch(() => {})
+    // 录屏的最后一段写完、存好再退
+    await screenRec?.settled()
     // 课堂：下课后最后一段实时笔记还在整理（20 到 40 秒），最多等 45 秒再退，不然这段笔记就丢了
     if (engine.notesFlush) {
       tray?.setToolTip('会议字幕：正在整理最后一段笔记，整理完就退出')

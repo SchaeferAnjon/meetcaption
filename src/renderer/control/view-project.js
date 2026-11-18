@@ -405,7 +405,7 @@ function cycle(list, cur, d) {
 /** 标签页：点击切换；获得焦点时左右键切换。 */
 function wireTabs(tabs, onPick, panel) {
   tabs.addEventListener('click', (e) => {
-    const b = e.target.closest('.tab')
+    const b = e.target.closest('.tab[data-tab]')
     if (b && !b.disabled) onPick(b.dataset.tab)
   })
   tabs.addEventListener('keydown', (e) => {
@@ -415,7 +415,7 @@ function wireTabs(tabs, onPick, panel) {
       return panel.querySelector('.list').focus({ preventScroll: true })
     }
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
-    const all = [...tabs.querySelectorAll('.tab:not([disabled]):not([hidden])')]
+    const all = [...tabs.querySelectorAll('.tab[data-tab]:not([disabled]):not([hidden])')]
     const i = all.indexOf(document.activeElement)
     if (i < 0) return
     e.preventDefault()

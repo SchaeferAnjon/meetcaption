@@ -772,6 +772,7 @@ export class MeetingEngine extends EventEmitter {
     if (!p || this.state !== 'running' || this.paused) return
     p.lastFeedAt = Date.now()
     p.ring?.write(buf)
+    this.emit('audio', source, buf, p.provider.sampleRate) // 录屏把这两路声音混进视频（recording/）
     const { ops, level } = p.gate.push(buf)
     this.emit('level', { source, db: level })
     if (!p.provider.gated) {

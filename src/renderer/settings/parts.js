@@ -349,6 +349,7 @@
     if (key === 'hotkeyRecord') return hotkeyStatus?.record?.error || ''
     if (key === 'assist.hotkeyAsk') return hotkeyStatus?.ask?.error || ''
     if (key === 'class.hotkeySlide') return hotkeyStatus?.slide?.error || ''
+    if (key === 'hotkeyScreen') return hotkeyStatus?.screen?.error || ''
     return ''
   }
 

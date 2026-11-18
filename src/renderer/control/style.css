@@ -1489,6 +1489,63 @@ button.nav-section:focus-visible {
   color: var(--c-purple);
 }
 
+/* 录屏开关：开着时红底红字、红点呼吸、后面跟着这一段录了多久 */
+.live-rec .icon {
+  color: var(--red);
+}
+
+.live-rec {
+  min-width: 160px;
+  justify-content: flex-start;
+}
+
+.live-rec > .kbd-group {
+  margin-left: auto;
+}
+
+.live-rec.is-rec {
+  background: var(--red-soft);
+  border-color: color-mix(in srgb, var(--red) 30%, transparent);
+  color: var(--red);
+}
+
+.live-rec.is-rec:hover {
+  background: color-mix(in srgb, var(--red) 16%, transparent);
+}
+
+.live-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--red) 50%, transparent);
+  animation: ui-pulse 1.6s var(--ease-in-out) infinite;
+  flex: none;
+}
+
+.live-rec-time {
+  min-width: 4ch;
+  font-weight: var(--fw-semibold, 600);
+}
+
+.live-rec.is-held {
+  color: var(--text-2);
+}
+
+.live-rec.is-held .icon {
+  color: var(--text-3);
+}
+
+/* 停止以后从录屏里截画面的进度 */
+.live-frames {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 0 16px 10px;
+  font-size: var(--fs-sm);
+}
+
 /* 实时笔记 */
 .notes-scroll {
   padding: 8px 10px 24px;
@@ -1918,6 +1975,10 @@ button.nav-section:focus-visible {
 
   .live-bar .btn .kbd-group {
     display: none;
+  }
+
+  .live-rec {
+    min-width: 0;
   }
 
   .page {
@@ -3219,7 +3280,19 @@ button.nav-section:focus-visible {
 }
 .vm-right > .tabs {
   flex: none;
+  flex-wrap: nowrap;
+  gap: 14px;
+  overflow: hidden;
   padding: 0 16px;
+}
+.vm-right > .tabs > .tab {
+  flex: none;
+}
+.tab-more .icon {
+  color: var(--text-2);
+}
+.meeting-meta .meta-bit {
+  white-space: nowrap;
 }
 .vm-right > .tab-panel {
   flex: 1;
@@ -3617,6 +3690,76 @@ button.nav-section:focus-visible {
 }
 .prose .prose-slide[title] {
   cursor: pointer;
+}
+
+/* 记录时录了屏：左边视频下面一段一个按钮（起止时间），右边字幕点一句跳过去 */
+.vm-clips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.vm-clips[hidden] {
+  display: none;
+}
+.vm-clip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--btn-stroke);
+  border-radius: 6px;
+  background: var(--btn-bg);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  line-height: 24px;
+}
+.vm-clip:hover {
+  background: var(--btn-bg-hover);
+}
+.vm-clip[aria-selected='true'] {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.vm-clip-n {
+  font-weight: var(--fw-medium);
+}
+.vm-clip-t {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+.vm-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.vm-progress[hidden] {
+  display: none;
+}
+.meeting-transcript.is-seekable .tline:not(.is-norec) {
+  cursor: pointer;
+}
+.meeting-transcript.is-seekable .tline:not(.is-norec):hover .tline-time {
+  color: var(--accent-text);
+}
+.meeting-transcript.is-seekable .tline.is-norec .tline-time {
+  color: var(--text-3);
+}
+.meeting-transcript .tline.is-playing {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.meeting-transcript .tline.is-playing .tline-time {
+  color: var(--accent-text);
+}
+.slide-src {
+  margin: 0;
+  height: 18px;
+  font-size: 11px;
 }
 
 @media (max-width: 900px) {

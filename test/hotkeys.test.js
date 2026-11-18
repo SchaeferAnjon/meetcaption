@@ -4,11 +4,11 @@ import { applyPatch, DEFAULTS, merge } from '../src/main/defaults.js'
 
 // 快捷键都在设置里：全局的四个加主窗口里的 keys.*，默认值互不重复，老设置文件升级后自动带上默认值。
 
-const allKeys = (s) => [s.hotkeyToggle, s.hotkeyRecord, s.assist.hotkeyAsk, s.class.hotkeySlide, ...Object.values(s.keys)]
+const allKeys = (s) => [s.hotkeyToggle, s.hotkeyRecord, s.hotkeyScreen, s.assist.hotkeyAsk, s.class.hotkeySlide, ...Object.values(s.keys)]
 
 test('hotkeys: 默认快捷键互不重复', () => {
   const list = allKeys(DEFAULTS)
-  assert.equal(list.length, 14)
+  assert.equal(list.length, 15)
   assert.equal(new Set(list).size, list.length)
 })
 

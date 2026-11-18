@@ -37,6 +37,10 @@ function commandItems() {
     items.push({ id: 'live', title: liveMode() === 'class' ? t('回到课堂') : t('回到会议'), subtitle: t(`「{0}」`, projectName(state.live?.projectId)), icon: 'audio-lines', tint: 'red', kbd: appKey('live') || undefined, keywords: ['live', t('进行中')], onSelect: () => go('live') })
     if (running())
       items.push({ id: 'capture', title: t('截取画面'), subtitle: liveMode() === 'class' ? t('把当前屏幕（网课课件）存进这节课') : t('把当前屏幕存进这场会议'), icon: 'camera', tint: 'purple', kbd: state.settings?.class?.hotkeySlide || undefined, actionLabel: t('截取'), keywords: ['capture', 'screenshot', 'slide', t('截图'), t('课件')], onSelect: () => captureSlide() })
+    if (running()) {
+      const recOn = Boolean(state.screenRec?.on && state.screenRec.sessionId === state.live?.sessionId)
+      items.push({ id: 'screen-rec', title: recOn ? t('停止录屏') : t('开始录屏'), subtitle: recOn ? t('这一段存进这场的文件夹') : t('录下鼠标所在的那块屏幕和双方的声音'), icon: 'video', tint: 'red', kbd: s.hotkeyScreen || undefined, actionLabel: recOn ? t('停止录屏') : t('开始录屏'), keywords: ['record', 'screen', 'video', t('录屏'), t('视频')], onSelect: () => toggleScreenRec() })
+    }
     const askWhat = { class: t('没听懂就问，结合这节课回答'), meeting: t('有问题就问，结合这场会回答'), interview: t('有问题就问，结合这场面试回答') }
     items.push({ id: 'ask-live', title: t('问 AI'), subtitle: askWhat[liveMode()], icon: 'message-circle-question', tint: 'indigo', kbd: appKey('ask') || undefined, actionLabel: t('提问'), keywords: ['ask', 'question', t('提问'), t('没听懂')], onSelect: () => (go('live'), setTimeout(() => router.mounted?.openAsk?.(), 60)) })
     items.push({ id: 'stop', title: t('停止记录'), subtitle: t('保存这场会议'), icon: 'square', tint: 'red', kbd: s.hotkeyRecord || undefined, actionLabel: t('停止'), keywords: ['stop', t('结束')], onSelect: () => stopMeeting() })

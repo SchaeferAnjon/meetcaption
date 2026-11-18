@@ -7,6 +7,7 @@ export const HOTKEY_FALLBACKS = {
   hotkeyRecord: ['CommandOrControl+Alt+Shift+R', 'CommandOrControl+Alt+Enter'],
   'assist.hotkeyAsk': ['CommandOrControl+Alt+Shift+A', 'CommandOrControl+Alt+Q'],
   'class.hotkeySlide': ['CommandOrControl+Alt+Shift+P', 'CommandOrControl+Alt+O'],
+  hotkeyScreen: ['CommandOrControl+Alt+Shift+M', 'CommandOrControl+Alt+Y'],
 }
 
 const getPath = (o, key) => key.split('.').reduce((x, k) => x?.[k], o)

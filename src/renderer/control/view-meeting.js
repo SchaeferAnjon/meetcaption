@@ -1,5 +1,6 @@
 'use strict'
 // 会议详情：标题（可改）、所属项目（可移动）、时间和时长；标签页：纪要、实时笔记（开会时 AI 整理过才有）、待办、字幕记录、AI 答题、截图（开会时截过画面才有）、术语、问 AI（会开完、有字幕时：看会上问过的、接着问）。
+// 记录时录了屏的（session.recordings）：和视频结果页一样一屏对照，左边视频（几段能切换），右边标签页照旧；点字幕、笔记里的时间、截图跳到录屏的那一刻。
 // 课堂的标签页换成：课堂笔记、图文笔记（生成过课堂笔记才有）、实时笔记（上课时 AI 整理过才有）、字幕记录、截图、术语、作业（课上用快捷键问过 AI 时再多一个 AI 答题）、问 AI（下课后能看课上问过的、接着问），课堂笔记能导出到笔记库。
 
 const MEETING_TABS = ['summary', 'notes', 'todos', 'transcript', 'answers', 'slides', 'terms', 'ask'] // 截图：开会时截过画面才有
@@ -27,10 +28,23 @@ VIEWS.meeting = {
     const tabBtn = (k) => el('button.tab', { type: 'button', role: 'tab', dataset: { tab: k } }, el('span.tab-label', { text: TAB_LABELS.meeting[k] ?? TAB_LABELS.class[k] }), el('span.count.num'))
     const tabBtns = Object.fromEntries(['summary', 'html', 'notes', 'todos', 'transcript', 'answers', 'terms', 'slides', 'ask'].map((k) => [k, tabBtn(k)]))
     const tabs = el('div.tabs.tabs-line.meeting-tabs', { role: 'tablist', 'aria-label': t('会议内容') }, ...Object.values(tabBtns))
+    // 一屏对照时右栏放不下全部标签：放不下的收进行尾的「更多」，正在看的那个一直留在行里
+    const moreTab = el('button.tab.tab-more', { type: 'button', hidden: true, 'aria-haspopup': 'menu' }, el('span.tab-label', { text: t('更多') }), icon('chevron-down', 12))
+    let overflowed = []
+    moreTab.addEventListener('click', (e) => {
+      e.stopPropagation()
+      ui.menu(
+        moreTab,
+        overflowed.map((k) => ({ label: tabBtns[k].querySelector('.tab-label').textContent, hint: tabBtns[k].querySelector('.count').textContent || undefined, checked: k === tab, onSelect: () => setTab(k) })),
+        { align: 'end' },
+      )
+    })
     const isClass = () => s?.mode === 'class'
     const liveNotesOf = () => (isLive() && state.live?.notes) || s?.liveNotes || null
     const hasLiveNotes = () => ['sections', 'emphasis', 'homework', 'terms'].some((k) => notesList(liveNotesOf()?.[k]).length)
     const isVideo = () => Boolean(s?.video)
+    // 记录时录了屏、已经停止了：左边放录屏
+    const hasRec = () => Boolean(s && !s.video && !isLive() && videoClips(s).length)
     // 视频：字幕、（图文笔记）、笔记或纪要、待办或作业、术语；截图在视频下面一排，不单列一页
     const VIDEO_TABS = () => (isClass() ? ['transcript', 'html', 'summary', 'terms', 'todos'] : ['transcript', 'summary', 'todos', 'terms'])
     // 问 AI：不在进行中、有字幕时才有（进行中的在实时页右栏问）
@@ -85,6 +99,7 @@ VIEWS.meeting = {
         b.querySelector('.tab-label').textContent = isVideo() && k === 'transcript' ? t('字幕') : (labels[k] ?? '')
       }
       for (const k of shown) tabs.append(tabBtns[k])
+      tabs.append(moreTab)
       const segs = s.segments.filter((x) => x.text)
       let bits = [fmtWhen(s.startedAt)]
       if (isVideo()) {
@@ -95,7 +110,7 @@ VIEWS.meeting = {
         bits.push(t(`{0} 段`, segs.length))
         if (s.engineLabel) bits.push(s.engineLabel)
       }
-      fill(meta, isVideo() ? null : icon('clock', 13), bits.join(' · '))
+      fill(meta, isVideo() ? null : icon('clock', 13), ...bits.flatMap((b, i) => [i ? ' · ' : null, el('span.meta-bit', { text: b })]).filter(Boolean))
       ui.clear(liveNote)
       if (isLive())
         liveNote.append(
@@ -120,7 +135,31 @@ VIEWS.meeting = {
         const hw = notesList(s.liveNotes?.homework).length
         tabBtns.todos.querySelector('.count').textContent = hw ? String(hw) : ''
       }
+      fitTabs()
     }
+
+    // 先全放出来，超了就从后往前收（正在看的、字幕记录、截图最后才收）
+    const KEEP_LAST = ['transcript', 'slides']
+    function fitTabs() {
+      const shown = s ? tabList() : []
+      for (const k of shown) tabBtns[k].hidden = false
+      moreTab.hidden = true
+      overflowed = []
+      if (!vm || tabs.scrollWidth <= tabs.clientWidth + 1) return
+      moreTab.hidden = false
+      const order = [...shown].reverse().sort((a, b) => (KEEP_LAST.includes(a) ? 1 : 0) - (KEEP_LAST.includes(b) ? 1 : 0))
+      for (const k of order) {
+        if (tabs.scrollWidth <= tabs.clientWidth + 1) break
+        if (k === tab) continue
+        tabBtns[k].hidden = true
+        overflowed.unshift(k)
+      }
+      overflowed.sort((a, b) => shown.indexOf(a) - shown.indexOf(b))
+      moreTab.classList.toggle('is-active', overflowed.includes(tab))
+    }
+    const tabsFit = new ResizeObserver(() => fitTabs())
+    tabsFit.observe(tabs)
+    ctx.dispose(() => tabsFit.disconnect())
 
     titleInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.isComposing) titleInput.blur()
@@ -586,7 +625,12 @@ VIEWS.meeting = {
           renderTranscript()
         },
       }
-      for (const it of items) box.append(it.seg ? lineNode({ ...it.seg, final: true }, s.startedAt, { mode: s.mode, rename }) : slideNode(it.slide, { base: s.startedAt, dir: s.dir, startedAt: s.startedAt }))
+      for (const it of items) {
+        // 录屏里自动截的画面在左边视频下面一排，字幕里只放手动截的
+        if (it.slide && vm && it.slide.source === 'recording') continue
+        box.append(it.seg ? lineNode({ ...it.seg, final: true }, s.startedAt, { mode: s.mode, rename }) : slideNode(it.slide, { base: s.startedAt, dir: s.dir, startedAt: s.startedAt }))
+      }
+      if (vm) wireSeekLines(box)
       // 结束以后：选几个词、或者移到一句上点「问」，引用进「问 AI」
       unwireAsk?.()
       unwireAsk = tabList().includes('ask') ? wireAskTranscript(box, (q) => (setTab('ask'), askPanelView?.quote(q))) : null
@@ -613,6 +657,47 @@ VIEWS.meeting = {
       )
     }
 
+    // 录了屏：点一句字幕（或截图的时间）视频跳过去播；播放时正在说的这一句高亮、跟着滚；没在录屏时说的那几句不能点
+    function wireSeekLines(box) {
+      box.classList.add('is-seekable')
+      for (const line of box.querySelectorAll('.tline')) {
+        const ms = Number(line.dataset.t) - s.startedAt
+        if (vm.canSeek(ms)) line.title = t('点一下，录屏跳到这一刻')
+        else line.classList.add('is-norec')
+      }
+      box.addEventListener('click', (e) => {
+        const line = e.target.closest('.tline')
+        if (!line || line.classList.contains('is-norec')) return
+        if (e.target.closest(`button, a, input, .qbox, ${window.bilingual.TIP_SELECTOR}`) && !e.target.closest('.tline-time')) return
+        if (String(window.getSelection?.() ?? '').trim()) return
+        vm.seek(Number(line.dataset.t) - s.startedAt, true)
+      })
+      const lines = [...box.querySelectorAll('.tline:not(.tline-slide)')]
+      let active = null
+      let quietUntil = 0
+      const stop = () => (quietUntil = Date.now() + 4000)
+      const sc = panel // 一屏对照时滚动的是右栏
+      sc.addEventListener('wheel', stop, { passive: true })
+      unTranscript?.()
+      const off = vm.onTime((ms) => {
+        const at = s.startedAt + ms
+        let cur = null
+        for (const l of lines) {
+          if (Number(l.dataset.t) > at + 300) break
+          cur = l
+        }
+        if (cur === active) return
+        active?.classList.remove('is-playing')
+        active = cur
+        cur?.classList.add('is-playing')
+        if (!cur || !vm.playing() || Date.now() < quietUntil) return
+        const r = cur.getBoundingClientRect()
+        const pr = sc.getBoundingClientRect()
+        if (r.top < pr.top + 40 || r.bottom > pr.bottom - 40) sc.scrollTo({ top: sc.scrollTop + (r.top - pr.top) - pr.height / 3, behavior: 'smooth' })
+      })
+      unTranscript = () => (off(), sc.removeEventListener('wheel', stop))
+    }
+
     /* ---- 截图 ---- */
 
     function renderSlides() {
@@ -623,6 +708,7 @@ VIEWS.meeting = {
         return
       }
       const grid = el('div.slide-grid')
+      const mixed = list.some((x) => x.source === 'recording')
       for (const sl of list) {
         const tv = slideTime(sl, s.startedAt)
         const src = slideSrc(sl, s.dir)
@@ -634,12 +720,19 @@ VIEWS.meeting = {
             src
               ? el('button.slide-card-img', { type: 'button', 'aria-label': t(`放大 {0} 的截图`, label), onClick: () => openSlide(src, t(`截图 {0}`, fmtOffset(tv - s.startedAt))) }, el('img', { src, alt: label, loading: 'lazy' }))
               : el('div.slide-card-img.is-missing', {}, icon('image', 22)),
-            el('figcaption.num', {}, el('span', { text: fmtOffset(tv - s.startedAt) }), el('span.text-3', { text: fmtTime(tv) })),
+            vm && vm.canSeek(tv - s.startedAt)
+              ? el(
+                  'figcaption.num',
+                  {},
+                  el('button.vm-tchip', { type: 'button', title: t(`{0} 截的，点一下回到录屏这一刻`, fmtTime(tv)), onClick: () => vm.seek(tv - s.startedAt, true) }, icon('play', 10), fmtOffset(tv - s.startedAt)),
+                  mixed && sl.source !== 'recording' ? el('span.tag.slide-src', { text: t('手动截') }) : null,
+                )
+              : el('figcaption.num', {}, el('span', { text: fmtOffset(tv - s.startedAt) }), mixed && sl.source !== 'recording' ? el('span.tag.slide-src', { text: t('手动截') }) : null, el('span.text-3', { text: fmtTime(tv) })),
           ),
         )
       }
       panel.append(
-        el('div.panel-toolbar', {}, el('span.text-2.text-sm', { text: isClass() ? t(`{0} 张截图，按上课时间排。点一下放大。`, list.length) : t(`{0} 张截图，按开会时间排。点一下放大。`, list.length) }), el('span.header-spacer'), el('button.btn.btn-sm', { type: 'button', onClick: () => call('openFolder', id) }, icon('folder', 14), t('打开文件夹'))),
+        el('div.panel-toolbar', {}, el('span.text-2.text-sm', { text: vm ? (isClass() ? t(`{0} 张截图，按上课时间排。点图放大，点时间回到录屏那一刻。`, list.length) : t(`{0} 张截图，按开会时间排。点图放大，点时间回到录屏那一刻。`, list.length)) : isClass() ? t(`{0} 张截图，按上课时间排。点一下放大。`, list.length) : t(`{0} 张截图，按开会时间排。点一下放大。`, list.length) }), el('span.header-spacer'), el('button.btn.btn-sm', { type: 'button', onClick: () => call('openFolder', id) }, icon('folder', 14), t('打开文件夹'))),
         grid,
       )
     }
@@ -761,12 +854,27 @@ VIEWS.meeting = {
     let unTranscript = null
     ctx.dispose(() => (unTranscript?.(), vm?.destroy()))
 
+    // 录屏截画面的进度（停止以后在做）
+    const framesNote = el('div.vm-progress.text-2.text-sm', { hidden: true, role: 'status' })
+    function renderFramesNote() {
+      const p = state.recFrames.get(id)
+      framesNote.hidden = !p
+      if (p) fill(framesNote, ui.spinner(12), el('span', { text: t(`正在从录屏里截画面… {0}%`, Math.round((p.fraction ?? 0) * 100)) }))
+    }
+    ctx.on('rec-frames', (p) => {
+      if (p.sessionId !== id) return
+      renderFramesNote()
+      if (p.done) reloadSoon()
+    })
+
     function enterVideoLayout() {
       if (vm) return
       vm = videoView(ctx, s, { onRename: () => reloadSoon() })
       page.classList.add('video-page')
+      if (!isVideo()) page.classList.add('rec-page')
       scroller.classList.add('is-video')
-      page.replaceChildren(el('div.vm-leftcol', {}, head, liveNote, vm.left), el('div.vm-right', {}, tabs, panel))
+      page.replaceChildren(el('div.vm-leftcol', {}, head, liveNote, vm.left, framesNote), el('div.vm-right', {}, tabs, panel))
+      renderFramesNote()
     }
 
     function exportMenu(anchor) {
@@ -805,10 +913,11 @@ VIEWS.meeting = {
         b.setAttribute('aria-selected', String(k === tv))
         b.tabIndex = k === tv ? 0 : -1
       }
+      fitTabs()
       summaryParts = null
-      page.classList.toggle('is-wide', tv === 'html' && !isVideo())
+      page.classList.toggle('is-wide', tv === 'html' && !vm)
       // 看笔记时右栏变宽，视频缩小但一直在，下面是正在说的那句
-      page.classList.toggle('vm-wide', isVideo() && (tv === 'html' || tv === 'summary'))
+      page.classList.toggle('vm-wide', Boolean(vm) && (tv === 'html' || tv === 'summary'))
       vm?.setWide(tv === 'html' || tv === 'summary')
       unTranscript?.()
       unTranscript = null
@@ -821,7 +930,7 @@ VIEWS.meeting = {
       if (tv === 'summary') renderSummary()
       if (tv === 'html') renderHtml()
       if (tv === 'todos') renderTodos()
-      if (tv === 'transcript') (vm ? (unTranscript = vm.renderTranscript(panel)) : renderTranscript())
+      if (tv === 'transcript') (isVideo() ? (unTranscript = vm.renderTranscript(panel)) : renderTranscript())
       if (tv === 'answers') renderAnswers()
       if (tv === 'terms') renderTerms()
       if (tv === 'slides') renderSlides()
@@ -847,7 +956,7 @@ VIEWS.meeting = {
       const first = !s
       s = r
       segById = null
-      if (s.video) (vm ? vm.update(s) : enterVideoLayout())
+      if (s.video || hasRec()) (vm ? vm.update(s) : enterVideoLayout())
       ctx.setParam('projectId', s.projectId)
       markSidebarActive()
       renderHeader()

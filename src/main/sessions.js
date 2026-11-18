@@ -206,6 +206,11 @@ export class SessionStore {
   }
 
   saveNow(session) {
+    this.#write(session)
+    if (session === this.current && session.endedAt) this.current = null
+  }
+
+  #write(session) {
     clearTimeout(this.timers.get(session.id))
     this.timers.delete(session.id)
     const dir = this.dir(session.id)
@@ -214,7 +219,6 @@ export class SessionStore {
     writeAtomic(path.join(dir, '字幕记录.md'), transcriptMarkdown(session))
     if (session.summary?.markdown) writeAtomic(path.join(dir, notesFileName(session)), session.summary.markdown)
     this.cache.delete(session.id)
-    if (session === this.current && session.endedAt) this.current = null
   }
 
   load(id) {
@@ -235,7 +239,10 @@ export class SessionStore {
     const live = this.current?.id === id
     const s = live ? this.current : this.load(id)
     const out = fn(s)
-    this.saveNow(s)
+    // 正在停止的那场：引擎先写上 endedAt，等译文回来（最多几秒）再最后存一次。这中间别人改（录屏截完画面、改名）
+    // 只落盘、不把它从「正在记录」里放掉，不然后面的改动改的是文件，引擎最后那次保存又用内存里的旧对象盖回去
+    if (live) this.#write(s)
+    else this.saveNow(s)
     return out === undefined ? s : out
   }
 

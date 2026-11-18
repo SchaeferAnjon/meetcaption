@@ -8,6 +8,13 @@ import { parseAt } from '../todos.js'
 import { jpegSize, pageRef } from './materials.js'
 import { t } from '../i18n.js'
 import { ANSWER_WORDS, classHeadRe } from '../templateWords.js'
+import { isRecSlide, recordingAt } from '../recording/clips.js'
+
+// 这一场里第 ms 毫秒能不能让视频跳过去：视频模式都能；记录时录了屏的，只有落在某段录屏里的能。→ ms | null
+export function seekableAt(session) {
+  const recs = session.recordings ?? []
+  return (ms) => (ms == null || !Number.isFinite(ms) ? null : session.video ? ms : recs.length && recordingAt(recs, session.startedAt + ms) ? ms : null)
+}
 
 // 图文版课堂笔记（课堂笔记.html）：照 Dispatch 交付页的样子（左边目录、看图器：点一条放大到图上那个框、自动 / 浅色 / 深色），
 // 一个文件，图片和公式字体都内嵌，拷给别人、放进笔记库都能直接打开。
@@ -193,9 +200,12 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
     return `\n\n${FIG_OPEN}${figs.length - 1}${FIG_CLOSE}\n\n`
   }
   const slides = new Set((session.slides ?? []).map((x) => path.basename(String(x?.file ?? ''))))
-  // 视频里自动截的画面：知道每张是视频的哪一刻，点一下能让视频跳过去；模型没引用的按时间放进所属小节
+  // 视频里自动截的画面：知道每张是视频的哪一刻，点一下能让视频跳过去；模型没引用的按时间放进所属小节。
+  // 记录时录了屏的也一样（录屏里自动截的那些没引用的也放进去；点时间、截图跳到录屏的那一刻，没录屏的那段时间不能跳）
   const video = Boolean(session.video)
+  const seekAt = seekableAt(session)
   const slideMs = new Map((session.slides ?? []).filter((x) => x?.file).map((x) => [path.basename(String(x.file)), x.at - session.startedAt]))
+  const autoSlide = new Set((session.slides ?? []).filter((x) => x?.file && (video || isRecSlide(x))).map((x) => path.basename(String(x.file))))
   const cited = new Set([...String(markdown).matchAll(SLIDE_IMG)].map((m) => path.basename(decodeURIComponent(m[2]))))
   const withFigs = (text) =>
     text
@@ -204,7 +214,7 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
         const base = path.basename(decodeURIComponent(name))
         const file = path.join(sessionDir, 'slides', base)
         if (!slides.has(base) || !fs.existsSync(file)) return ''
-        figs.push(viewer({ file, ...jpegSize(fs.readFileSync(file)), label: alt || t('课上截图') }, [], slideMs.get(base) ?? null))
+        figs.push(viewer({ file, ...jpegSize(fs.readFileSync(file)), label: alt || t('课上截图') }, [], seekAt(slideMs.get(base))))
         return `\n\n${FIG_OPEN}${figs.length - 1}${FIG_CLOSE}\n\n`
       })
   // 大纲那一节按上课的顺序走一遍：每个小节先是老师讲到的课件页（框出讲的那几行、旁边是讲了什么），
@@ -231,14 +241,14 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
       // 已经按顺序放了的页，Markdown 里再插的就去掉
       const notes = c.body.join('\n').replace(MATERIAL_IMG, (all, alt, id, n) => (mapped.has(`${id}:${Number(n)}`) ? '' : all))
       const end = starts.slice(i + 1).find((t) => t != null) ?? Infinity
-      const said = transcript(session, starts[i] ?? 0, end)
+      const said = transcript(session, starts[i] ?? 0, end, seekAt)
       const end0 = starts.slice(i + 1).find((t) => t != null) ?? Infinity
-      const leftover = video
+      const leftover = autoSlide.size
         ? [...slideMs]
-            .filter(([name, ms]) => !cited.has(name) && ms >= (starts[i] ?? 0) && ms < end0 && fs.existsSync(path.join(sessionDir, 'slides', name)))
+            .filter(([name, ms]) => autoSlide.has(name) && !cited.has(name) && ms >= (starts[i] ?? 0) && ms < end0 && fs.existsSync(path.join(sessionDir, 'slides', name)))
             .sort((a, b) => a[1] - b[1])
             .map(([name, ms]) => {
-              figs.push(viewer({ file: path.join(sessionDir, 'slides', name), ...jpegSize(fs.readFileSync(path.join(sessionDir, 'slides', name))), label: t('课上截图') }, [], ms))
+              figs.push(viewer({ file: path.join(sessionDir, 'slides', name), ...jpegSize(fs.readFileSync(path.join(sessionDir, 'slides', name))), label: t('课上截图') }, [], seekAt(ms)))
               return figs[figs.length - 1]
             })
         : []
@@ -265,7 +275,7 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
     const quiz = classHeadRe(7).test(r.s.title)
     const fix = (h) => (quiz ? foldAnswers(h) : h)
     parts.push(
-      `<section class="sec${quiz ? ' quiz' : ''}" id="${id}"><h2>${render(r.s.title, { inline: true })}</h2>${fix(r.html)}${subs.map((x) => `<h3 id="${x.id}">${heading(x.title, video)}</h3>${fix(x.html)}`).join('')}</section>`,
+      `<section class="sec${quiz ? ' quiz' : ''}" id="${id}"><h2>${render(r.s.title, { inline: true })}</h2>${fix(r.html)}${subs.map((x) => `<h3 id="${x.id}">${heading(x.title, seekAt)}</h3>${fix(x.html)}`).join('')}</section>`,
     )
   })
 
@@ -289,13 +299,14 @@ export function renderNotesHtml({ session, markdown, slideMap = [], pages = new 
 }
 
 // 这一段时间里的原话（带译文），折起来：想听老师怎么说的时候点开
-function transcript(session, from, to) {
+function transcript(session, from, to, seekAt = () => null) {
   const segs = (session.segments ?? []).filter((x) => x.text && x.startedAt - session.startedAt >= from && x.startedAt - session.startedAt < to)
   if (!segs.length) return ''
   const rows = segs.map((x) => {
     const sentences = x.sentences?.length ? x.sentences : [{ text: x.text }]
     const lines = sentences.map((y) => `<p class="en">${esc(y.text)}</p>${y.tr ? `<p class="zh">${esc(y.tr)}</p>` : ''}`).join('')
-    return `<div class="line${x.who === 'me' ? ' me' : ''}"><span class="t"${session.video ? ` data-seek="${x.startedAt - session.startedAt}"` : ''}>${clock(x.startedAt - session.startedAt)}</span><span class="who">${esc(x.speaker)}</span><div>${lines}</div></div>`
+    const seek = seekAt(x.startedAt - session.startedAt)
+    return `<div class="line${x.who === 'me' ? ' me' : ''}"><span class="t"${seek != null ? ` data-seek="${seek}"` : ''}>${clock(x.startedAt - session.startedAt)}</span><span class="who">${esc(x.speaker)}</span><div>${lines}</div></div>`
   })
   return `<details class="said-all"><summary>老师原话（${segs.length} 段，${clock(segs[0].startedAt - session.startedAt)} 起）</summary><div class="lines">${rows.join('')}</div></details>`
 }
@@ -334,10 +345,10 @@ function tocNav(toc) {
 }
 
 // 标题里的 [mm:ss] 画成时间标签
-function heading(title, video = false) {
+function heading(title, seekAt = () => null) {
   const m = title.match(/^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s*(.*)$/)
-  const ms = m ? parseAt(m[1]) : null
-  return m ? `<span class="at"${video && ms != null ? ` data-seek="${ms}"` : ''}>${m[1]}</span>${render(m[2], { inline: true })}` : render(title, { inline: true })
+  const ms = m ? seekAt(parseAt(m[1])) : null
+  return m ? `<span class="at"${ms != null ? ` data-seek="${ms}"` : ''}>${m[1]}</span>${render(m[2], { inline: true })}` : render(title, { inline: true })
 }
 
 // 目录里的字：去掉 Markdown 记号和公式的 $

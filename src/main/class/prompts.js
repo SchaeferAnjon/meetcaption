@@ -1,4 +1,4 @@
-import { calendarText, clock, dateLabel, speakersNote, transcriptText } from '../prompts.js'
+import { calendarText, clock, dateLabel, slidesText, speakersNote, transcriptText } from '../prompts.js'
 import { relativeDayHints } from '../todos.js'
 import { promptLang, writeLang } from '../languages.js'
 import { templateRule, templateWords } from '../templateWords.js'
@@ -154,7 +154,7 @@ export function classNotesMessages({ session, project = null, extraAsk = '', sli
 - 只根据识别稿、实时笔记和截图写，不编造；识别稿里念出来的公式（比如 "y i minus theta transpose x i, squared"）还原成 LaTeX；拿不准的标「${w.tbc}」。
 - 时间戳用识别稿里的 [mm:ss]。
 - 相对日期换算成具体日期：上课日期是 ${dateLabel(session.startedAt)}，「next Wednesday」「this Sunday」「下周三」都算出日期并保留原话；「next + 星期几」按下一周的那一天算。
-- ${slideNames.length ? `在讲到对应内容的地方用 ![${w.shotAlt}](slides/文件名.jpg) 引用课上截图，路径照抄下面给的，没用上的截图不用硬塞${allSlides?.length ? '；每张截图都标了它是视频里哪个时间截的，放在老师讲到它的那个小节里' : ''}；` : ''}只插下面给了路径的图片，没给就不插，不要自己编图片文件名。${
+- ${slideNames.length ? `在讲到对应内容的地方用 ![${w.shotAlt}](slides/文件名.jpg) 引用课上截图，路径照抄下面给的，没用上的截图不用硬塞${allSlides?.length ? `；每张截图都标了它是${session.video ? '视频里' : '课上'}哪个时间截的，放在老师讲到它的那个小节里` : ''}；` : ''}只插下面给了路径的图片，没给就不插，不要自己编图片文件名。${
     withMaterials
       ? `
 - 给了老师的课件时，对照课件和识别稿一起写：课件是老师准备的讲义，识别稿是老师实际讲的。大纲按老师讲的顺序；定义、公式、符号、术语和人名的写法以课件为准（识别稿里听错的按课件改）；老师口头补充的解释、例子、强调和课件上没有的内容都写进去；课件上有、课上没讲的简要写，标「${w.slideOnly}」。
@@ -189,10 +189,8 @@ ${w.glossHead}
   parts.push(`日历：\n${calendarText(session.startedAt)}\n${relativeDayHints(session.startedAt)}`)
   if (extraAsk) parts.push(`额外要求：${extraAsk}`)
   if (liveNotes) parts.push(`上课时整理的实时笔记（JSON，只作参考，以识别稿为准）：\n${JSON.stringify(liveNotes)}`)
-  if (allSlides?.length) {
-    const attached = new Set(slides.map((x) => x.file))
-    parts.push(`视频里自动截的画面（画面一变就截一张，共 ${allSlides.length} 张）：\n${allSlides.map((x) => `- slides/${x.file.replace(/^slides\//, '')}（视频 [${clock(x.at - session.startedAt)}]${attached.has(x.file) ? '，图附在后面' : ''}）`).join('\n')}\n附图按这个顺序：${slides.map((x) => x.file.replace(/^slides\//, '')).join('、')}`)
-  } else if (slides.length) parts.push(`课件截图（附在后面，按顺序）：\n${slides.map((x, i) => `${i + 1}. slides/${x.file.replace(/^slides\//, '')}（[${clock(x.at - session.startedAt)}] 截的）`).join('\n')}`)
+  const shotList = slidesText(session, { slides, allSlides, label: '课件截图' })
+  if (shotList) parts.push(shotList)
   if (withMaterials) {
     parts.push(`老师的课件（逐页文字；标着「附图」的页，图附在${slides.length ? '课上截图后面' : '后面'}，按顺序：${materials.images.map((x) => x.label).join('、') || '无'}）：\n${materials.text}`)
   }

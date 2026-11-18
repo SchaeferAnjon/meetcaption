@@ -31,6 +31,9 @@ VIEWS.live = {
     const micBtn = el('button.btn.btn-sm.btn-ghost.live-mic', { type: 'button', title: t('换麦克风'), onClick: () => pickMic(micBtn) })
     const meters = el('div.live-meters', {}, otherMeter, meMeter, micBtn)
     const captureBtn = el('button.btn.btn-sm.live-capture', { type: 'button', onClick: () => capture() })
+    // 录屏开关：开着时红底、红点闪、显示这一段录了多久；暂停记录时录屏也停着
+    const recTime = el('span.live-rec-time.num')
+    const recBtn = el('button.btn.btn-sm.live-rec', { type: 'button', 'aria-pressed': 'false', dataset: { part: '录屏开关' }, onClick: () => toggleRec() })
     const toggleBtn = el('button.btn.btn-sm', { type: 'button', onClick: () => call('toggleOverlay') })
     const editBtn = el('button.btn.btn-sm.btn-ghost', { type: 'button', onClick: () => call('editOverlay', !state.overlay.editMode) })
     const moreBtn = iconButton('ellipsis', t('字幕窗的更多操作'), () =>
@@ -48,8 +51,9 @@ VIEWS.live = {
     moreBtn.classList.add('btn-sm')
     const askBtn = el('button.btn.btn-sm', { type: 'button', onClick: () => ask(askBtn) })
     const askVr = el('span.vr.live-vr')
-    const bar = el('div.live-bar', {}, meters, el('span.header-spacer'), captureBtn, toggleBtn, editBtn, moreBtn, askVr, askBtn)
+    const bar = el('div.live-bar', {}, meters, el('span.header-spacer'), captureBtn, recBtn, toggleBtn, editBtn, moreBtn, askVr, askBtn)
     const summaryLine = el('div.live-summary.text-2')
+    const framesLine = el('div.live-frames.text-2', { hidden: true, role: 'status' })
 
     // 实时记录（字幕和课堂截图按时间排在一起）
     const list = el('div.transcript.live-transcript', { role: 'log', 'aria-live': 'off', 'aria-label': t('实时记录') })
@@ -121,7 +125,7 @@ VIEWS.live = {
     const sideHead = el('div.pane-subheader.side-head', { role: 'tablist' }, tabNotes, tabAnswers, tabAsk, el('span.header-spacer'), notesStamp, askAfter)
     const side = el('aside.live-answers', { 'aria-label': t('右栏') }, sideHead, notesBody, answersBody, askBody)
     const split = el('div.live-split', {}, left, side)
-    ctx.body.append(bar, summaryLine, split)
+    ctx.body.append(bar, summaryLine, framesLine, split)
 
     const nodes = new Map() // 段落 id → 行
     const slideNodes = new Set()
@@ -201,6 +205,7 @@ VIEWS.live = {
       captureBtn.hidden = !on
       const slideKey = s.class?.hotkeySlide
       fill(captureBtn, icon('camera', 14), t('截取画面'), slideKey ? kbd(slideKey, { size: 'sm' }) : null)
+      renderRec()
       fill(toggleBtn, icon(ov.visible ? 'eye-off' : 'eye', 14), ov.visible ? t('隐藏字幕') : t('显示字幕'), state.hotkey.accel ? kbd(state.hotkey.accel, { size: 'sm' }) : null)
       fill(editBtn, icon(ov.editMode ? 'check' : 'monitor', 14), ov.editMode ? t('完成调整') : t('调整位置'))
       editBtn.classList.toggle('btn-ghost', !ov.editMode)
@@ -212,12 +217,61 @@ VIEWS.live = {
       renderSide()
     }
 
+    function renderRec() {
+      const on = running()
+      const rec = state.screenRec ?? {}
+      const mine = rec.sessionId && rec.sessionId === state.live?.sessionId
+      const wanted = Boolean(mine && rec.on)
+      const recording = Boolean(mine && rec.recording)
+      const paused = wanted && !recording && state.engine.paused
+      recBtn.hidden = !on
+      recBtn.disabled = Boolean(rec.starting)
+      recBtn.classList.toggle('is-loading', Boolean(rec.starting))
+      recBtn.classList.toggle('is-rec', recording)
+      recBtn.classList.toggle('is-held', paused)
+      recBtn.setAttribute('aria-pressed', String(wanted))
+      const hk = state.settings?.hotkeyScreen
+      const key = hk && state.hotkey.screen?.accel && !state.hotkey.screen?.error ? kbd(hk, { size: 'sm' }) : null
+      if (recording) {
+        recTime.textContent = fmtOffset(Date.now() - (rec.startAt ?? Date.now()))
+        fill(recBtn, el('span.live-rec-dot'), t('录屏'), recTime, key)
+        recBtn.title = t('点一下停止录屏，这一段存进这场的文件夹')
+      } else if (paused) {
+        fill(recBtn, icon('pause', 14), t('录屏已暂停'), key)
+        recBtn.title = t('记录暂停时录屏也停着，继续记录后接着录（另存一段）')
+      } else {
+        fill(recBtn, icon('video', 14), t('录屏'), key)
+        recBtn.title = rec.count && mine ? t(`这一场已经录了 {0} 段，共 {1}，点一下再录一段`, rec.count, recLen(rec.totalMs)) : t('录下鼠标所在的那块屏幕和双方的声音，视频和这场的记录放在一起')
+      }
+    }
+    // 录了多久：不到 1 分钟写秒，满 1 分钟写「12 分钟」
+    const recLen = (ms = 0) => (ms < 60_000 ? t(`{0} 秒`, Math.max(1, Math.round(ms / 1000))) : fmtDuration(ms))
+
+    async function toggleRec() {
+      recBtn.classList.add('is-loading')
+      await toggleScreenRec()
+      recBtn.classList.remove('is-loading')
+      renderRec()
+    }
+
+    // 停止以后：从录屏里截画面的进度
+    function renderFrames() {
+      const live = state.live
+      const p = live?.ended ? state.recFrames.get(live.sessionId) : null
+      framesLine.hidden = !p
+      if (!p) return
+      fill(framesLine, ui.spinner(12), el('span', { text: p.total > 1 ? t(`正在从录屏里截画面（第 {0} 段，共 {1} 段）… {2}%`, Math.min(p.total, (p.index ?? 0) + 1), p.total, Math.round((p.fraction ?? 0) * 100)) : t(`正在从录屏里截画面… {0}%`, Math.round((p.fraction ?? 0) * 100)) }))
+    }
+
     function renderSummary() {
       const live = state.live
       summaryLine.hidden = !live?.ended
+      renderFrames()
       if (!live?.ended) return
       const segs = [...live.segs.values()].filter((x) => x.text)
-      const bits = [live.endedAt && live.startedAt ? fmtDuration(live.endedAt - live.startedAt) : null, t(`{0} 段字幕`, segs.length), live.slides?.length ? t(`{0} 张截图`, live.slides.length) : null, live.answers.size ? t(`{0} 条 AI 回答`, live.answers.size) : null]
+      const rec = state.screenRec ?? {}
+      const recs = rec.sessionId === live.sessionId && rec.count ? t(`{0} 段录屏，共 {1}`, rec.count, recLen(rec.totalMs)) : null
+      const bits = [live.endedAt && live.startedAt ? fmtDuration(live.endedAt - live.startedAt) : null, t(`{0} 段字幕`, segs.length), live.slides?.length ? t(`{0} 张截图`, live.slides.length) : null, recs, live.answers.size ? t(`{0} 条 AI 回答`, live.answers.size) : null]
       const after = isClass() ? t('生成课堂笔记时 AI 会整理出大纲、公式、考点和作业。') : t('生成纪要时 AI 会整理出要点、待办和 DDL。')
       fill(summaryLine, icon('circle-check', 14), t(`已保存到「{0}」：{1}。{2}`, projectName(live.projectId), bits.filter(Boolean).join(t('，')), after))
     }
@@ -475,6 +529,11 @@ VIEWS.live = {
       captureBtn.classList.remove('is-loading')
     }
 
+    // 录屏的时长每秒走一下
+    ctx.every(() => {
+      if (recBtn.classList.contains('is-rec')) recTime.textContent = fmtOffset(Date.now() - (state.screenRec.startAt ?? Date.now()))
+    }, 1000)
+
     // 等待中的回答每 200ms 刷新一下耗时
     ctx.every(() => {
       for (const c of cards.values()) {
@@ -522,6 +581,8 @@ VIEWS.live = {
     })
     ctx.on('engine', () => (header(), renderBar(), renderSummary(), askPanelView.refreshStatus()))
     ctx.on('devices', renderBar)
+    ctx.on('screenrec', () => (renderRec(), renderSummary()))
+    ctx.on('rec-frames', renderFrames)
     ctx.on('overlay', renderBar)
     ctx.on('hotkey', () => (header(), renderBar()))
     // 意群颜色开关、样式改了要重画字幕

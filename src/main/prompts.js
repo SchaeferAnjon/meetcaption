@@ -46,6 +46,24 @@ export function transcriptText(session) {
 
 export { clock }
 
+/**
+ * 给模型的截图清单（图另外附在消息后面）。slides：附了图的那几张；allSlides：全部截图（视频、录屏里自动截的很多时才给）。
+ * label：只有手动截的几张时的叫法（「课件截图」「会上的截图」）。
+ */
+export function slidesText(session, { slides = [], allSlides = null, label = '课件截图' } = {}) {
+  const name = (x) => x.file.replace(/^slides\//, '')
+  if (allSlides?.length) {
+    const attached = new Set(slides.map((x) => x.file))
+    const head = session.video
+      ? `视频里自动截的画面（画面一变就截一张，共 ${allSlides.length} 张）`
+      : `截图（共 ${allSlides.length} 张：标着「手动」的是用户自己截的，其余是录屏里画面一变自动截的）`
+    const line = (x) => `- slides/${name(x)}（${session.video ? '视频 ' : ''}[${clock(x.at - session.startedAt)}]${!session.video && x.source !== 'recording' ? '，手动' : ''}${attached.has(x.file) ? '，图附在后面' : ''}）`
+    return `${head}：\n${allSlides.map(line).join('\n')}\n附图按这个顺序：${slides.map(name).join('、')}`
+  }
+  if (slides.length) return `${label}（附在后面，按顺序）：\n${slides.map((x, i) => `${i + 1}. slides/${name(x)}（[${clock(x.at - session.startedAt)}] 截的）`).join('\n')}`
+  return ''
+}
+
 /** 识别稿按声音分了说话人（Soniox 实时分人、视频的分人）时补在「谁是谁」后面的一句；没分就是空串。 */
 export function speakersNote(session) {
   if (!session.segments?.some((s) => s.sp != null && s.who !== 'me')) return ''
@@ -93,7 +111,8 @@ export function projectBrief({ project, projects = [] }) {
   return lines.join('\n')
 }
 
-export function summaryMessages({ session, project = null, projects = [], context, extraAsk }) {
+export function summaryMessages({ session, project = null, projects = [], context, extraAsk, slides = [], allSlides = null }) {
+  const shots = allSlides?.length ? allSlides : slides
   const dateText = dateLabel(session.startedAt)
   const out = writeLang(session, project)
   const w = templateWords(out)
@@ -104,7 +123,12 @@ export function summaryMessages({ session, project = null, projects = [], contex
 - 相对时间要换算成具体日期：会议日期是 ${dateText}，「next Friday」「in two weeks」「下周三」这类都算出日期并保留原话；「next + 星期几」按下一周的那一天算。
 - 待办和 DDL 要具体到能直接照着做，每条后面用「${w.quote.trim()}」附上识别稿里的依据（保留原文）和时间戳。
 - 用户同时在做好几个项目（见项目清单）。会里说到别的项目的事照样写进纪要，在那一条后面用【项目名】标出来。
-- 「${h[1]}」按话题分组，每组几条要点；「${h[2]}」按主题或论文章节列，尽量具体到改哪里、怎么改。
+- 「${h[1]}」按话题分组，每组几条要点；「${h[2]}」按主题或论文章节列，尽量具体到改哪里、怎么改。${
+    shots.length
+      ? `
+- 会上截了屏幕（共享的文档、课件、页面）：在讲到对应内容的要点下面另起一行用 ![${w.shotAlt}](slides/文件名.jpg) 引用，路径照抄下面给的；只引用和要点有关的几张，没用上的不用硬塞。只插下面给了路径的图片，不要自己编图片文件名。`
+      : ''
+  }
 - 不要用破折号。${templateRule(out)}
 
 按下面的 Markdown 结构输出，没有内容的小节写「${w.none}」：
@@ -126,6 +150,8 @@ ${w.tableHead}
   parts.push(`日历：\n${calendarText(session.startedAt)}`)
   if (extraAsk) parts.push(`额外要求：${extraAsk}`)
   if (session.liveNotes) parts.push(`开会时整理的实时笔记（JSON，只作参考，以识别稿为准）：\n${JSON.stringify(session.liveNotes)}`)
+  const shotList = slidesText(session, { slides, allSlides, label: '会上的截图' })
+  if (shotList) parts.push(shotList)
   parts.push(`识别稿（[分:秒] 说话人：内容）：\n${transcriptText(session)}`)
   return [
     { role: 'system', content: system },

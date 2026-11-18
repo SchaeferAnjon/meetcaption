@@ -30,6 +30,8 @@ const state = {
   projectModes: new Map(), // 项目 id → { mode, classSource }：列表里没带时用 getProject 补
   pendingStart: null, // 刚请求开始时选的模式，engine:state 没带 mode 时用它
   video: { running: false }, // 视频处理：{ running, name, poster, progress } | { done: {...} } | { failed: {...} }
+  screenRec: { on: false, recording: false, starting: false, startAt: null, count: 0, totalMs: 0, sessionId: null }, // 记录时的录屏开关（主进程 recording/controller.js）
+  recFrames: new Map(), // 会议 id → 停止后从录屏里截画面的进度 { total, index, fraction }
 }
 
 /* ---------------- 事件 ---------------- */
@@ -640,6 +642,16 @@ async function captureSlide() {
     return null
   }
   ui.toast({ title: t('已截取画面'), message: liveMode() === 'class' ? t('存进这节课的文件夹，课堂笔记会用上') : t('存进这场会议的文件夹，会议详情的「截图」里能看'), type: 'success' })
+  return r
+}
+
+/** 记录时开 / 关录屏（实时页顶栏、命令面板）。 */
+async function toggleScreenRec() {
+  const r = await call('screenRecToggle')
+  if (failed(r) || r?.ok === false) {
+    ui.toast({ title: t('没能开始录屏'), message: r?.error, type: 'error', duration: r?.code === 'no-permission' ? 10000 : undefined })
+    return null
+  }
   return r
 }
 

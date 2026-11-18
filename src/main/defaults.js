@@ -34,6 +34,7 @@ export const DEFAULTS = {
   micDeviceId: '',
   hotkeyToggle: 'CommandOrControl+Alt+S',
   hotkeyRecord: 'CommandOrControl+Alt+R', // 全局：在当前项目里开始记录，记录中再按停止
+  hotkeyScreen: 'CommandOrControl+Alt+M', // 记录时开 / 关录屏（只在记录时注册；M 是 movie，Mac 上占的是很少用的「最小化全部窗口」）
   // 主窗口里的快捷键，设置里都能改；空字符串表示不用
   keys: {
     palette: 'CommandOrControl+K',
