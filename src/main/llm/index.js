@@ -2,6 +2,7 @@
 import { chatgptComplete } from './chatgpt.js'
 import { compatComplete, listModels as compatModels, memberOffline } from './openaiCompat.js'
 import { LlmError } from './errors.js'
+import { claudeCodeComplete, claudeCodeOn } from './claudeCode.js'
 import { PRESET_IDS, PROVIDERS, providerOf } from './providers.js'
 import { t } from '../i18n.js'
 
@@ -54,6 +55,7 @@ export function compatConfig(s) {
  * @returns {Promise<string>} 全文；给了 onDelta 就流式回调累计全文
  */
 export async function complete(settings, auth, o) {
+  if (claudeCodeOn()) return claudeCodeComplete(o)
   const provider = settings.llmProvider ?? 'openai'
   const model = resolveModel(settings, o.model)
   if (provider === 'chatgpt') {
@@ -89,6 +91,7 @@ function hostOf(url) {
 
 /** 给界面显示用：{ provider, ready, label, reason }，ChatGPT 通道另带 account。 */
 export function llmStatus(settings, auth) {
+  if (claudeCodeOn()) return { provider: 'claude-code', ready: true, label: 'Claude Code（本机）', reason: null }
   const provider = settings.llmProvider ?? 'openai'
   if (provider === 'chatgpt') {
     const label = 'ChatGPT 账号'

@@ -6,6 +6,7 @@ import { speakerLabel } from '../modes.js'
 
 // 问 AI（课堂、会议、面试都能问）：组 prompt 和解析回答（不引 electron，单测直接用）。
 // 取材：这一场的字幕（整场，太长时只留和问题最相关的几段加最近一段和引用那句的前后）、实时笔记、课件里最相关的几页、截图（最多附两张）。
+// 问的是一段时间（刚才、最近十分钟、到现在、几点几分、开头，askScope 认）时，先整段给那段时间的字幕，「讲了什么」这类词不拿去对字幕。
 // prompt 里的说法按模式换：课堂说「这节课 / 老师」，会议说「这场会 / 对方」，面试说「这场面试 / 面试官」。
 // 回答按行写：覆盖、要点、几条、依据（引用资料里的编号）、接着问。解析边流边出，没写完的行先不露出来。
 // 联网（AI 服务是 DeepSeek 或会员时）：资料不够回答时 AI 第一行只写「搜索：<搜索词>」，ask.js 看到这一行就停掉这次回答、去搜，
@@ -13,7 +14,10 @@ import { speakerLabel } from '../modes.js'
 
 export const ASK_LIMITS = {
   transcriptTokens: 3200, // 字幕最多占的 token（估算）
-  recentShare: 0.35, // 其中最近的字幕占的份额
+  scopeTokens: 7000, // 问的是一段时间（刚才、最近十分钟、到现在、几点几分）时字幕最多占的 token：那段时间要整段给
+  recentShare: 0.35, // 其中最近的字幕占的份额（问题没说时间、又有能对上的词时）
+  justMin: 5, // 「刚才」「刚刚」：最近几分钟
+  startMin: 10, // 「开头」「一开始」：开课后几分钟
   notesChars: 3600,
   pageTokens: 1800,
   pages: 3,
@@ -68,6 +72,139 @@ function termTokens(question, terms) {
 }
 
 const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim()
+
+/* ---------------- 问题问的是哪段时间 ---------------- */
+
+const MIN = 60_000
+const CN_DIGIT = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 }
+const EN_NUM = { one: 1, two: 2, three: 3, five: 5, ten: 10, fifteen: 15, twenty: 20, thirty: 30, forty: 40, sixty: 60 }
+const NUM = '(\\d{1,3}|[一二两三四五六七八九十]{1,3})'
+// 一段时长：十分钟、20 分钟、半小时、一个小时、一刻钟
+const DUR = `(?:${NUM}\\s*个?\\s*(分钟|小时|钟头)|(半)\\s*个?\\s*(?:小时|钟头)|(一刻钟))`
+
+/** 「十五」「二十」「3」→ 数字；认不出 → null */
+function cnNum(s) {
+  if (/^\d+$/.test(s)) return Number(s)
+  if (s.length === 1 && s in CN_DIGIT) return CN_DIGIT[s]
+  const m = s.match(/^([一二两三四五六七八九])?十([一二三四五六七八九])?$/)
+  return m ? (m[1] ? CN_DIGIT[m[1]] : 1) * 10 + (m[2] ? CN_DIGIT[m[2]] : 0) : null
+}
+
+/** DUR 匹配到的几组 → 分钟 */
+function durMin(n, unit, half, quarter) {
+  if (half) return 30
+  if (quarter) return 15
+  const v = cnNum(n)
+  return v == null ? null : unit === '分钟' ? v : v * 60
+}
+
+/**
+ * 问题问的是这一场里的哪段时间（看问题里的说法，不看内容）。
+ * now：现在；startedAt：开始时间；endedAt：结束时间（课后才有）；live：还在进行。
+ * → { kind: 'recent' | 'all' | 'at' | 'start', from, to, label } | null（没问时间）
+ * recent：最近 N 分钟、刚才（最近 5 分钟）、最后十分钟；all：到现在、总结、目前讲了什么；at：某个钟点或「第 N 分钟」「十分钟前」前后几分钟；start：开头、前十分钟。
+ */
+export function askScope(question, { now = Date.now(), startedAt, endedAt = null, live = true } = {}) {
+  const q = String(question ?? '').replace(/\s+/g, ' ')
+  const end = live ? now : (endedAt ?? now)
+  const out = (kind, from, to, label) => {
+    const f = Math.max(startedAt, from)
+    const t = Math.min(end, to)
+    return t > f ? { kind, from: f, to: t, label } : null
+  }
+  const around = (t, label, before = 1, after = 4) => out('at', t - before * MIN, t + after * MIN, label)
+  const recent = (min, label) => out('recent', end - min * MIN, end, label)
+  const hm = (ms) => {
+    const d = new Date(ms)
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+  // 钟点 → 这一场那天的这个时刻；没说上午下午的，挑落在这一场里的那个
+  const wall = (h, m, pm) => {
+    const base = new Date(startedAt)
+    const cands = (pm && h < 12 ? [h + 12] : h < 12 ? [h, h + 12] : [h]).map((x) => new Date(base.getFullYear(), base.getMonth(), base.getDate(), x, m).getTime())
+    return cands.find((t) => t >= startedAt - 10 * MIN && t <= end + 10 * MIN) ?? null
+  }
+  let m
+  // 课后的 1:05:00、第 30 分钟：开始以后多久
+  if (!live && (m = q.match(/(?<![\d:])(\d{1,2}):(\d{2}):(\d{2})(?![\d:])/))) return around(startedAt + (Number(m[1]) * 60 + Number(m[2])) * MIN, `第 ${Number(m[1]) * 60 + Number(m[2])} 分钟前后`)
+  if ((m = q.match(new RegExp(`(?:第|开课|开始后?|上课)\\s*${NUM}\\s*分钟`)))) {
+    const n = cnNum(m[1])
+    if (n != null) return around(startedAt + n * MIN, `开始后第 ${n} 分钟前后`)
+  }
+  if ((m = q.match(/(?<![\d:])(\d{1,2})[:：](\d{2})(?![\d:])/))) {
+    const t = wall(Number(m[1]), Number(m[2]), false)
+    if (t != null) return around(t, `${hm(t)} 前后`)
+    // 课后没对上钟点的 30:00 是开始后多久
+    if (!live) return around(startedAt + (Number(m[1]) + Number(m[2]) / 60) * MIN, `第 ${Number(m[1])} 分钟前后`)
+  }
+  // 「两点五十」「下午 6 点」「3 点半」；光一个「三点」常是三个要点，要有上下午、分钟、半或「左右」这类才算钟点
+  if ((m = q.match(new RegExp(`(上午|下午|晚上|早上|中午|傍晚)?\\s*${NUM}\\s*点\\s*(?:${NUM}\\s*分?|(半)|(一刻))?\\s*(钟|左右|前后|的时候|那会|那时)?`)))) {
+    const [, ampm, hs, ms, half, quarter, tail] = m
+    const h = cnNum(hs)
+    const min = ms ? cnNum(ms) : half ? 30 : quarter ? 15 : 0
+    if ((ampm || ms || half || quarter || tail) && h != null && h < 24 && min != null && min < 60) {
+      const t = wall(h, min, /下午|晚上|傍晚/.test(ampm ?? ''))
+      if (t != null) return around(t, `${hm(t)} 前后`)
+    }
+  }
+  // 十分钟前 / 10 minutes ago：那个时刻前后
+  if ((m = q.match(new RegExp(`${DUR}\\s*之?前(?!面|边)`)))) {
+    const n = durMin(m[1], m[2], m[3], m[4])
+    if (n != null) return around(end - n * MIN, `${n} 分钟前`, 2, 3)
+  }
+  if ((m = q.match(/(\d{1,3}|one|two|three|five|ten|fifteen|twenty|thirty|forty|sixty)\s*(minutes?|mins?|hours?)\s+ago/i))) {
+    const n = (Number(m[1]) || EN_NUM[m[1].toLowerCase()]) * (/^h/i.test(m[2]) ? 60 : 1)
+    return around(end - n * MIN, `${n} 分钟前`, 2, 3)
+  }
+  // 最近十分钟 / 过去半小时 / 最后十分钟 / 这 20 分钟 / 十分钟内 / last 15 minutes
+  if ((m = q.match(new RegExp(`(?:最近|过去|近|刚才|刚刚|最后|这|方才)\\s*的?\\s*${DUR}`))) || (m = q.match(new RegExp(`${DUR}\\s*(?:内|以内|之内|里)`)))) {
+    const n = durMin(m[1], m[2], m[3], m[4])
+    if (n != null) return recent(n, live ? `最近 ${n} 分钟` : `最后 ${n} 分钟`)
+  }
+  if ((m = q.match(/(?:last|past|previous|final)\s+(\d{1,3}|one|two|three|five|ten|fifteen|twenty|thirty|forty|sixty)\s*(minutes?|mins?|hours?)/i))) {
+    const n = (Number(m[1]) || EN_NUM[m[1].toLowerCase()]) * (/^h/i.test(m[2]) ? 60 : 1)
+    return recent(n, live ? `最近 ${n} 分钟` : `最后 ${n} 分钟`)
+  }
+  if (/(?:last|past)\s+half\s+(?:an\s+)?hour/i.test(q)) return recent(30, live ? '最近 30 分钟' : '最后 30 分钟')
+  // 前十分钟 / 开头十分钟 / first 10 minutes
+  if ((m = q.match(new RegExp(`(?:前|头|开头|开始的?|一开始的?|刚开始的?)\\s*${DUR}`)))) {
+    const n = durMin(m[1], m[2], m[3], m[4])
+    if (n != null) return out('start', startedAt, startedAt + n * MIN, `开头 ${n} 分钟`)
+  }
+  if ((m = q.match(/first\s+(\d{1,3}|one|two|three|five|ten|fifteen|twenty|thirty)\s*(minutes?|mins?|hours?)/i))) {
+    const n = (Number(m[1]) || EN_NUM[m[1].toLowerCase()]) * (/^h/i.test(m[2]) ? 60 : 1)
+    return out('start', startedAt, startedAt + n * MIN, `开头 ${n} 分钟`)
+  }
+  if (/开头|一开始|刚开始|刚上课|开始的时候|at the (?:beginning|start)/i.test(q)) return out('start', startedAt, startedAt + ASK_LIMITS.startMin * MIN, `开头 ${ASK_LIMITS.startMin} 分钟`)
+  // 刚才 / 刚刚 / just now：最近 5 分钟
+  if (/刚才|刚刚|方才|刚说|这一?段在|(?<!到)现在在?(?:讲|说|聊)|just now|just said|right now|a moment ago/i.test(q)) return recent(ASK_LIMITS.justMin, live ? `刚才这 ${ASK_LIMITS.justMin} 分钟` : `最后 ${ASK_LIMITS.justMin} 分钟`)
+  // 到现在 / 目前 / 总结 / so far：从开始到现在
+  if (/目前|到现在|至今|迄今|为止|一共|总共|整节课|整堂课|整场|全部|总结|概括|梳理|回顾|大纲|(?:讲|说|聊)(?:了|过)哪些|so far|overall|summar|whole (?:class|lecture|meeting|talk)/i.test(q)) return out('all', startedAt, end, live ? '从开始到现在' : '从头到尾')
+  return null
+}
+
+// 问题里只是在问「讲了什么、是什么意思」、问时间的词：不拿去对字幕（「讲了」「什么」「一下」到处都有，对上的全是不相干的句子）
+const QUERY_FILLER = new RegExp(
+  [
+    '\\d{1,2}[:：]\\d{2}(?:[:：]\\d{2})?',
+    `${NUM}\\s*点\\s*(?:${NUM}\\s*分?|半|一刻)?`,
+    DUR,
+    `第\\s*${NUM}\\s*分钟`,
+    '到目前为止|目前为止|到现在为止|总结一下|概括一下|梳理一下|回顾一下|讲的是什么|说的是什么|是什么意思|什么意思|啥意思|讲了什么|说了什么|讲的什么|说的什么|在讲什么|在说什么',
+    '讲了啥|说了啥|讲啥|说啥|总结|概括|梳理|回顾|目前|到现在|现在|至今|为止|刚才|刚刚|方才|最近|过去|开头|一开始|刚开始|开始|最后|是什么|是啥|什么|哪些|怎么|为什么|为啥|一下',
+    '老师|说的|讲的|讲了|说了|讲过|说过|这节课|这堂课|这场会|这场面试|整节课|这一段|这段|这句|那段|分钟|小时|钟头|左右|前后|时候|之前|以前|内容|要点|主要|大概|具体|一点|帮我|请问|上午|下午|晚上|早上|中午|傍晚',
+    '这么|那么|这样|那样|这个|那个|这些|那些|回答|解释|意思|我们|你们',
+  ].join('|'),
+  'g',
+)
+const QUERY_STOP = new Set('just now so far minute minutes min mins hour hours last past previous first ago summary summarize summarise overall whole said say says talk talked talking teacher lecture class meeting'.split(' '))
+
+/** 问题里拿去对字幕的词：去掉只是在问「讲了什么」和问时间的说法；去掉以后剩下的单个汉字（「说」「他」）也不要，太常见。 */
+export function queryTokens(query) {
+  const out = searchTokens(String(query ?? '').replace(QUERY_FILLER, ' '))
+  for (const k of out) if (QUERY_STOP.has(k) || /^\p{Script=Han}$/u.test(k)) out.delete(k)
+  return out
+}
 
 // 各模式在 prompt 里的说法。it：这一场；whole：整场；src：内容从哪来（「先看资料里老师是怎么讲的」）；say：讲 / 说；
 // in：在场时（「课上的字幕」）；aside：只是顺带提到（「老师只在举别的例子时顺带说了」）；gap：没听懂时要补的那一步。
@@ -145,11 +282,14 @@ export const askWords = (mode) => WORDS[mode] ?? WORDS.meeting
 
 /**
  * 课上的字幕 → 编了号的几行文字。segments：[{ id, startedAt, text, speaker?, sentences? }]，按时间排好。
- * base：课的开始时间；clockTime(ms)：一行前面写的时间（实时是钟点，课后是课里第几分钟）。
- * 整节课放得下就全放；放不下：最近的一段 + 引用那句的前后 + 和问题最相关的几段（带前后各一句），中间省略的地方写「……」。
- * → { text, refs: Map<编号, 字幕 id>, ats: Map<字幕 id, 时间>, shown, total }
+ * clockTime(ms)：一行前面写的时间（实时是钟点，课后是课里第几分钟）。
+ * scope：askScope 给的这一问问的那段时间（刚才、最近十分钟、到现在、几点几分）：那段时间整段给（放不下就在那段里按时间均匀挑几截），
+ * 预算放宽到 ASK_LIMITS.scopeTokens，剩下的再给和问题相关的。没问时间：最近的一段 + 引用那句的前后 + 和问题最相关的几段（带前后各一句）。
+ * 整场放得下就全放；中间省略的地方写「……」。
+ * → { text, refs: Map<编号, 字幕 id>, ats: Map<字幕 id, 时间>, shown, total, range: { from, to } | null（问的那段里给了的第一句和最后一句的时间）, note }
  */
-export function transcriptForAsk(segments, { query = '', terms = [], quoteId = null, clockTime, budget = ASK_LIMITS.transcriptTokens, mode = 'class' } = {}) {
+export function transcriptForAsk(segments, { query = '', terms = [], quoteId = null, clockTime, budget = null, mode = 'class', scope = null } = {}) {
+  budget ??= scope ? ASK_LIMITS.scopeTokens : ASK_LIMITS.transcriptTokens
   const rows = segments
     .filter((s) => s?.text?.trim())
     .map((s) => {
@@ -167,20 +307,24 @@ export function transcriptForAsk(segments, { query = '', terms = [], quoteId = n
     used += cost[i]
     return true
   }
+  const win = scope ? rows.map((r, i) => (r.at >= scope.from && r.at <= scope.to ? i : -1)).filter((i) => i >= 0) : []
+  const want = new Set([...queryTokens(query), ...termTokens(query, terms)])
   if (total <= budget) rows.forEach((_, i) => add(i))
   else {
     // 引用的那句和前后：回答一定要看得到它
     const qi = quoteId == null ? -1 : rows.findIndex((r) => r.id === quoteId)
     if (qi >= 0) for (const d of [0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6]) add(qi + d)
-    // 最近的一段
-    const recent = budget * ASK_LIMITS.recentShare
-    let tail = 0
-    for (let i = rows.length - 1; i >= 0 && tail + cost[i] <= recent; i--) {
-      tail += cost[i]
-      add(i)
+    if (scope) spread(win, budget * 0.85 - used)
+    else {
+      // 最近的一段：问题里没有能对上的词（「这是什么意思」「回答一下」）就几乎全给最近的
+      const recent = budget * (want.size ? ASK_LIMITS.recentShare : 0.95)
+      let tail = 0
+      for (let i = rows.length - 1; i >= 0 && tail + cost[i] <= recent; i--) {
+        tail += cost[i]
+        add(i)
+      }
     }
     // 和问题最相关的
-    const want = new Set([...searchTokens(query), ...termTokens(query, terms)])
     if (want.size) {
       const docs = rows.map((r) => searchTokens(`${r.line} ${r.tr}`))
       const df = new Map()
@@ -202,6 +346,25 @@ export function transcriptForAsk(segments, { query = '', terms = [], quoteId = n
       }
     }
   }
+
+  // 问的那段时间：放得下就整段；放不下按时间分成几组，每组从头取连着的几句（最后一组从最新的往前取），整段都照顾到
+  function spread(idx, cap) {
+    const need = idx.reduce((a, i) => a + cost[i], 0)
+    if (need <= cap) return idx.forEach(add)
+    const groups = Math.max(4, Math.min(24, Math.round(cap / 400)))
+    const per = cap / groups
+    for (let g = 0; g < groups; g++) {
+      const part = idx.slice(Math.floor((g * idx.length) / groups), Math.floor(((g + 1) * idx.length) / groups))
+      if (g === groups - 1) part.reverse()
+      let got = 0
+      for (const i of part) {
+        if (got + cost[i] > per) break
+        if (!add(i)) return
+        got += cost[i]
+      }
+    }
+  }
+
   const order = [...chosen].sort((a, b) => a - b)
   const refs = new Map()
   const ats = new Map()
@@ -216,7 +379,14 @@ export function transcriptForAsk(segments, { query = '', terms = [], quoteId = n
     prev = i
   })
   if (order.length && order.at(-1) < rows.length - 1) out.push(`……（后面还有 ${rows.length - 1 - order.at(-1)} 句，没放进来）`)
-  return { text: out.join('\n'), refs, ats, shown: order.length, total: rows.length }
+  const inWin = scope ? win.filter((i) => chosen.has(i)) : order
+  const range = inWin.length ? { from: rows[inWin[0]].at, to: rows[inWin.at(-1)].at } : null
+  let note = ''
+  if (scope) {
+    const how = inWin.length === win.length ? '这段时间的字幕全在下面' : `这段时间有 ${win.length} 句，下面按时间均匀挑了 ${inWin.length} 句`
+    note = win.length ? `这次问的是 ${scope.label}（${clockTime(rows[win[0]].at)} 到 ${clockTime(rows[win.at(-1)].at)}）：${how}，回答以这段为准。` : `这次问的是 ${scope.label}，这段时间没有字幕。`
+  }
+  return { text: out.join('\n'), refs, ats, shown: order.length, total: rows.length, range, note }
 }
 
 /** 实时笔记 → 编了号的文字（笔记 N）。放不下时先少给每节的要点，再只给标题。强调和作业按模式叫（会议是结论和待办）。 */
@@ -317,6 +487,8 @@ export function askSystem({ lang = 'zh', live = true, mode = 'class', search = f
     `- 先看资料里${w.src}是怎么${w.say}的，术语、符号和${w.src}的说法保持一致。回答用${L}写；${w.src}用的英文术语（或其他语言的术语）第一次出现时放在译名后面的括号里，比如「耦合（coupling）」。`,
     `- 短，一眼能扫完：一句要点，再 2 到 4 条，每条只讲一件事、不超过 50 个字（英文 30 个词），公式不算字数；一件事说不完就拆成两条或砍掉次要的。全部加起来不超过 200 个字。不复述问题，不客套，不写「根据资料」「${w.it}提到」这类铺垫，不附逐句翻译。`,
     `- ${w.gap}，用${L}说人话。`,
+    `- 我引用了一句提问、只写了「回答」「帮我答」「怎么答」这类：是要你替我回答那个问题，要点写我能直接说出口的答案，几条写理由或例子；不要去讲${w.src}有没有给出答案。`,
+    '- 问的是一段时间（刚才、最近几分钟、到现在、几点几分）时，资料里会写明问的是哪段：只讲那段时间里的内容，按时间顺序，不拿别的时间讲的事凑数。',
     web
       ? `- 资料里没有的内容先看「联网搜索的结果」，事实、数字、日期以结果为准；结果里也没有的按通用知识补充，拿不准的直说没查到。不要装作${w.src}${w.say}过，也不要编数字、名字和公式。${w.src}只提了一句或没${w.say}到时，照实填「覆盖」；要点和每一条都只讲问的东西本身，不写${w.src}讲没讲、讲到哪（界面已经写在上面）。`
       : `- 资料里没有的内容按通用知识补充，不要装作${w.src}${w.say}过；也不要编资料里没有的数字、名字和公式。${w.src}只提了一句或没${w.say}到时，照实填「覆盖」，回答里不用重复解释这件事（界面会写）。`,
@@ -342,23 +514,24 @@ export function webForAsk(results, max = ASK_LIMITS.webChars) {
 
 /**
  * 组一次提问的请求。
- * session：{ startedAt, endedAt, title, mode }（mode 定 prompt 里怎么说：这节课、这场会、这场面试）；live：课还在上 / 会还在开；now：现在的时间；
+ * session：{ startedAt, endedAt, title, mode }（mode 定 prompt 里怎么说：这节课、这场会、这场面试）；live：课还在上 / 会还在开；now：现在的时间；nowLabel：课上现在的钟点；
  * transcript / notes / pages / slides：取好的材料（见上面几个函数）；question：这次的问题；quote：{ segId, text, sel }；
  * history：之前几问 [{ q, quote, gist, points }]；keywords：术语（项目里设的和笔记里的）；context：课程背景。
  * → { system, messages, refs }：refs 是回答里的编号对应的东西。
  */
-export function askMessages({ session, mode = session.mode ?? 'class', live, now = Date.now(), lang = 'zh', context = '', keywords = [], transcript, notes = '', pages = { text: '', picked: [] }, slides = { list: '', attach: [] }, question, quote = null, quoteLine = null, history = [], search = false, web = null }) {
+export function askMessages({ session, mode = session.mode ?? 'class', live, now = Date.now(), nowLabel = null, lang = 'zh', context = '', keywords = [], transcript, notes = '', pages = { text: '', picked: [] }, slides = { list: '', attach: [] }, question, quote = null, quoteLine = null, history = [], search = false, web = null }) {
   const parts = []
   const w = askWords(mode)
   const mins = Math.max(0, Math.round(((live ? now : (session.endedAt ?? now)) - session.startedAt) / 60000))
-  parts.push(live ? w.running(mins) : w.ended(mins))
+  // nowLabel：课上现在几点（字幕前面写的是钟点，问「刚才」「十分钟前」时模型要知道现在是几点）
+  parts.push(`${live ? w.running(mins) : w.ended(mins)}${live && nowLabel ? `现在是 ${nowLabel}。` : ''}`)
   if (context?.trim()) parts.push(`${w.context}：${context.trim().slice(0, 600)}`)
   if (keywords.length) parts.push(`术语：${keywords.slice(0, 60).join('、')}`)
   const mat = []
   if (notes) mat.push(`${w.notes}（AI 边听边整理的，覆盖${w.whole}，编号「笔记N」）：\n${notes}`)
   if (pages.text) mat.push(`${w.deck}里和这个问题最相关的几页（编号「课件pN」）：\n${pages.text}`)
   if (slides.list) mat.push(`${w.in}截的屏幕画面：${slides.list}${slides.attach.length ? '。标着「附图」的附在这条消息后面，按截图编号从小到大' : ''}`)
-  mat.push(`${w.in}的字幕（编号 #N，[时间] 说话人：原话；「……」是省略的部分）：\n${transcript.text || '（还没有识别出字幕）'}`)
+  mat.push(`${w.in}的字幕（编号 #N，[时间] 说话人：原话；「……」是省略的部分）：\n${transcript.note ? `${transcript.note}\n` : ''}${transcript.text || '（还没有识别出字幕）'}`)
   parts.push(`${w.it}的资料：\n\n${mat.join('\n\n')}`)
   const webList = web?.results?.length ? web.results : null
   if (webList) parts.push(`刚才联网搜索了「${oneLine(web.query)}」，结果（编号「网N」，标题、日期、网址，下一行是摘要）：\n${webForAsk(webList)}`)

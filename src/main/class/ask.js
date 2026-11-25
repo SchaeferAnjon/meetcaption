@@ -4,13 +4,14 @@ import path from 'node:path'
 import { clock } from '../prompts.js'
 import { keywordList } from '../defaults.js'
 import { materialPages } from './materials.js'
-import { askMessages, coverOf, notesForAsk, pagesForAsk, parseAsk, parseSearch, slidesForAsk, transcriptForAsk, withAsked } from './askPrompt.js'
+import { askMessages, askScope, coverOf, notesForAsk, pagesForAsk, parseAsk, parseSearch, slidesForAsk, transcriptForAsk, withAsked } from './askPrompt.js'
 import { t, uiLang } from '../i18n.js'
 
 // 问 AI：一问一答，流式出字，问答存进这一场的 session.asks（进行中和结束后都能问、都能看）。课堂、会议、面试都能问，prompt 按模式说「这节课 / 这场会 / 这场面试」。
 // 还在进行：用正在记录的那场的字幕、笔记，AI 走这场的会员票（和翻译、答题一样，不另外开场次）。
 // 结束以后：用存下来的整场（课堂还有课件），AI 走和会后整理一样的凭据（24 小时内算在这一场上，之后是每天的会后整理额度；自带 Key 不受影响）。
 // source(sessionId) → { session, segments } | null：这一场正在记录时由引擎给；llm 和 aiStatus 是主进程里同一份（会员通道在里面）。
+// 引擎的 segments 只是内存里最近 300 段（LIVE_KEEP，含还没定稿的），整场定稿的在 session.segments：两份按 id 合起来用，长课开头几小时也看得到。
 // 联网：searchable(at) 说这次能不能搜（AI 服务是 DeepSeek 或会员才能），能搜时模型资料不够会先写「搜索：<搜索词>」，
 // search({ query, askId, signal, sessionStartedAt? }) → [{ title, url, date, summary }] 去搜（失败抛错），再带上结果问一次。搜不成照常回答，记下 web.status。
 
@@ -39,8 +40,9 @@ const STORED = ['id', 'q', 'quote', 'askedAt', 'after', 'status', 'cover', 'gist
 const pick = (r) => Object.fromEntries(STORED.filter((k) => r[k] != null).map((k) => [k, r[k]]))
 
 export class ClassAsk extends EventEmitter {
-  constructor({ store, llm, aiStatus, search = null, searchable = () => false, source = () => null, projectOf = () => null, loadImage = (f) => `data:image/jpeg;base64,${fs.readFileSync(f).toString('base64')}`, onSaved = () => {} }) {
+  constructor({ store, llm, aiStatus, search = null, searchable = () => false, source = () => null, projectOf = () => null, loadImage = (f) => `data:image/jpeg;base64,${fs.readFileSync(f).toString('base64')}`, onSaved = () => {}, now = () => Date.now() }) {
     super()
+    this.now = now
     this.store = store
     this.llm = llm
     this.search = search
@@ -81,7 +83,10 @@ export class ClassAsk extends EventEmitter {
     const st = this.aiStatus(at)
     if (!st.ready) return { ok: false, error: st.reason, code: 'no-ai' }
 
-    const segments = (live?.segments ?? session.segments).filter((s) => s?.text).sort((a, b) => a.startedAt - b.startedAt)
+    const merged = new Map((session.segments ?? []).map((s) => [s.id, s]))
+    for (const s of live?.segments ?? []) merged.set(s.id, s)
+    const segments = [...merged.values()].filter((s) => s?.text).sort((a, b) => a.startedAt - b.startedAt)
+    const now = this.now()
     const dir = this.store.dir(sessionId)
     const base = session.startedAt
     const clockTime = live ? hhmm : (ms) => clock(ms - base)
@@ -95,7 +100,9 @@ export class ClassAsk extends EventEmitter {
       ...segments.flatMap((s) => (s.sentences ?? []).flatMap((x) => x.terms ?? [])),
     ].filter((x) => x?.term)
     const query = [q, quoted?.text, quoted?.sel].filter(Boolean).join(' ')
-    const transcript = transcriptForAsk(segments, { query, terms, quoteId: quoted?.segId ?? null, clockTime, mode })
+    // 问的是哪段时间（刚才、最近十分钟、到现在、几点几分）：没正常结束的老记录按最后一句算结束
+    const scope = askScope(q, { now, startedAt: base, endedAt: session.endedAt ?? segments.at(-1)?.startedAt ?? now, live: Boolean(live) })
+    const transcript = transcriptForAsk(segments, { query, terms, quoteId: quoted?.segId ?? null, clockTime, mode, scope })
     const pageList = materialPages(session, dir)
     const pages = pagesForAsk(pageList, { query, terms, multi: new Set(pageList.map((p) => p.mat)).size > 1 })
     const slides = slidesForAsk(session.slides, { quoteAt: seg?.startedAt ?? null, clockTime })
@@ -114,6 +121,8 @@ export class ClassAsk extends EventEmitter {
         session,
         mode,
         live: Boolean(live) || !session.endedAt,
+        now,
+        nowLabel: live ? hhmm(now) : null,
         lang: uiLang(),
         context: project?.context ?? '',
         keywords: [...new Set([...keywordList({ keywords: project?.keywords ?? '' }), ...terms.map((x) => x.term)])],
@@ -137,10 +146,29 @@ export class ClassAsk extends EventEmitter {
     const id = newId()
     const ctrl = new AbortController()
     this.jobs.set(sessionId, { id, ctrl })
-    const rec = { id, q, askedAt: Date.now(), after: !live && Boolean(session.endedAt), ...(quoted ? { quote: quoted } : {}) }
+    const rec = { id, q, askedAt: now, after: !live && Boolean(session.endedAt), ...(quoted ? { quote: quoted } : {}) }
     const emit = (extra) => this.emit('update', { sessionId, ...rec, ...extra })
-    emit({ status: 'streaming', gist: '', points: [] })
-    this.#run({ sessionId, at, rec, build, search: this.searchable(at), ctrl, emit, replaceId, mode, usedImages: images.length, prompted: { transcript: transcript.shown, of: transcript.total } })
+    // 回答途中意外出错（比如发界面更新时窗口已经没了）：清掉这一场的任务，不然之后每一问都回「上一个问题还在回答」；界面上这一条标成出错、写原因
+    const fail = (e) => {
+      console.error('[ask] 回答中途出错', e)
+      if (this.jobs.get(sessionId)?.id === id) this.jobs.delete(sessionId)
+      try {
+        this.emit('update', { sessionId, ...rec, status: 'error', gist: '', points: [], src: [], next: [], error: chineseError(e) })
+      } catch (e2) {
+        console.error('[ask] 出错的这一条没能发给界面', e2)
+      }
+    }
+    try {
+      emit({ status: 'streaming', gist: '', points: [] })
+    } catch (e) {
+      fail(e)
+      return { ok: false, error: chineseError(e) }
+    }
+    // 交给 AI 的字幕：几句、问的那段时间、实际给到的起止（日志里看得到，答非所问时先查这一行）
+    const prompted = { transcript: transcript.shown, of: transcript.total, ...(scope ? { scope: scope.kind } : {}), ...(transcript.range ? { range: transcript.range } : {}) }
+    const span = transcript.range ? `${clockTime(transcript.range.from)}–${clockTime(transcript.range.to)}` : '无'
+    console.log(`[ask] ${sessionId} 「${q.slice(0, 40)}」字幕 ${transcript.shown}/${transcript.total} 句，${scope ? `问的是${scope.label}，` : ''}给到 ${span}`)
+    this.#run({ sessionId, at, rec, build, search: this.searchable(at), ctrl, emit, replaceId, mode, usedImages: images.length, prompted }).catch(fail)
     return { ok: true, id }
   }
 
