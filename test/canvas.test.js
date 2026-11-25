@@ -129,10 +129,12 @@ test('iCloud：录音那一处是替身，文件真身在 iCloud 文件夹里，
   assert.equal(fs.readFileSync(path.join(v, '.canvas-notes/录音/课程/ECP/上课记录/2026-11-04 ECP/录音-1.webm')).length, 5000)
 })
 
+// 本地 bare 仓库照 GitHub 的默认分支建成 main，读文件名关掉 quotepath：CI 上没有本机全局配置里的 init.defaultBranch=main、core.quotepath=false，
+// 不写的话远端 HEAD 指 master（log 说没有提交）、中文文件名被转成 \346… 八进制（0.6.14 的 CI 第一次跑就挂在这里）
 test('Git LFS：单独的仓库，录音存好就提交、推到远端（本机 bare 仓库代替 GitHub），远端里是 LFS 对象、克隆下来先只有指针', { skip: !gitOk && '没装 git-lfs' }, async () => {
   const v = tmp('mc-vault-')
   const remote = path.join(tmp('mc-remote-'), 'vault-录音.git')
-  execFileSync('git', ['init', '-q', '--bare', remote])
+  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', remote])
   const st = new AudioStore({ vault: v, cfg: { mode: 'lfs', remote }, trash: trashTo(tmp('mc-trash-')) })
   await st.prepare()
   seed(st.root)
@@ -148,7 +150,7 @@ test('换存法：本机 → LFS → iCloud → 本机，文件一个不少；�
   const v = tmp('mc-vault-')
   const trash = tmp('mc-trash-')
   const remote = path.join(tmp('mc-remote-'), 'r.git')
-  execFileSync('git', ['init', '-q', '--bare', remote])
+  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', remote])
   const st = new AudioStore({ vault: v, cfg: { mode: 'local' }, trash: trashTo(trash) })
   await st.prepare()
   seed(st.root)
@@ -325,7 +327,7 @@ test('字幕：一段里几句按字数分时间，第一行原文、第二行�
 
 test('Git LFS：远端已有别的设备推的录音，这台 Mac 新建的仓库接上去推，不删别人的、旧录音只拿指针', { skip: !gitOk && '没装 git-lfs' }, async () => {
   const remote = path.join(tmp('mc-remote-'), 'r.git')
-  execFileSync('git', ['init', '-q', '--bare', remote])
+  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', remote])
   const a = new AudioStore({ vault: tmp('mc-vault-a-'), cfg: { mode: 'lfs', remote }, trash: trashTo(tmp('mc-trash-')) })
   await a.prepare()
   seed(a.root)
@@ -336,7 +338,7 @@ test('Git LFS：远端已有别的设备推的录音，这台 Mac 新建的仓�
   fs.writeFileSync(path.join(b.root, '课程/EH/录音-1.webm'), Buffer.alloc(800, 3))
   const r = await b.migrate('lfs', { remote })
   assert.equal(r.pushError, undefined)
-  const tree = execFileSync('git', ['-C', remote, 'ls-tree', '-r', '--name-only', 'main']).toString()
+  const tree = execFileSync('git', ['-c', 'core.quotepath=false', '-C', remote, 'ls-tree', '-r', '--name-only', 'main']).toString()
   assert.match(tree, /课程\/EH\/录音-1\.webm/)
   assert.match(tree, /2026-11-04 ECP\/录音-1\.webm/)
   assert.match(fs.readFileSync(path.join(b.root, '课程/ECP/上课记录/2026-11-04 ECP/录音-1.webm'), 'utf8'), /^version https:\/\/git-lfs/)
