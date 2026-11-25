@@ -178,7 +178,10 @@ function sidebarFooter() {
   const member = s.plan === 'member'
   const aiName = member ? t('会员') : provider === 'chatgpt' ? 'ChatGPT' : provider === 'openai' ? 'OpenAI' : provider === 'custom' ? t('自定义') : (llm?.label ?? '')
   const aiOk = llm ? Boolean(llm.ready) : Boolean(ob.ai)
-  const asrName = member ? (s.memberAsr === 'local' ? t('本地') : t('会员云')) : s.engine === 'local' ? t('本地') : s.engine === 'soniox' ? 'Soniox' : s.engine === 'volc' ? t('豆包') : 'OpenAI'
+  // 会员场次用完：AI 暂停（不是没配好），直说暂停了、点了去买场次
+  const aiPaused = member && llm?.paused
+  // 会员场次用完、这一场退回了本地识别：写本地，不再写会员云
+  const asrName = member ? (s.memberAsr === 'local' || state.member?.fallback ? t('本地') : t('会员云')) : s.engine === 'local' ? t('本地') : s.engine === 'soniox' ? 'Soniox' : s.engine === 'volc' ? t('豆包') : 'OpenAI'
   const micOn = s.captureMic !== false
   const chips = el(
     'div.status-strip',
@@ -194,8 +197,12 @@ function sidebarFooter() {
       ok: aiOk,
       warn: !aiOk,
       kind: 'AI',
-      label: aiName,
-      tip: aiOk ? { title: t('AI 已连上'), text: llm?.label || aiName || t('AI 服务') } : { title: t('AI 还没连上'), text: llm?.reason || t('翻译、纪要和 AI 答题要用') },
+      label: aiPaused ? t('已暂停') : aiName,
+      tip: aiOk
+        ? { title: t('AI 已连上'), text: llm?.label || aiName || t('AI 服务') }
+        : aiPaused
+          ? { title: t('AI 已暂停'), text: llm.reason }
+          : { title: t('AI 还没连上'), text: llm?.reason || t('翻译、纪要和 AI 答题要用') },
       onClick: () => (member ? openPricing() : openSettings('ai')),
     }),
     statusChip({
@@ -203,7 +210,7 @@ function sidebarFooter() {
       warn: !ob.asr,
       kind: t('识别'),
       label: asrName,
-      tip: ob.asr ? { title: t('语音识别已配好'), text: s.engine === 'local' ? t('在这台电脑上识别，免费') : s.engine === 'soniox' ? t('Soniox 实时识别') : s.engine === 'volc' ? t('豆包流式识别') : t('OpenAI 实时识别') } : { title: t('语音识别还没配好'), text: s.engine === 'local' ? t('本地识别模型缺失，重新安装一下') : t('点这里填密钥') },
+      tip: ob.asr ? { title: t('语音识别已配好'), text: s.engine === 'local' || (member && state.member?.fallback) ? t('在这台电脑上识别，免费') : s.engine === 'soniox' ? t('Soniox 实时识别') : s.engine === 'volc' ? t('豆包流式识别') : t('OpenAI 实时识别') } : { title: t('语音识别还没配好'), text: s.engine === 'local' ? t('本地识别模型缺失，重新安装一下') : t('点这里填密钥') },
       onClick: () => openSettings(member ? 'member' : 'asr'),
     }),
   )

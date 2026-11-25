@@ -62,6 +62,8 @@ VIEWS.meeting = {
     ctx.dispose(wireTerms(panel))
 
     const menuBtn = iconButton('ellipsis', t('会议操作'), () => meetingActions(menuBtn))
+    // 写进过画布笔记的库：跳到那一篇（MeetCaption 联动，canvas-notes://open）
+    const canvasBtn = el('button.btn.btn-sm', { type: 'button', onClick: () => api.canvasContinue(id, ctx.params.at ?? 0) }, icon('notebook-pen', 14), el('span', { text: t('在画布笔记里继续') }))
 
     function isLive() {
       return state.engine.state !== 'idle' && state.live?.sessionId === id
@@ -74,7 +76,7 @@ VIEWS.meeting = {
           s ? el('button.crumb-button', { type: 'button', onClick: () => go('project', { id: s.projectId }) }, projectBox(p, 'sm'), el('span.truncate', { text: p?.name ?? t('未归类') })) : null,
           el('span.crumb.truncate', { text: s ? sessionTitle(s) : t('会议') }),
         ],
-        actions: s ? [isVideo() ? exportBtn : null, menuBtn] : [],
+        actions: s ? [isVideo() ? exportBtn : null, s.canvas?.file ? canvasBtn : null, menuBtn] : [],
       })
     }
 
@@ -209,6 +211,7 @@ VIEWS.meeting = {
           { label: t('移到别的项目…'), icon: 'folder', onSelect: () => moveMenu(projectBtn) },
           { label: t('改标题'), icon: 'pencil', onSelect: () => (titleInput.focus(), titleInput.select()) },
           { label: t('打开文件夹'), icon: 'external-link', onSelect: () => call('openFolder', id) },
+          { label: t('在画布笔记里继续'), icon: 'notebook-pen', onSelect: () => api.canvasContinue(id, ctx.params.at ?? 0) },
           { label: t('复制字幕记录'), icon: 'copy', onSelect: () => copyText(transcriptText(s), t('字幕记录已复制')) },
           s?.summary?.markdown && { label: isClass() ? t('复制课堂笔记') : t('复制纪要'), icon: 'copy', onSelect: () => copyText(s.summary.markdown, isClass() ? t('课堂笔记已复制') : t('纪要已复制')) },
           isClass() && s?.summary?.markdown && { label: t('导出到笔记库…'), icon: 'folder-output', onSelect: () => exportNotes(menuBtn) },

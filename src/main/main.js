@@ -15,6 +15,7 @@ import { aggregateTodos, openTodoCounts, patchTodo } from './todos.js'
 import { searchLibrary } from './search.js'
 import { MeetingEngine } from './engine.js'
 import { Member, memberSettings, withMemberAuth, PACKS as MEMBER_PACKS } from './member/client.js'
+import { MemberLive } from './member/live.js'
 import { RendererCapture } from './rendererCapture.js'
 import { ChatGPTAuth, complete, listModels, llmStatus, resolveModel, isAbort, PROVIDERS } from './llm/index.js'
 import { searchConfig, webSearch } from './llm/search.js'
@@ -50,6 +51,10 @@ import { ScreenRecording } from './recording/controller.js'
 import { DROP_EXTS } from './video/demux.js'
 import { toSrt, writeSrtBesideVideo, SRT_VARIANTS } from './video/srt.js'
 import { setUiLang, systemUiLang, t, uiDict, uiLang } from './i18n.js'
+import { CanvasLink } from './canvas/link.js'
+import { AudioRecording } from './canvas/audioRec.js'
+import { OpusEncoder } from './canvas/opusEncoder.js'
+import { parseMcUrl } from './canvas/format.js'
 import { TARGET_CODES } from './languages.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -69,7 +74,18 @@ const selfTest = process.argv.find((a) => a.startsWith('--selftest'))
 const uiSelfTest = selfTest?.startsWith('--selftest=ui') ? Number(selfTest.split(':')[1]) || 8 : 0
 if (!selfTest && !app.requestSingleInstanceLock()) app.quit()
 
-let settings, projects, store, summarizer, classAsk, engine, capture, chatgptAuth, assistant, vpStore, member, videoService, screenRec
+let settings, projects, store, summarizer, classAsk, engine, capture, chatgptAuth, assistant, vpStore, member, memberLive, videoService, screenRec, audioRec, canvas
+
+// meetcaption:// 深链（画布笔记的文件夹首页、画布今日的「开字幕」、笔记里的 ▶ 时间）：Mac 上走 open-url，
+// Windows 和「再开一个进程」走 second-instance 的 argv；应用还没准备好时先排着
+const mcUrls = []
+let mcReady = false
+const takeMcUrl = (url) => (mcReady ? handleMcUrl(url).catch((e) => console.error('[meetcaption://]', e)) : mcUrls.push(url))
+app.on('open-url', (e, url) => {
+  e.preventDefault()
+  takeMcUrl(url)
+})
+for (const a of process.argv) if (a.startsWith('meetcaption://')) mcUrls.push(a)
 let controlWin = null
 let settingsWin = null
 let onboardingWin = null
@@ -126,8 +142,8 @@ const search = ({ query, askId, signal, sessionStartedAt = null }) =>
   })
 const aiStatus = (s = effective(), at = null) => {
   const st = llmStatus(s, chatgptAuth)
-  // 会员没有 Key 可填：AI 用不了时说是场次的事
-  return s.llmProvider === 'member' && (at == null ? member?.noAi : member?.noAiFor(at)) ? { ...st, ready: false, reason: member.noAiReason(at) } : st
+  // 会员没有 Key 可填：AI 用不了时说是场次的事（paused：侧栏写「AI 已暂停」，不是没配好）
+  return s.llmProvider === 'member' && (at == null ? member?.noAi : member?.noAiFor(at)) ? { ...st, ready: false, paused: true, reason: member.noAiReason(at) } : st
 }
 
 function vpProfile() {
@@ -229,6 +245,11 @@ function getProject(id) {
 
 function emitProjects() {
   toUi('projects:changed', { projects: listProjects(), currentProjectId: currentProjectId() })
+  try {
+    canvas?.writeMap()
+  } catch (e) {
+    console.error('[canvas] meetcaption.json', e.message)
+  }
   updateTrayMenu()
   emitOnboarding()
 }
@@ -993,40 +1014,18 @@ async function startEngine({ projectId, mode, classSource } = {}) {
     let project = projects.get(id)
     const m = resolveMode({ mode, classSource }, project, settings.get())
     if (m.mode === 'class' && classSource && project.classSource !== m.classSource) project = projects.update(id, { classSource: m.classSource })
-    const memberNote = await startMemberSession()
+    await memberLive?.begin()
     try {
       await engine.start({ project, mode: m.mode, classSource: m.classSource, extraKeywords: otherProjectWords(id) })
     } catch (e) {
       member?.endSession()
       throw e
     }
-    if (memberNote) engine.notice('warn', memberNote, 'member')
+    memberLive?.started()
     return { ok: true, projectId: id, sessionId: engine.session?.id ?? null, mode: m.mode, classSource: m.classSource }
   } catch (e) {
     if (e.code === 'start-cancelled') return { ok: false, cancelled: true, error: e.message, code: e.code }
     return { ok: false, error: e.message }
-  }
-}
-
-/**
- * 会员开始记录前先开一场（扣一场，或接上 30 分钟内断开的那场）。场次不够或连不上服务器：这一场退回本地识别，
- * 回一句给用户看的说明；够的话回 null。
- */
-async function startMemberSession() {
-  if (!member || settings.get().plan !== 'member') return null
-  member.fallback = false
-  try {
-    await member.startSession()
-    return null
-  } catch (e) {
-    member.fallback = true
-    if (e.code === 'no-balance') {
-      showPricing({ pack: 'p1' })
-      return t('没有可用的场次：这一场用本地识别，翻译和答题这些 AI 功能先关着。买了场次，下一场就能用。')
-    }
-    return e.code === 'network'
-      ? t('连不上会员服务器，这一场先用本地识别，AI 功能可能用不了。')
-      : t(`会员服务器没能开始这一场（{0}），这一场先用本地识别，AI 功能可能用不了。`, e.message)
   }
 }
 
@@ -1036,7 +1035,7 @@ let heardAt = 0
 function watchMemberIdle() {
   setInterval(() => {
     if (!member?.session || engine.state !== 'running' || engine.paused) return
-    if (Date.now() - heardAt > MEMBER_IDLE_MS) onMemberStop({ type: 'idle' }).catch((e) => console.error('[member]', e))
+    if (Date.now() - heardAt > MEMBER_IDLE_MS) memberLive.stop({ type: 'idle' }).catch((e) => console.error('[member]', e))
   }, 30_000).unref?.()
 }
 
@@ -1050,7 +1049,7 @@ function syncMember() {
   return member.refresh({ maxAge: MEMBER_SYNC_MS })
 }
 
-/** 把主窗口叫出来、打开收费页。场次用完时（字幕不停，照常用本地识别记）先选好单买 1 场。 */
+/** 把主窗口叫出来、打开收费页（用户点了买场次、引导里看价格时）。记录中场次用完不自动弹，提示条上点「去买场次」才开。 */
 function showPricing(opts) {
   // 主窗口还没建（首次引导里点「看场次价格」）或还在载入：事件发出去没人接，改成放在 pendingPricing 里，主窗口 init 时带走
   const loading = !controlWin || controlWin.isDestroyed() || controlWin.webContents.isLoading()
@@ -1059,26 +1058,6 @@ function showPricing(opts) {
   else toUi('member:showPricing', opts)
 }
 let pendingPricing = null
-
-/** 会员服务器停了识别：场次用完就换本地识别接着记，弹出收费页；15 分钟没说话就暂停，等用户点继续。 */
-async function onMemberStop({ type }) {
-  if (engine.state !== 'running') return
-  if (type === 'idle') {
-    member?.markIdle()
-    await engine.pause()
-    engine.notice('warn', t('15 分钟没听到有人说话，已经自动暂停，不再计时。要接着记就点「继续」。'), 'member-idle')
-    return
-  }
-  // exhausted（场次用完）或 ended（服务器那边这一场已结束）：退回本地识别
-  member?.markExhausted()
-  if (member) member.fallback = true
-  engine.refreshSettings()
-  await engine.pause()
-  await engine.resume()
-  const trial = member?.info?.kind !== 'paid'
-  engine.notice('warn', t(`{0}，已经换成本地识别接着记，翻译和答题先关着。买了场次，下一场就能用。`, trial ? t('试用的 1 小时用完了') : t('会员场次用完了')), 'member-exhausted')
-  showPricing({ pack: 'p1' })
-}
 
 // 其他没归档项目的名字和术语：加进识别热词，会上顺带提到别的项目时少听错
 function otherProjectWords(id) {
@@ -1933,7 +1912,15 @@ function wireIpc() {
     }
   }
   ipcMain.handle('member:refresh', memberCall(() => syncMember()))
-  ipcMain.handle('member:activate', memberCall((code) => member.activate(String(code ?? ''))))
+  ipcMain.handle(
+    'member:activate',
+    memberCall(async (code) => {
+      await member.activate(String(code ?? ''))
+      // 记录中输了授权码、场次加上了：这一场马上接回云识别和 AI；「剩几场」等接回用掉一场以后再报
+      await memberLive.topUp().catch((e) => console.error('[member]', e))
+      return member.snapshot()
+    }),
+  )
   ipcMain.handle('member:unbind', memberCall(() => member.unbind()))
   ipcMain.handle(
     'member:buy',
@@ -1962,6 +1949,36 @@ function wireIpc() {
   ipcMain.handle('shell:openPrivacy', (_e, kind) => shell.openExternal(privacyUrl(kind)))
   ipcMain.handle('app:relaunch', () => relaunchApp())
   ipcMain.handle('shell:openExternal', (_e, url) => openExternalChecked(url))
+
+  // 画布笔记联动（设置 › 画布笔记、会议页「在画布笔记里继续」）
+  canvas.on('status', (st) => toUi('canvas:status', st))
+  canvas.on('progress', (p) => toUi('canvas:progress', p))
+  ipcMain.handle('canvas:status', () => canvas.status())
+  ipcMain.handle('canvas:connect', async (_e, vault) => {
+    try {
+      return { ok: true, status: await canvas.connect(typeof vault === 'string' ? vault : undefined, { agree: true }) }
+    } catch (e) {
+      return { ok: false, error: e.message }
+    }
+  })
+  ipcMain.handle('canvas:disconnect', () => (canvas.disconnect(), canvas.status()))
+  ipcMain.handle('canvas:pickVault', async (e) => {
+    const r = await dialog.showOpenDialog(senderWin(e), { properties: ['openDirectory'] })
+    return r.canceled ? null : r.filePaths[0]
+  })
+  ipcMain.handle('canvas:setAudio', async (_e, mode, next) => {
+    try {
+      return { ok: true, ...(await canvas.setAudio(String(mode), next ?? {})), status: canvas.status() }
+    } catch (e) {
+      return { ok: false, cancelled: e.code === 'cancelled', error: e.message, status: canvas.status() }
+    }
+  })
+  ipcMain.handle('canvas:cancelMigrate', () => canvas.cancelMigrate())
+  ipcMain.handle('canvas:continue', async (_e, sessionId, at) => {
+    const url = canvas.continueUrl(String(sessionId), Number(at))
+    await shell.openExternal(url)
+    return url
+  })
   ipcMain.handle('screen:permission', () => screenPermission())
   ipcMain.handle('permission:status', () => permissionStatus())
   // 引导重开后真查一次电脑声音能不能录（MEETCAPTION_FAKE_SYSTEM 时不碰真设备：默认能，MEETCAPTION_FAKE_SYSTEM_PERM=denied 模拟没生效）
@@ -2101,7 +2118,7 @@ function wireEngine() {
     toOverlay('overlay:config', overlayConfig())
     updateTrayMenu()
   })
-  engine.on('member', (m) => onMemberStop(m).catch((e) => console.error('[member]', e)))
+  engine.on('member', (m) => memberLive.stop(m).catch((e) => console.error('[member]', e)))
   watchMemberIdle()
   engine.on('devices', (d) => toUi('engine:devices', d))
   engine.on('notice', (n) => toUi('engine:notice', n))
@@ -2216,7 +2233,67 @@ async function saveUiShots(dir) {
 }
 
 // 再打开一次应用：把已经开着的这个拿到前面
-app.on('second-instance', () => focusApp())
+app.on('second-instance', (_e, argv) => {
+  const url = argv.find((a) => String(a).startsWith('meetcaption://'))
+  if (url) takeMcUrl(url)
+  else focusApp()
+})
+
+/** 收到的深链（测试模式下记着，自测报告里看） */
+const mcLinks = []
+async function handleMcUrl(url) {
+  const r = parseMcUrl(url)
+  console.log('[meetcaption://]', url)
+  if (!r) return
+  const rec = { url, kind: r.kind, at: Date.now() }
+  mcLinks.push(rec)
+  if (r.kind === 'start') {
+    if (engine.state !== 'idle') {
+      showControl()
+      rec.result = { ok: false, busy: true }
+      return
+    }
+    const id = r.project ? (projects.has(r.project) ? r.project : projects.list().find((p) => p.name === r.project)?.id) : undefined
+    const mode = r.mode === 'online' ? 'class' : r.mode === 'video' ? undefined : r.mode
+    const classSource = r.mode === 'online' ? 'system' : r.mode === 'class' ? (r.source ?? 'mic') : undefined
+    canvas?.expectBack(r.back)
+    showControl()
+    rec.result = await startEngine({ projectId: id, mode, classSource })
+    if (!rec.result.ok) canvas?.expectBack(null)
+    e2eDeepLinkRun(rec)
+  } else if (r.kind === 'open') {
+    showControl()
+    const wc = controlWin?.webContents
+    if (wc?.isLoading()) await new Promise((res) => wc.once('did-finish-load', res))
+    toUi('canvas:open', { sessionId: r.session, t: r.t })
+    rec.result = { ok: true }
+  }
+}
+
+// 测试模式：MEETCAPTION_E2E_DEEPLINK_RUN=<秒>：深链开始的这一场记这么久就停，等写进库，把收到的深链和写库结果写进 MEETCAPTION_SELFTEST_OUT
+function e2eDeepLinkRun(rec) {
+  const secs = Number(process.env.MEETCAPTION_E2E_DEEPLINK_RUN)
+  if (!E2E || !secs) return
+  setTimeout(async () => {
+    if (!rec.result?.ok) {
+      if (process.env.MEETCAPTION_SELFTEST_OUT) fs.writeFileSync(process.env.MEETCAPTION_SELFTEST_OUT, JSON.stringify({ links: mcLinks, failed: rec.result }, null, 1))
+      quitting = true
+      return app.quit()
+    }
+    const id = engine.session?.id
+    await engine.stop()
+    const written = await canvas.finished(id)
+    await canvas.flushPush(60_000)
+    // 等第二条深链（open）交进来、主窗口翻到那一场
+    for (let i = 0; i < 100 && !mcLinks.some((x) => x.kind === 'open'); i++) await new Promise((res) => setTimeout(res, 100))
+    await new Promise((res) => setTimeout(res, 800))
+    const route = await controlWin?.webContents.executeJavaScript('window.mcLastOpen ?? null').catch(() => null)
+    const out = { links: mcLinks, sessionId: id, session: store.load(id), written, route, screen: globalThis.mcScreen ?? [] }
+    if (process.env.MEETCAPTION_SELFTEST_OUT) fs.writeFileSync(process.env.MEETCAPTION_SELFTEST_OUT, JSON.stringify(out, null, 1))
+    quitting = true
+    app.quit()
+  }, secs * 1000)
+}
 
 /**
  * 新装第一次打开：语言跟系统。翻译成系统的语言（简体、繁体、德语…，不在清单里就不动）；对方说的默认英语，系统本来就是英语时默认中文。
@@ -2249,19 +2326,28 @@ app.whenReady().then(async () => {
   chatgptAuth = new ChatGPTAuth({ file: path.join(app.getPath('userData'), 'chatgpt-auth.json'), safeStorage })
   assistant = new Assistant({ complete: llm, captureScreen, screenReady: () => screenPermission() === 'granted' })
   vpStore = new VoiceprintStore(path.join(app.getPath('userData'), 'voiceprint.json'))
-  member = new Member({ file: path.join(app.getPath('userData'), 'member.json') })
+  // 测试模式可以把心跳调快（MEETCAPTION_HEARTBEAT_MS），端到端测试不用等 30 秒
+  member = new Member({ file: path.join(app.getPath('userData'), 'member.json'), heartbeatMs: (E2E && Number(process.env.MEETCAPTION_HEARTBEAT_MS)) || 30_000 })
   member.on('update', (snap) => {
     toUi('member:update', snap)
     emitOnboarding()
+    memberLive?.remind() // 心跳后：最后一场、只剩 10 分钟各提醒一次
   })
-  member.on('paid', (info) => {
-    toUi('member:paid', info)
-    showControl()
+  member.on('paid', async (info) => {
+    // 记录中付完款：这一场马上接回云识别和 AI（接回要用掉一场）；不把主窗口叫到前面（上课时别挡住屏幕），没在记录才叫出来。
+    // 「付款成功」的余额等接回以后再报，和会员卡、接回的提示是同一个数
+    if (engine.state === 'running') {
+      await memberLive.topUp().catch((e) => console.error('[member]', e))
+      toUi('member:paid', { ...info, balance: member.info?.balance ?? info.balance })
+    } else {
+      toUi('member:paid', info)
+      showControl()
+    }
   })
   member.on('session', (e) => {
     if (e.type === 'rolled') engine.notice('info', t(`这一场已满 2 小时，自动开始第 {0} 场`, e.charged), 'member-rolled')
     // 本地识别 + 会员 AI 时没有识别连接可断，靠心跳知道用完了
-    if (e.type === 'exhausted' && engine.state === 'running' && !engine.paused) onMemberStop({ type: 'exhausted' }).catch(() => {})
+    if (e.type === 'exhausted' && engine.state === 'running' && !engine.paused) memberLive.stop({ type: 'exhausted' }).catch(() => {})
   })
   if (settings.get().plan === 'member') member.refresh()
   engine = new MeetingEngine({
@@ -2274,6 +2360,7 @@ app.whenReady().then(async () => {
     assistant,
     voiceprint: { profile: vpProfile, loadModel: () => loadVoiceprintScorer() },
   })
+  memberLive = new MemberLive({ member, engine, isMember: () => settings.get().plan === 'member' })
   summarizer = new Summarizer({ store, projects, llm, aiStatus: (at) => aiStatus(effective(settings.get(), at), at), modelName: (m) => resolveModel(effective(), m), loadImage: slideDataUrl, renderPdf })
 
   classAsk = new ClassAsk({
@@ -2315,8 +2402,40 @@ app.whenReady().then(async () => {
 
   if (useFakes) engine.useFakeSources(fakeFiles)
 
+  // 画布笔记联动：录音（连了库才录）、写库（canvas/）
+  audioRec = new AudioRecording({ engine, store, enabled: () => settings.get().recordAudio !== false && Boolean(canvas?.vault()), makeEncoder: () => new OpusEncoder() })
+  canvas = new CanvasLink({
+    engine,
+    store,
+    projects,
+    settings,
+    userData: app.getPath('userData'),
+    appData: E2E ? path.join(app.getPath('userData'), 'appData') : app.getPath('appData'),
+    audioRec,
+    notesFlush: () => engine.notesFlush,
+    // 换录音存法时原来那份挪进废纸篓；测试模式挪进设置目录里的 trash，不碰真的废纸篓
+    trash: async (p) => {
+      if (!fs.existsSync(p)) return
+      if (!E2E) return shell.trashItem(p)
+      const dir = path.join(app.getPath('userData'), 'trash', String(Date.now()))
+      fs.mkdirSync(dir, { recursive: true })
+      fs.renameSync(p, path.join(dir, path.basename(p)))
+    },
+  })
+  audioRec.on('error', (x) => console.error('[录音]', x.message))
+  canvas.on('error', (x) => console.error('[canvas]', x.message))
+  summarizer.on('saved', ({ id }) => {
+    try {
+      canvas.refresh(id)
+    } catch (e) {
+      console.error('[canvas] refresh', e.message)
+    }
+  })
+  if (canvas.vault()) await canvas.connect().catch((e) => console.error('[canvas] connect', e.message))
+  if (app.isPackaged && !E2E && !selfTest) app.setAsDefaultProtocolClient('meetcaption')
+
   if (selfTest && !uiSelfTest) {
-    const code = await runSelfTest(selfTest, { engine, settings, store, projects, summarizer, library, capture, assistant, vpStore, root, captureSlide })
+    const code = await runSelfTest(selfTest, { engine, settings, store, projects, summarizer, library, capture, assistant, vpStore, root, captureSlide, canvas })
     exitNow(code)
     return
   }
@@ -2367,6 +2486,8 @@ app.whenReady().then(async () => {
   } else createControl()
   lastOnboarding = JSON.stringify(onboardingStatus())
   setInterval(pollPointer, 50)
+  mcReady = true
+  for (const u of mcUrls.splice(0)) takeMcUrl(u)
   // 启动后在后台进程里先把模型加载好，开会时不用再等：本地识别的模型（用本地识别时），声纹模型（录过声纹时）。
   // 两个都是一两秒到几秒的 CPU 活，各在自己的进程里，不占主进程
   if (settings.get().engine === 'local') setTimeout(() => prewarmLocalAsr(), 1000)
@@ -2414,12 +2535,23 @@ app.on('before-quit', async (e) => {
     if (busy) await engine.stop().catch(() => {})
     // 录屏的最后一段写完、存好再退
     await screenRec?.settled()
+    // 下课写进画布笔记的库、录音推到 GitHub：等它做完（最多 60 秒）
+    if (engine.session?.id) await Promise.race([canvas?.finished(engine.session.id), new Promise((r) => setTimeout(r, 60_000))])
+    await canvas?.flushPush(60_000)
     // 课堂：下课后最后一段实时笔记还在整理（20 到 40 秒），最多等 45 秒再退，不然这段笔记就丢了
     if (engine.notesFlush) {
       tray?.setToolTip('会议字幕：正在整理最后一段笔记，整理完就退出')
       toUi('engine:notice', { level: 'info', text: t('正在整理最后一段实时笔记，整理完就退出（最多 45 秒）。'), code: 'quit-notes' })
       await Promise.race([engine.notesFlush, new Promise((r) => setTimeout(r, 45_000))])
     }
+    app.quit()
+    return
+  }
+  // 录音还在推到 GitHub：等它推完再退（最多 60 秒），不然这一场要等下次打开才补推
+  if (canvas?.isPushing()) {
+    e.preventDefault()
+    quitting = true
+    await canvas.flushPush(60_000)
     app.quit()
     return
   }

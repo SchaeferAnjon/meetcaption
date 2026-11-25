@@ -11,12 +11,14 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      # pnpm 的版本照 package.json 的 packageManager（公开导出时写进去的）
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm test
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
 
       - name: Virtual sound card (VB-CABLE)
         uses: LABSN/sound-ci-helpers@v1
@@ -28,7 +30,7 @@ jobs:
           Get-Service Audiosrv
 
       - name: Build installer
-        run: npx electron-builder --win --x64 --publish never
+        run: pnpm exec electron-builder --win --x64 --publish never
 
       - name: Loopback capture self-test
         shell: pwsh
@@ -132,18 +134,20 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      # pnpm 的版本照 package.json 的 packageManager（公开导出时写进去的）
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm test
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
 
       # 只打 dmg：临时签名的包不能给自动更新用，zip 由本机发版时打（scripts/release.mjs）
       - name: Build dmgs (arm64 + x64, ad-hoc signed)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --mac dmg --arm64 --x64 -c.mac.identity=- --publish never
+        run: pnpm exec electron-builder --mac dmg --arm64 --x64 -c.mac.identity=- --publish never
 
       - name: Voiceprint self-test (packaged arm64)
         run: |

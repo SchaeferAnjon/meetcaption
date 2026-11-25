@@ -911,6 +911,73 @@ function buildAboutUs() {
 
 /* ---------------- 分区切换 ---------------- */
 
+// 画布笔记联动：连库、录音、录音存哪（canvas/link.js、canvas/audioStore.js）
+function buildCanvas() {
+  let st = null
+  const vaultBox = el('div.path.mono.selectable')
+  const status = el('div.text-2.text-sm')
+  const connect = async (dir) => {
+    const r = await api.canvasConnect(dir)
+    if (!r.ok) ui.toast({ title: t('没连上'), message: r.error, type: 'error' })
+    render(r.status ?? (await api.canvasStatus()))
+  }
+  const pick = el('button.btn.btn-sm', { type: 'button', onClick: async () => { const d = await api.canvasPickVault(); if (d) connect(d) } }, icon('folder', 14), el('span', { text: t('选择库…') }))
+  const useDetected = el('button.btn.btn-sm', { type: 'button', onClick: () => connect(st?.detected) }, el('span', { text: t('用画布笔记上次打开的库') }))
+  const off = el('button.btn.btn-ghost.btn-sm', { type: 'button', onClick: async () => render(await api.canvasDisconnect()) }, t('断开'))
+  const remote = el('input.input.mono', { type: 'text', placeholder: 'https://github.com/…/<库名>-录音.git', spellcheck: false, 'aria-label': t('GitHub 仓库地址') })
+  remote.value = P.get('canvasLfsRemote') || ''
+  const prog = el('div.text-2.text-sm')
+  const cancel = el('button.btn.btn-ghost.btn-sm', { type: 'button', onClick: () => api.canvasCancelMigrate() }, t('取消'))
+  const where = el('div.text-2.text-sm.selectable')
+  const seg = ui.segmented({
+    options: [
+      { value: 'local', label: t('只存本机'), icon: 'laptop' },
+      { value: 'lfs', label: 'GitHub', icon: 'upload' },
+      { value: 'icloud', label: t('iCloud 云盘'), icon: 'cloud' },
+    ],
+    ariaLabel: t('录音存哪'),
+    onChange: async (v) => {
+      const r = await api.canvasSetAudio(v, v === 'lfs' ? { remote: remote.value.trim() } : {})
+      if (!r.ok && !r.cancelled) ui.toast({ title: t('没换成'), message: r.error, type: 'error' })
+      if (r.ok) ui.toast({ title: t('换好了'), message: t('{0} 个文件', r.files ?? 0), type: 'success' })
+      render(r.status ?? (await api.canvasStatus()))
+    },
+  })
+  const PHASE = { download: t('下载'), copy: t('拷贝'), commit: t('提交'), push: t('上传') }
+  function render(x) {
+    st = x
+    vaultBox.textContent = x.vault || t('还没连库')
+    vaultBox.classList.toggle('is-empty', !x.vault)
+    off.hidden = !x.vault
+    useDetected.hidden = Boolean(x.vault) || !x.detected
+    // 连库这一下同时拨开家族联动「MeetCaption能写进这个库」「MeetCaption说到的待办进清单」（canvas/familyLinks.js），这里写明会上待办也进去、在哪关
+    status.textContent = `${x.vault ? t('已连上：每节课、每场会下课后写成这个库里的一篇，作业进画布今日。') : t('连上以后每节课、每场会写成库里的一篇（带录音、字幕全文和关键画面），作业进画布今日。')} ${t('会上说到的待办也会进画布今日（家族设置里能关）。')}`
+    seg.value = x.audio.mode
+    for (const b of seg.querySelectorAll('button')) b.disabled = !x.vault || Boolean(x.migrating)
+    remote.hidden = !x.vault
+    where.textContent = x.audio.mode === 'icloud' && x.icloudDir ? x.icloudDir : x.audio.mode === 'lfs' && x.lastPush ? (x.lastPush.ok ? t('上次推送成功') : x.lastPush.error) : ''
+    prog.hidden = cancel.hidden = !x.migrating
+    if (x.migrating?.progress) prog.textContent = `${PHASE[x.migrating.progress.phase] ?? ''} ${x.migrating.progress.done}/${x.migrating.progress.total}`
+  }
+  api.on('canvas:status', render)
+  api.on('canvas:progress', (p) => {
+    prog.hidden = cancel.hidden = false
+    prog.textContent = `${PHASE[p.phase] ?? ''} ${p.done}/${p.total}`
+  })
+  // 改了 GitHub 地址：已经是 GitHub 存法就马上换远端
+  remote.addEventListener('change', async () => st?.audio.mode === 'lfs' && render((await api.canvasSetAudio('lfs', { remote: remote.value.trim() })).status))
+  api.canvasStatus().then(render)
+  return [
+    P.section(t('画布笔记'), null, P.row(t('库'), [vaultBox, el('div.form-inline', {}, pick, useDetected, off)], status)),
+    P.section(
+      t('录音'),
+      null,
+      P.row('', toggleLine('recordAudio', t('开始记录就录音')), t('有的学校、公司录别人说话要先问一声。录音只在连了库时录，存成 Opus，一小时约 11 MB。')),
+      P.row(t('录音存哪'), [seg, remote, el('div.form-inline', {}, prog, cancel), where], t('只存本机：不同步。GitHub：单独的「库名-录音」仓库，用 Git LFS 推上去，别的设备点 ▶ 才下那一节。iCloud：放进 iCloud 云盘跟着同步。笔记里的链接三种都一样；换了会把已有的录音搬过去。')),
+    ),
+  ]
+}
+
 const SECTIONS = [
   { id: 'general', label: t('通用'), icon: 'settings', tint: 'gray', build: buildGeneral },
   { id: 'member', label: t('会员'), icon: 'star', tint: 'yellow', build: buildMember },
@@ -920,6 +987,7 @@ const SECTIONS = [
   { id: 'assist', label: t('AI 答题'), icon: 'message-square-text', tint: 'green', build: buildAssist },
   { id: 'overlay', label: t('字幕与答题框'), icon: 'captions', tint: 'orange', build: buildOverlay },
   { id: 'class', label: t('课堂'), icon: 'graduation-cap', tint: 'pink', build: buildClass },
+  { id: 'canvas', label: t('画布笔记'), icon: 'notebook-pen', tint: 'teal', build: buildCanvas },
   { id: 'hotkeys', label: t('快捷键'), icon: 'keyboard', tint: 'teal', build: buildHotkeys },
   { id: 'mic', label: t('麦克风'), icon: 'mic', tint: 'red', build: buildMic },
   { id: 'permissions', label: t('权限'), icon: 'shield-check', tint: 'yellow', build: buildPermissions, warn: () => ['microphone', 'screen'].some((k) => perms[k] && perms[k] !== 'granted') },

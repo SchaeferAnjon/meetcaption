@@ -358,3 +358,31 @@ test('回到主窗口、打开会员页的刷新有节流：60 秒内只问一�
   m.fetch = real
   m.stop()
 })
+
+test('买过又退款（paid、余额 0）：会后 AI 只给最近那一场、24 小时内；以前的会议、过了 24 小时都不行，原因说场次用完了', async () => {
+  const file = tmpFile()
+  const { f } = trialServer({ kind: 'paid' })
+  const m = make(file, f)
+  await m.refresh()
+  await m.startSession()
+  const mine = Date.now()
+  await m.endSession()
+  const lastWeek = Date.now() - 5 * 24 * 3600_000
+  assert.equal(m.info.kind, 'paid')
+  assert.equal(m.info.balance, 0)
+  assert.equal(m.noAiFor(mine), false, '最近那一场 24 小时内能做纪要')
+  assert.equal(m.aiKey(mine), 'mcs_1')
+  assert.equal(m.noAiFor(lastWeek), true, '以前的会议不能拿设备令牌白用')
+  assert.equal(compatConfig(memberSettings(S, m, lastWeek)).key, '')
+  assert.equal(m.noAiReason(lastWeek), '场次用完了，买了场次 AI 才能用')
+  // 过了 24 小时：这一场也不行
+  const st = JSON.parse(fs.readFileSync(file, 'utf8'))
+  st.last.endedAt = Date.now() - AI_AFTER_END_MS - 1
+  fs.writeFileSync(file, JSON.stringify(st))
+  const later = make(file, f)
+  await later.refresh()
+  assert.equal(later.noAiFor(mine), true)
+  assert.equal(later.noAi, true)
+  assert.equal(memberKey(later), '')
+  m.stop()
+})

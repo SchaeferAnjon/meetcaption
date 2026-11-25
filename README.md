@@ -141,9 +141,9 @@ Local recognition (free, offline) understands Chinese, English and a mix of both
 ## Build from source
 
 ```bash
-npm install
-npm run models   # local recognition model, 170 MB, not in git
-npm start
+pnpm install
+pnpm run models   # local recognition model, 170 MB, not in git
+pnpm start
 ```
 
 Tests, releases, self-tests and the code layout: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).

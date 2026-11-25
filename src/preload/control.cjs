@@ -52,6 +52,9 @@ const EVENTS = new Set([
   'video:open', // 点系统通知：打开这个视频的结果页 { sessionId }
   'screenrec:state', // 录屏开关 { sessionId, on, recording, starting, startAt（正在录的这段从什么时候开始）, count（这一场录了几段）, totalMs }
   'recording:progress', // 停止记录后从录屏里截画面的进度 { sessionId, total, index, fraction, done, added }
+  'canvas:status', // 画布笔记联动的状态变了（连库、换录音存法、推送）
+  'canvas:progress', // 换录音存法的进度 { to, phase: 'download' | 'copy' | 'commit' | 'push', done, total, file }
+  'canvas:open', // meetcaption://open 深链：打开这一场 { sessionId, t }
   'slides:added', // 截取了一张画面 { sessionId, file: 'slides/时.分.秒.jpg', at（截图时刻，毫秒时间戳，同 seg.startedAt）, url（file:// 地址）}
 ])
 
@@ -140,6 +143,13 @@ contextBridge.exposeInMainWorld('app', {
   openPrivacy: invoke('shell:openPrivacy'), // openPrivacy('microphone' | 'screen')
   relaunch: invoke('app:relaunch'), // 重启应用（屏幕录制权限给了要重启才生效）；正在记录时 → { ok: false, error }
   openExternal: invoke('shell:openExternal'),
+  canvasStatus: invoke('canvas:status'),
+  canvasConnect: invoke('canvas:connect'), // (库的文件夹？) → { ok, status } | { ok: false, error }
+  canvasDisconnect: invoke('canvas:disconnect'),
+  canvasPickVault: invoke('canvas:pickVault'),
+  canvasSetAudio: invoke('canvas:setAudio'), // (mode, { remote, icloudDir }) → { ok, files } | { ok: false, cancelled, error }
+  canvasCancelMigrate: invoke('canvas:cancelMigrate'),
+  canvasContinue: invoke('canvas:continue'), // (会议 id, 秒) → 发出去的 canvas-notes:// 网址
   screenPermission: invoke('screen:permission'),
   chatgptStatus: invoke('chatgpt:status'),
   chatgptLogin: invoke('chatgpt:login'),

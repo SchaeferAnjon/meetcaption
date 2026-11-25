@@ -5,19 +5,19 @@ Running from source, tests, releases, self-tests, environment variables and the 
 ## Run from source
 
 ```bash
-npm install
-npm run models            # download the local recognition model (170 MB, not in git) to resources/models/xasr
-npm start                 # run in development
-npm test                  # unit tests
-npm run dist:mac          # build the Mac packages (dist/), on a Mac
-npm run dist:win          # build the Windows installer, on Windows
+pnpm install              # pnpm (the version in package.json's packageManager; `corepack enable` provides it)
+pnpm run models           # download the local recognition model (170 MB, not in git) to resources/models/xasr
+pnpm start                # run in development
+pnpm test                 # unit tests
+pnpm run dist:mac         # build the Mac packages (dist/), on a Mac
+pnpm run dist:win         # build the Windows installer, on Windows
 ```
 
 ## Releasing a version
 
 The app's automatic updates read the GitHub release.
 
-1. Bump `version` in `package.json`, push to `main`, then push a tag `v<version>` so CI builds the Windows installer.
+1. The maintainer develops in a private repository and syncs this repository from it, one commit per sync (`sync: 同步到 <private commit>（<version>）`, which `scripts/release.mjs` reads). Bump `version` in `package.json`, sync, push to `main`, then push a tag `v<version>` on the sync commit so CI builds the Windows installer.
 2. On a Mac that has the Developer ID certificate, run `node scripts/release.mjs`. It builds the Mac dmg and zip (automatic updates on Mac need the same certificate as the installed app, so the CI Mac build cannot be used), downloads the Windows files from CI, checks the signature and that `latest-mac.yml` and `latest.yml` are complete, and leaves everything in `release/<version>/`. It also makes three copies without the version number (`MeetCaption-win-x64.exe`, `MeetCaption-mac-arm64.dmg`, `MeetCaption-mac-x64.dmg`) and uploads them with the release; the README links to `releases/latest/download/<file name>`, so these names must stay.
 3. Write the release notes in `release/<version>/notes.md`, then run `node scripts/release.mjs --publish`. It uploads exactly those files and creates the release, titled `MeetCaption <version>`.
 
@@ -45,7 +45,7 @@ End-to-end without devices: add `--fake-system=a.wav --fake-mic=b.wav` to `--sel
 - `MEETCAPTION_UPDATE_URL=<url>`: check a local update server (a folder with `latest-mac.yml` and the zip) instead of GitHub, to test automatic updates with a packaged build.
 - `MEETCAPTION_SONIOX_URL=<ws url>`: connect Soniox recognition through another address (for testing network drops through a local relay).
 - `MEETCAPTION_NO_EXTERNAL=1`: do not open the system browser (for tests).
-- `E2E=1` (or `MEETCAPTION_E2E=1`): test mode for driving the app with Playwright in the background (`src/main/testMode.js`). Windows are never shown, are fully transparent, let the mouse through and are moved back off screen; no Dock icon, no menu bar icon, no global shortcuts, no permission prompts at launch; the browser, Finder, file panels, message boxes, context menus and notifications are recorded instead of shown (`globalThis.mcScreen`, external links print `[openExternal] <url>`). Combine with `MEETCAPTION_USERDATA` and a `saveDir` in a temporary folder. Playwright emulates a light color scheme by default; call `page.emulateMedia({ colorScheme: 'dark' })` for dark screenshots.
+- `E2E=1` (or `MEETCAPTION_E2E=1`): test mode for driving the app with Playwright in the background (`src/main/testMode.js`). Windows are never shown, are fully transparent, let the mouse through and are moved back off screen; no Dock icon, no menu bar icon, no global shortcuts, no permission prompts at launch; the browser, Finder, file panels, message boxes, context menus and notifications are recorded instead of shown (`globalThis.mcScreen`, external links print `[openExternal] <url>`). It also keeps away from your data: without `MEETCAPTION_USERDATA` it uses a new temporary folder, the meeting library (default `Documents/会议字幕`) lives in `<userData>/documents`, the membership client talks to a dead local port unless `MEETCAPTION_API` is set, and web pages get Chromium's fake camera and microphone. Playwright emulates a light color scheme by default; call `page.emulateMedia({ colorScheme: 'dark' })` for dark screenshots.
 - `MEETCAPTION_DEBUG=1`: print recognition events, audio positions and the me/other decisions.
 
 ## Code layout

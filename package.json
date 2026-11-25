@@ -1,7 +1,7 @@
 {
   "name": "meetcaption",
   "productName": "会议字幕",
-  "version": "0.6.13",
+  "version": "0.6.14",
   "description": "把电脑里播放的会议声音实时转成悬浮字幕，逐句存档，会后 AI 总结",
   "author": "Jia Zonghan",
   "license": "GPL-3.0-or-later",
@@ -10,6 +10,7 @@
   "type": "module",
   "main": "src/main/main.js",
   "scripts": {
+    "postinstall": "node node_modules/electron/install.js",
     "start": "electron .",
     "models": "node scripts/fetch-models.mjs",
     "test": "node --test \"test/*.test.js\"",
@@ -25,8 +26,15 @@
     "sherpa-onnx-node": "1.13.8",
     "ws": "^8.18.0"
   },
+  "optionalDependencies": {
+    "sherpa-onnx-darwin-arm64": "1.13.8",
+    "sherpa-onnx-darwin-x64": "1.13.8",
+    "sherpa-onnx-win-x64": "1.13.8"
+  },
   "devDependencies": {
     "electron": "^44.4.5",
-    "electron-builder": "^26.15.3"
-  }
+    "electron-builder": "26.18.0",
+    "playwright": "1.65.1"
+  },
+  "packageManager": "pnpm@12.14.0"
 }

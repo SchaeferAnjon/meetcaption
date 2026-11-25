@@ -12,5 +12,4 @@ scripts/asr-bench/models/
 scripts/asr-bench/out/
 scripts/asr-bench/venv/
 .playwright-mcp/
-CLAUDE.md
 design/

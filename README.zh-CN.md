@@ -141,9 +141,9 @@ Mac 上的真实窗口，用合成的人声放一段示例会议、面试和讲�
 ## 从源码构建
 
 ```bash
-npm install
-npm run models   # 下载本地识别模型，170 MB，不在 git 里
-npm start
+pnpm install
+pnpm run models   # 下载本地识别模型，170 MB，不在 git 里
+pnpm start
 ```
 
 测试、发版、自测和代码结构见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)（英文）。

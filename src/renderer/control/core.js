@@ -518,7 +518,7 @@ function clearNotices() {
 }
 
 // 只在记录进行中才有意义的提示（没听到声音、识别在重连）：记录结束就收掉，不带到结束页和纪要页；出错原因这类留着
-const LIVE_NOTICES = new Set(['no-audio', 'mac-no-audio', 'no-audio-f2f', 'no-mic-audio', 'mac-permission', 'reconnecting', 'reconnected', 'local-weak'])
+const LIVE_NOTICES = new Set(['no-audio', 'mac-no-audio', 'no-audio-f2f', 'no-mic-audio', 'mac-permission', 'reconnecting', 'reconnected', 'local-weak', 'member-last', 'member-low', 'member-exhausted', 'member-resumed'])
 
 function clearLiveNotices() {
   const before = notices.length
@@ -581,6 +581,14 @@ function onEngineNotice(n) {
       return addNotice(n.level, n.text, { code: n.code, actions: [{ label: t('去设置'), run: () => openSettings('general') }] })
     case 'update-ready':
       return addNotice('info', n.text, { code: n.code, actions: [{ label: t('重启更新'), run: installUpdate }] })
+    // 会员余额：最后一场、只剩 10 分钟、用完了。收费页只在点「去买场次」时打开（用完了先选好单买 1 场）
+    case 'member-last':
+    case 'member-low':
+    case 'member-exhausted':
+      // 最后一场只是先说一声（蓝色），只剩 10 分钟、用完了才是黄色
+      return addNotice(n.code === 'member-last' ? 'info' : 'warn', n.text, { code: n.code, actions: [{ label: t('去买场次'), run: () => openPricing(n.code === 'member-exhausted' ? { pack: 'p1' } : {}) }] })
+    case 'member-resumed':
+      return addNotice('info', n.text, { code: n.code, timeout: 8000 })
     default:
       return addNotice(n.level === 'error' ? 'error' : n.level === 'info' ? 'info' : 'warn', n.text, { code: n.code })
   }

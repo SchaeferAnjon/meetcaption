@@ -2,9 +2,24 @@
 // 窗口从不显示（show、showInactive、focus 都不真做），全透明、鼠标穿透，被系统挪回屏幕就再挪出去；程序坞不出图标；
 // 不建菜单栏图标、不注册全局快捷键、启动时不要麦克风和录屏权限（这几处在 main.js 里看 E2E）；
 // 浏览器、访达、打开 / 存储面板、提示框、右键菜单、系统通知都不真做，只记下来（globalThis.mcScreen），测试要用哪个就在 app.evaluate 里自己换掉。
+// 也不碰用户的数据：设置、声纹、会员令牌和会议库（默认「文稿/会议字幕」）都在临时目录，会员不连线上服务器。
+// 这个模块要在 main.js 里排在会员客户端前面导入：下面的环境变量得在 member/client.js 读 MEETCAPTION_API 之前定好。
 import { app, BrowserWindow, dialog, Menu, screen, shell } from 'electron'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
 export const E2E = process.env.E2E === '1' || process.env.MEETCAPTION_E2E === '1'
+
+if (E2E) {
+  process.env.MEETCAPTION_USERDATA ||= fs.mkdtempSync(path.join(os.tmpdir(), 'meetcaption-e2e-'))
+  app.setPath('documents', path.join(process.env.MEETCAPTION_USERDATA, 'documents'))
+  // 会员（登记电脑、扣场次、结账）：没指定后台就连本机一个没人听的端口，马上失败
+  process.env.MEETCAPTION_API ||= 'http://127.0.0.1:9'
+  // 网页里的 getUserMedia 用 Chromium 的假设备，不碰真麦克风、不弹授权框
+  app.commandLine.appendSwitch('use-fake-device-for-media-stream')
+  app.commandLine.appendSwitch('use-fake-ui-for-media-stream')
+}
 
 export function guardScreen() {
   if (!E2E) return

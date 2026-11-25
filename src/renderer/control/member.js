@@ -335,7 +335,8 @@ function wireMember(init) {
   subscribe('member:update', (snap) => {
     state.member = snap
     emit('member', snap)
-    emit('status')
+    // 场次用完、买了接回：侧栏的 AI 状态跟着变（refreshLlm 里 emit status）
+    refreshLlm()
   })
   subscribe('member:paid', (info) => {
     ui.toast({ title: t('付款成功，场次已经加上'), message: t(`现在剩 {0} 场{1}`, info.balance, info.code ? t(`，授权码 {0}`, info.code) : ''), type: 'success' })

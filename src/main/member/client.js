@@ -14,6 +14,9 @@ export const API = (process.env.MEETCAPTION_API ?? 'https://api.us-cloud.uk').re
 // 场次结束后多久还能拿这一场的票用 AI（服务器的 aiAfterEndMs）
 export const AI_AFTER_END_MS = 24 * 3600_000
 
+// 余额 0、这一场的 AI 时间还剩这么多时提醒一次（余额不是 0 时服务器到点自动续下一场，不用提醒）
+export const LOW_MS = 10 * 60_000
+
 export const PACKS = [
   { id: 'p1', sessions: 1, cny: 12.8, usd: 1.99 },
   { id: 'p10', sessions: 10, cny: 108, usd: 15 },
@@ -46,6 +49,19 @@ export async function machineId(platform = process.platform) {
 }
 
 export class Member extends EventEmitter {
+  #fallback = false
+
+  // 退回本地识别、接回云端都发 update：侧栏的「识别」跟着写本地 / 会员云
+  get fallback() {
+    return this.#fallback
+  }
+
+  set fallback(v) {
+    if (this.#fallback === Boolean(v)) return
+    this.#fallback = Boolean(v)
+    this.emit('update', this.snapshot())
+  }
+
   /** file：userData/member.json；fingerprint：async () => 设备标识；fetch 单测里换。 */
   constructor({ file, fingerprint = machineId, platform = process.platform, fetch: f = globalThis.fetch, api = API, heartbeatMs = 30_000 }) {
     super()
@@ -61,7 +77,7 @@ export class Member extends EventEmitter {
     // state.last：最近一场的票 { token, startedAt, endedAt }，存在 member.json 里：会后 24 小时内（重启应用也算）纪要、课堂笔记记在这一场上。
     // 开始时就存（endedAt 为 null），没走到结束就退出的按开始时间算 24 小时，不会比服务器宽
     this.running = false
-    this.fallback = false // 这一场场次不够、退回了本地识别（main.js 设）
+    this.#fallback = false // 这一场场次不够、退回了本地识别（member/live.js 设）
     this.hb = null
     this.poll = null
     this.error = null
@@ -133,6 +149,7 @@ export class Member extends EventEmitter {
       info: this.info,
       session: this.session && !this.session.video ? { sessionId: this.session.sessionId, remainingMs: this.session.remainingMs, charged: this.session.charged, exhausted: this.session.exhausted, idle: this.session.idle } : null,
       buying: Boolean(this.poll),
+      fallback: this.#fallback,
       error: this.error,
     }
   }
@@ -210,8 +227,11 @@ export class Member extends EventEmitter {
 
   // ---------- 场次 ----------
 
-  /** 开始记录前调：扣一场（或接上 30 分钟内断开的那场）。没余额抛 code=no-balance。 */
-  async startSession() {
+  /**
+   * 开始记录前调：扣一场（或接上 30 分钟内断开的那场）。没余额抛 code=no-balance。
+   * startedAt：会中买了场次、接着记的这次记录的开始时间，会后纪要照样认这一场的票（不给就是现在开始的新记录）。
+   */
+  async startSession({ startedAt } = {}) {
     const token = await this.ensureDevice()
     let r
     try {
@@ -221,10 +241,12 @@ export class Member extends EventEmitter {
       if (e.code === 'no-balance') await this.refresh()
       throw e
     }
-    this.session = { token: r.session, sessionId: r.sessionId, remainingMs: r.remainingMs, charged: r.charged, exhausted: false, idle: false }
-    // 接上 30 分钟内断开的同一场：开始时间还是那一场最早的，断开前记的那段会议也算这一场
+    this.session = { token: r.session, sessionId: r.sessionId, remainingMs: r.remainingMs, charged: r.charged, balance: r.balance, exhausted: false, idle: false }
+    // 接上 30 分钟内断开的同一场：开始时间还是那一场最早的，断开前记的那段会议也算这一场；提醒过的也不再提醒
     const same = this.state.last?.token === r.session
-    this.state.last = { token: r.session, startedAt: same ? this.state.last.startedAt : Date.now(), endedAt: null }
+    this.state.last = same
+      ? { ...this.state.last, endedAt: null }
+      : { token: r.session, startedAt: Math.min(startedAt ?? Infinity, Date.now()), endedAt: null, reminded: [] }
     this.#write()
     this.running = true
     this.info = this.info ? { ...this.info, balance: r.balance } : this.info
@@ -297,7 +319,7 @@ export class Member extends EventEmitter {
     const r = await this.#call('POST', '/v1/session/heartbeat', { token: s.token, body: s.video ? { videoMs: s.videoMs } : { running: this.running } })
     if (this.session !== s) return r
     const was = { exhausted: s.exhausted, idle: s.idle, charged: s.charged }
-    Object.assign(s, { remainingMs: r.remainingMs, charged: r.charged, exhausted: r.exhausted, idle: r.idle })
+    Object.assign(s, { remainingMs: r.remainingMs, charged: r.charged, balance: r.balance, exhausted: r.exhausted, idle: r.idle })
     if (this.info) this.info = { ...this.info, balance: r.balance }
     if (s.video) {
       // 视频票：用完与否由视频任务自己看返回值，不走实时记录的提示和自动暂停
@@ -309,6 +331,23 @@ export class Member extends EventEmitter {
     if (r.charged > was.charged) this.emit('session', { type: 'rolled', charged: r.charged })
     this.emit('update', this.snapshot())
     return r
+  }
+
+  /**
+   * 余额提醒，每一场各一次（记在 member.json 的 last.reminded，断线接上同一场、重启应用也不重复）：
+   * 'last' 这是最后一场（开场或满 2 小时自动续场后余额 0）；'low' 余额 0、这一场的 AI 时间还剩不到 10 分钟。
+   * 该提醒就记下、回 { type, remainingMs }，否则回 null。用完了（exhausted）另有提示，不走这里。
+   */
+  takeReminder() {
+    const s = this.session
+    if (!s || s.video || s.exhausted || s.balance !== 0 || this.state.last?.token !== s.token) return null
+    const done = (this.state.last.reminded ??= [])
+    const type = s.remainingMs <= LOW_MS ? 'low' : 'last'
+    if (done.includes(type) || (type === 'last' && done.includes('low'))) return null
+    done.push(type)
+    if (type === 'low' && !done.includes('last')) done.push('last') // 只剩 10 分钟才开场（接上断开的）：说一句就够
+    this.#write()
+    return { type, remainingMs: s.remainingMs }
   }
 
   setRunning(running) {
@@ -399,7 +438,7 @@ export class Member extends EventEmitter {
 
   /** AI 用不了时给用户看的原因（会员没有 Key 可填，不能说「没填 Key」）。 */
   noAiReason(at = null) {
-    if (this.#live(at) && this.session.exhausted) return t('这一场的会员时间用完了，翻译和答题先关着')
+    if (this.#live(at) && this.session.exhausted) return t('这一场的会员时间用完了，翻译和答题先暂停')
     if (this.info?.kind === 'paid') return t('场次用完了，买了场次 AI 才能用')
     return this.info?.trialGranted === false ? t('AI 要买了场次才能用，也可以在设置里换成自带 Key') : t('试用场次用完了，买了场次 AI 才能用')
   }

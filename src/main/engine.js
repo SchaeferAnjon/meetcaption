@@ -196,7 +196,7 @@ const withScreen = (s) => Boolean(s?.assist?.withScreen)
 export class MeetingEngine extends EventEmitter {
   /**
    * llm(opts) → Promise<string>：A 模块 complete 的门面（已绑好设置和登录）。
-   * llmStatus() → { ready, reason }。
+   * llmStatus() → { ready, reason, paused }：paused 是会员场次用完、AI 暂停（「场次用完了」那条横幅说过了），这时不发 AI 请求也不报失败。
    * assistant：答题助手（C 模块的 Assistant），对方问完自动调它的 ask。
    * voiceprint：{ profile() → 声纹或 null, loadModel() → Promise<模型> }。
    */
@@ -357,8 +357,22 @@ export class MeetingEngine extends EventEmitter {
     if (this.state !== 'idle') this.cfg = this.#settingsFor(this.settings.get())
   }
 
+  /** 会员会中买了场次、AI 又能用了：撤掉这一场「AI 用量到上限」的停用，翻译、实时笔记、自动答题接着来。 */
+  resumeAi() {
+    this.aiLimited = false
+    this.assistWarned = false
+    this.notes?.unhalt()
+    this.notice('clear', '', 'ai-limit')
+    this.notice('clear', '', 'assist-llm')
+  }
+
   notice(level, text, code, extra) {
     this.emit('notice', { level, text, code, ...extra })
+  }
+
+  // 会员场次用完、AI 暂停着：横幅已经说了「翻译和答题先暂停」，各项 AI 不发请求、不再各报一次失败
+  #aiPaused() {
+    return Boolean(this.llmStatus?.()?.paused)
   }
 
   // 本地识别效果不好要不要提示：只对自己选了本地识别的用户（会员选本地、场次用完退回本地的另有提示；云识别断线时本地接手的也不算）
@@ -1329,6 +1343,7 @@ export class MeetingEngine extends EventEmitter {
     const a = this.cfg?.assist
     if (!a?.enabled || !a.auto) return null
     const st = this.llmStatus?.()
+    if (st?.paused) return null
     return st && !st.ready ? 'not-ready' : 'ask'
   }
 
@@ -1643,7 +1658,7 @@ export class MeetingEngine extends EventEmitter {
     const translate = Boolean(s.translate) && needsTranslation(text, s.language, s.translateTarget)
     const chunks = translate && s.display?.chunkColors !== false
     const terms = s.terms?.enabled !== false && worthTerms(text)
-    if ((!translate && !terms) || this.aiLimited) {
+    if ((!translate && !terms) || this.aiLimited || this.#aiPaused()) {
       this.enh.set(text, null)
       return
     }
@@ -1767,7 +1782,7 @@ export class MeetingEngine extends EventEmitter {
           this.speed.fail(job.row, e.message)
           this.#dropLive(job.text)
           // 会员场次用完的 402 另有「场次用完」的提示，这里不再报；自带 Key 余额不足的 402 要报
-          const memberOut = e.status === 402 && this.cfg?.llmProvider === 'member'
+          const memberOut = (e.status === 402 && this.cfg?.llmProvider === 'member') || this.#aiPaused()
           if (!this.enhWarned && !memberOut) {
             this.enhWarned = true
             this.notice('warn', t(`{0}失败：{1}`, job.translate ? t('翻译') : t('术语解释'), e.message), 'enhance')

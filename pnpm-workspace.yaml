@@ -1,0 +1,7 @@
+allowBuilds:
+  electron: true
+  # 只给 Windows 打安装包用，用不着它的安装脚本
+  electron-winstaller: false
+overrides:
+  # ParaRead 的公式：rehype-katex 7 声明的是 katex ^0.16，ParaRead 要它也用 0.19（和界面里引的样式表同一版；原来 npm 的 overrides）
+  rehype-katex>katex: ^0.19.0

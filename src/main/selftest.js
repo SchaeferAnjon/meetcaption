@@ -205,6 +205,8 @@ async function fullRun(secs, ctx) {
   await engine.stop()
   // 课堂：下课后最后一次整理实时笔记
   if (engine.notesFlush) await Promise.race([engine.notesFlush, sleep(240_000)])
+  // 连了画布笔记的库：等下课写库（字幕、画面、录音、上课记录）做完
+  if (ctx.canvas?.vault()) result.canvas = await ctx.canvas.finished(sessionId)
   const saved = store.load(sessionId)
   const asks = traces.filter((t) => t.type === 'ask')
 
@@ -309,6 +311,20 @@ export async function runSelfTest(arg, ctx) {
 async function runKind(arg, ctx) {
   const [kind, secs] = arg.replace(/^--selftest=?/, '').split(':')
   if (kind === 'asr') return fullRun(Number(secs) || 0, ctx)
+  // --selftest=canvas-audio --to=local|lfs|icloud [--remote=<仓库>] [--icloud-dir=<文件夹>]：换录音存法（迁移已有的录音），报告进度和结果
+  if (kind === 'canvas-audio') {
+    const progress = []
+    ctx.canvas.on('progress', (p) => progress.push(p))
+    const next = { ...(argRaw('remote') !== null ? { remote: argRaw('remote') } : {}), ...(argRaw('icloud-dir') !== null ? { icloudDir: argRaw('icloud-dir') } : {}) }
+    try {
+      const r = await ctx.canvas.setAudio(argRaw('to'), next)
+      report({ ok: true, ...r, progress, status: ctx.canvas.status() })
+      return 0
+    } catch (e) {
+      report({ ok: false, error: e.message, progress, status: ctx.canvas.status() })
+      return 1
+    }
+  }
   if (kind === 'library') {
     report({ ok: true, ...libraryReport(ctx) })
     return 0

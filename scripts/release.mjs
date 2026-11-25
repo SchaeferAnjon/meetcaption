@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-// 发一个新版本到 GitHub Release（正式版的自动更新从这里拿，src/main/updater.js）：
-//   1. 改 package.json 的 version，提交推到 main，打 tag v<版本> 推上去：CI 在 tag 上打 Windows 安装包（windows-installer 产物里带 latest.yml）
+// 发一个新版本到公开仓库（package.json 的 repository，SchaeferAnjon/meetcaption）的 GitHub Release（正式版的自动更新从这里拿，src/main/updater.js）。
+// 2026-11-24 起代码在 canvas-notes 私有仓库的 apps/meetcaption，公开仓库由 scripts/public-export.mjs 导出、一次同步一个提交：
+//   1. 改 package.json 的 version，在私有仓库提交；导出、换进公开仓库、提交「sync: 同步到 <私有仓库的提交号>（<版本>）」推到 main，
+//      在这个同步提交上打 tag v<版本> 推上去：公开仓库的 CI 在 tag 上打 Windows 安装包（windows-installer 产物里带 latest.yml）。
+//      步骤见 canvas-notes 的 docs/DEVELOPMENT.md「MeetCaption」一节
 //   2. node scripts/release.mjs：本机用钥匙串里的 Developer ID 打 Mac 的 dmg + zip（Mac 的自动更新要和装着的版本同一张证书签名，
 //      CI 的 Mac 包是临时签名，不能用），下载 CI 的 Windows 产物，核对签名和更新要的文件，放在 release/<版本>/
 //   3. 发布说明写在 release/<版本>/notes.md（release/ 不进 git，不会挡住「工作区干净」的检查），看过没问题：
@@ -9,9 +12,11 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { PRIVATE } from './public-export.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const TEAM = '3H5S5NXPXS' // Developer ID Application: zonghan jia，装着的正式版就是它签的
+const REPO = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).repository.replace(/^github:/, '')
 const publish = process.argv.includes('--publish')
 const { version } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
 const tag = `v${version}`
@@ -51,14 +56,20 @@ function checkMainDeps(app) {
   return r.stdout.trim().replaceAll('\n', '；')
 }
 
-// 代码和 tag 对得上：工作区干净，HEAD 就是 tag 指的提交，tag 已经推上去了，GitHub 上还没有这个 Release
+// 代码和 tag 对得上：工作区干净（整个 canvas-notes 仓库），公开仓库上的 tag 已经推了，tag 指的同步提交同步的是和 HEAD 内容一样的 MeetCaption，
+// 公开仓库上还没有这个 Release。只改了不公开的（CLAUDE.md、导出脚本）或这个脚本自己的提交不用重新同步；
+// 搬家以前公开仓库的提交说明里没有「同步到」，搬家以后第一次发版要先同步一次
 if (run('git', ['status', '--porcelain'])) fail('工作区有没提交的改动')
 const head = run('git', ['rev-parse', 'HEAD'])
-const remoteTag = run('git', ['ls-remote', '--tags', 'origin', `refs/tags/${tag}^{}`, `refs/tags/${tag}`])
-if (!remoteTag) fail(`GitHub 上还没有 ${tag}：先 git tag ${tag} && git push origin ${tag}，等 CI 跑完`)
+const remoteTag = run('git', ['ls-remote', '--tags', `https://github.com/${REPO}.git`, `refs/tags/${tag}^{}`, `refs/tags/${tag}`])
+if (!remoteTag) fail(`${REPO} 上还没有 ${tag}：先导出、同步到公开仓库，在同步提交上 git tag ${tag} && git push origin ${tag}，等 CI 跑完`)
 const tagCommit = remoteTag.split('\n').find((l) => l.endsWith('^{}'))?.split(/\s/)[0] ?? remoteTag.split(/\s/)[0]
-if (tagCommit !== head) fail(`${tag} 指的是 ${tagCommit.slice(0, 7)}，本机 HEAD 是 ${head.slice(0, 7)}`)
-if (spawnSync('gh', ['release', 'view', tag], { cwd: ROOT }).status === 0) fail(`GitHub 上已经有 ${tag} 的 Release`)
+const synced = /同步到 ([0-9a-f]{7,40})/.exec(run('gh', ['api', `repos/${REPO}/commits/${tagCommit}`, '--jq', '.commit.message']))?.[1]
+if (!synced) fail(`${tag} 指的 ${tagCommit.slice(0, 7)} 不是导出同步的提交（提交说明里没有「同步到 <私有仓库的提交号>」）`)
+if (spawnSync('git', ['cat-file', '-e', `${synced}^{commit}`], { cwd: ROOT }).status !== 0) fail(`本机仓库里没有 ${tag} 同步的 ${synced}`)
+const sameAsHead = spawnSync('git', ['diff', '--quiet', synced, head, '--', '.', ...PRIVATE.map((p) => `:!${p}`), ':!scripts/release.mjs'], { cwd: ROOT }).status === 0
+if (!sameAsHead) fail(`${tag} 同步的是 ${synced.slice(0, 7)}，和 HEAD ${head.slice(0, 7)} 的 MeetCaption 不一样：重新导出同步、重打 tag`)
+if (spawnSync('gh', ['release', 'view', tag, '--repo', REPO], { cwd: ROOT }).status === 0) fail(`${REPO} 上已经有 ${tag} 的 Release`)
 
 if (publish) {
   // 只上传第 2 步核对过的那一份，不重新打包
@@ -67,17 +78,17 @@ if (publish) {
   if (!fs.existsSync(notes)) fail(`还没写发布说明：${notes}`)
   const files = prev.files.map((f) => path.join(out, f))
   for (const f of files) if (!fs.existsSync(f)) fail(`核对过的文件不见了：${f}`)
-  run('gh', ['release', 'create', tag, '--verify-tag', '--title', `MeetCaption ${version}`, '--notes-file', notes, ...files], { stdio: 'inherit' })
+  run('gh', ['release', 'create', tag, '--repo', REPO, '--verify-tag', '--title', `MeetCaption ${version}`, '--notes-file', notes, ...files], { stdio: 'inherit' })
   console.log(`已发布 ${tag}：装着旧版的正式版会在启动 30 秒内、或者 6 小时内查到并下载`)
   process.exit(0)
 }
 
 // CI 在这个 tag 上的构建要成功，拿它的 Windows 安装包
-const runs = JSON.parse(run('gh', ['run', 'list', '--workflow', 'build', '--branch', tag, '--json', 'databaseId,headSha,status,conclusion', '--limit', '5']))
-const ci = runs.find((r) => r.headSha === head)
+const runs = JSON.parse(run('gh', ['run', 'list', '--repo', REPO, '--workflow', 'build', '--branch', tag, '--json', 'databaseId,headSha,status,conclusion', '--limit', '5']))
+const ci = runs.find((r) => r.headSha === tagCommit)
 if (!ci) fail(`CI 还没在 ${tag} 上跑`)
-if (ci.status !== 'completed') fail(`CI 还在跑（gh run watch ${ci.databaseId}）`)
-if (ci.conclusion !== 'success') fail(`CI 没过（gh run view ${ci.databaseId}）`)
+if (ci.status !== 'completed') fail(`CI 还在跑（gh run watch ${ci.databaseId} --repo ${REPO}）`)
+if (ci.conclusion !== 'success') fail(`CI 没过（gh run view ${ci.databaseId} --repo ${REPO}）`)
 
 // 写好的发布说明留着，其余重新来
 const keptNotes = fs.existsSync(notes) ? fs.readFileSync(notes) : null
@@ -85,7 +96,7 @@ fs.rmSync(out, { recursive: true, force: true })
 fs.mkdirSync(out, { recursive: true })
 if (keptNotes) fs.writeFileSync(notes, keptNotes)
 console.log(`下载 CI ${ci.databaseId} 的 Windows 安装包…`)
-run('gh', ['run', 'download', String(ci.databaseId), '-n', 'windows-installer', '-D', path.join(out, 'win')], { stdio: 'inherit' })
+run('gh', ['run', 'download', String(ci.databaseId), '--repo', REPO, '-n', 'windows-installer', '-D', path.join(out, 'win')], { stdio: 'inherit' })
 
 // 签不上 Developer ID 时 electron-builder 默认只打一条警告、照样出包：强制签名，签不上就失败
 console.log('本机打 Mac 包（Developer ID 签名，arm64 + x64，dmg + zip）…')
@@ -103,7 +114,7 @@ for (const dir of ['mac', 'mac-arm64']) {
   const info = spawnSync('codesign', ['-dvv', p], { encoding: 'utf8' }).stderr
   if (!/Authority=Developer ID Application:/.test(info) || !info.includes(`TeamIdentifier=${TEAM}`)) fail(`${dir} 不是团队 ${TEAM} 的 Developer ID 签的`)
   const missing = checkMainDeps(p)
-  if (missing) fail(`${dir} 的 app.asar 里主进程的依赖不全（${missing}）：本机 node_modules 和 package-lock.json 对不上，先 npm ci 再打`)
+  if (missing) fail(`${dir} 的 app.asar 里主进程的依赖不全（${missing}）：本机 node_modules 和 pnpm-lock.yaml 对不上，先在仓库根上 pnpm install --frozen-lockfile 再打`)
 }
 
 // 更新要的文件：latest-mac.yml 里两个架构的 zip，latest.yml 里的 exe，版本号都是这一版

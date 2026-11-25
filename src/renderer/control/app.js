@@ -172,6 +172,12 @@ function wireEvents() {
     else if (f.code === 'no-balance') addNotice('error', f.error, { code: 'video-error', actions: [{ label: t('买场次'), run: () => call('showPricing') }] })
   })
   subscribe('video:open', ({ sessionId }) => sessionId && (dismissVideoJob(), go('meeting', { id: sessionId })))
+  // meetcaption://open（画布笔记、画布今日里点 ▶ 时间）：打开那一场，at 是第几秒
+  subscribe('canvas:open', ({ sessionId, t: at }) => {
+    if (!sessionId) return
+    go('meeting', { id: sessionId, at })
+    window.mcLastOpen = { sessionId, at }
+  })
   subscribe('overlay:state', (o) => {
     state.overlay = o
     emit('overlay', o)

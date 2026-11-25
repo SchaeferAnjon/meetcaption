@@ -350,6 +350,11 @@ export class LiveNotes extends EventEmitter {
     this.emit('update', { notes: this.notes, updatedAt: this.updatedAt, error: t(`实时笔记暂停了：{0}`, reason(e)) })
   }
 
+  /** 会中买了场次、AI 又能用了：接着整理（停着时攒下的内容下一次一起整理）。 */
+  unhalt() {
+    this.halted = false
+  }
+
   async #run(batch) {
     const lines = batch.map((p) => ({ at: Math.max(0, p.at - this.startedAt), speaker: p.speaker, text: p.text }))
     const [system, user] = notesMessages({ prev: this.notes, lines, context: this.context, startedAt: this.startedAt, mode: this.mode, lang: this.lang })

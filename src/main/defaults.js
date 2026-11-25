@@ -50,6 +50,13 @@ export const DEFAULTS = {
   },
   hideFromScreenShare: true,
   saveDir: '', // 根目录，空就是 文稿/会议字幕
+  // 画布笔记联动（canvas/link.js）：连的库（空 = 没连）；录音（开始记录就录，存进库里的 .canvas-notes/录音）；
+  // 录音存法 local（只存本机）| lfs（「<库名>-录音」仓库 + Git LFS，canvasLfsRemote 是远端）| icloud（iCloud 云盘文件夹，canvasIcloudDir 空就用默认）
+  canvasVault: '',
+  recordAudio: true,
+  canvasAudio: 'local',
+  canvasLfsRemote: '',
+  canvasIcloudDir: '',
   theme: 'system', // system | dark | light
   sidebarOpacity: 0.85, // Mac 毛玻璃、Windows 11 云母上侧栏底色有多实：1 不透明，太低了深色桌面前看不清字
   launchAtLogin: false,

@@ -23,7 +23,7 @@ const until = async (fn, ms = 2000) => {
   assert.fail('等不到')
 }
 
-function harness(t, { llm, patch = {}, enhanceWaitMs = 0 }) {
+function harness(t, { llm, patch = {}, enhanceWaitMs = 0, llmStatus = () => ({ ready: true }), assistant = null }) {
   const cfg = applyPatch(applyPatch(merge(DEFAULTS, {}), { translate: true, captureMic: false, assist: { enabled: false }, terms: { enabled: false, correct: false }, display: { chunkColors: false } }), patch)
   const settings = Object.assign(new EventEmitter(), { get: () => structuredClone(cfg) })
   let session
@@ -42,7 +42,8 @@ function harness(t, { llm, patch = {}, enhanceWaitMs = 0 }) {
     store,
     rendererCapture: null,
     llm,
-    llmStatus: () => ({ ready: true }),
+    llmStatus,
+    assistant,
     enhanceWaitMs,
     createProvider: () => {
       const p = new FakeASR()
@@ -199,4 +200,30 @@ test('enhance: stop waits for translations still queued behind the three in flig
   const t0 = Date.now()
   await slow.engine.stop()
   assert.ok(Date.now() - t0 < 600)
+})
+
+test('enhance: member AI paused (sessions used up) sends no translation, terms or auto-answer and reports no failure; resumes once AI is back', async (t) => {
+  // 2026-11-25 复审：余额 0 开始记录，「场次用完了」下面又弹「术语解释失败：场次用完了，买了场次 AI 才能用」
+  const calls = []
+  const asks = []
+  const llm = async (o) => {
+    calls.push(o)
+    if (o.model === 'smart') return '{}'
+    return JSON.stringify({ tr: `译文：${sentenceOf(o)}`, chunks: [], terms: [] })
+  }
+  let st = { ready: false, paused: true, reason: '场次用完了，买了场次 AI 才能用' }
+  const assistant = Object.assign(new EventEmitter(), { ask: (q) => (asks.push(q), Promise.resolve()), warmUp: async () => ({}), prefetchScreen() {} })
+  const ctx = harness(t, { llm, llmStatus: () => st, assistant, patch: { terms: { enabled: true, correct: true }, assist: { enabled: true, auto: true, withScreen: false } } })
+  await ctx.engine.start()
+  ctx.say('a', 'We fine-tuned the transformer with LoRA and quantization last week.')
+  ctx.say('b', 'Could you explain why the ablation drops so much on the second dataset?')
+  await tick(150)
+  assert.equal(calls.filter((o) => o.model !== 'smart').length, 0, 'AI 暂停着：不发译文、术语请求')
+  assert.equal(asks.length, 0, '不自动答题')
+  assert.deepEqual(ctx.notices.filter((n) => n.level !== 'clear' && ['enhance', 'assist-llm', 'ai-limit'].includes(n.code)), [], '不报失败')
+  // 买了场次、AI 回来了：新的句子照常翻译
+  st = { ready: true }
+  ctx.say('c', 'The results on the third dataset look much better.')
+  await until(() => ctx.trOf('The results on the third dataset look much better.'))
+  await ctx.engine.stop()
 })

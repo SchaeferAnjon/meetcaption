@@ -106,3 +106,8 @@ nsis:
   shortcutName: 会议字幕
   uninstallDisplayName: 会议字幕
   createDesktopShortcut: always
+# 画布笔记、画布今日开始上课、笔记里的 ▶ 时间走 meetcaption:// 深链
+protocols:
+  - name: MeetCaption
+    schemes:
+      - meetcaption

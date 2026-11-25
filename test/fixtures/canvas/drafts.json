@@ -1,0 +1,36 @@
+[
+  {
+    "path": "课程/ECP/上课记录/2026-11-04 ECP.md",
+    "title": "2026-11-04 近似加法器与 CDM8 乘法器",
+    "course": "ECP",
+    "mode": "class",
+    "sessions": ["2026-11-04 09.29", "2026-11-04 11.05"],
+    "duration": "2:30",
+    "overview": { "text": "讲了近似计算的动机和三种近似加法器。\n\n最后讲了 CDM8 乘法器。", "engine": "DeepSeek" },
+    "todos": [
+      { "text": "列出三种近似加法器", "session": "2026-11-04 09.29", "t": 840, "due": "2026-11-11" },
+      { "text": "读 Lecture04 第 3 节", "session": "2026-11-04 11.05", "t": 0 }
+    ],
+    "parts": [
+      { "session": "2026-11-04 09.29", "sections": [
+        { "title": "近似计算的动机", "t": 0, "points": [ { "text": "能耗是主要矛盾", "t": 60 }, { "text": "误差可以容忍 & 换来速度", "t": 300 } ], "frames": [34872] },
+        { "title": "近似加法器", "t": 900, "frames": [] }
+      ] },
+      { "session": "2026-11-04 11.05", "sections": [ { "title": "CDM8 乘法器", "t": 30, "points": [ { "text": "部分积压缩", "t": 120 } ], "frames": [39960, 40001] } ] }
+    ]
+  },
+  {
+    "path": "会议/hiwi2 例会/会议记录/2026-11-20 hiwi2 例会.md",
+    "title": "2026-11-20 hiwi2 例会",
+    "mode": "meeting",
+    "sessions": ["2026-11-20 14.00"],
+    "todos": [],
+    "parts": [ { "session": "2026-11-20 14.00", "sections": [ { "title": "进度", "t": 5 } ] } ]
+  },
+  {
+    "path": "MeetCaption/上课记录/2026-11-21 未归类.md",
+    "title": "2026-11-21 未归类",
+    "mode": "online",
+    "sessions": ["2026-11-21 08.00"]
+  }
+]
