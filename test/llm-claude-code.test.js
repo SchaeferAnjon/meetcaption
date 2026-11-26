@@ -6,6 +6,8 @@ import path from 'node:path'
 import { complete, llmStatus } from '../src/main/llm/index.js'
 
 // MEETCAPTION_LLM=claude-code：AI 走本机 `claude -p`（验证问 AI 用，设置里没有这一项）。用一个假的 claude 看传了什么。
+// 假的 claude 是 sh 脚本，Windows 上起不来（spawn 报 ENOENT；这个开关本来就只在 Mac 开发机上用），Windows 跳过这两条（0.6.15 的 CI 挂在这里）
+const skip = process.platform === 'win32' && '假的 claude 是 sh 脚本，Windows 上起不来'
 
 function fakeClaude(body) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-claude-'))
@@ -14,7 +16,7 @@ function fakeClaude(body) {
   return { dir, bin }
 }
 
-test('claude-code switch: status is ready without a key; system goes in --system-prompt, no tools, the turns go in on stdin', async (t) => {
+test('claude-code switch: status is ready without a key; system goes in --system-prompt, no tools, the turns go in on stdin', { skip }, async (t) => {
   const f = fakeClaude('printf "ARGS:"; for a in "$@"; do printf "[%s]" "$a"; done; printf "\\nSTDIN:"; cat')
   process.env.MEETCAPTION_LLM = 'claude-code'
   process.env.MEETCAPTION_CLAUDE_BIN = f.bin
@@ -43,7 +45,7 @@ test('claude-code switch: status is ready without a key; system goes in --system
   assert.deepEqual(deltas, [out])
 })
 
-test('claude-code switch: a failing claude is an error with its message; off by default', async (t) => {
+test('claude-code switch: a failing claude is an error with its message; off by default', { skip }, async (t) => {
   const f = fakeClaude('echo "not logged in" >&2; exit 3')
   process.env.MEETCAPTION_LLM = 'claude-code'
   process.env.MEETCAPTION_CLAUDE_BIN = f.bin
